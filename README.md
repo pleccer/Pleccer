@@ -4,7 +4,8 @@
 
 ### **A slicer focused on supporting waste-free multicolor 3D printing based on PrusaSlicer**
 
-![plec-logo3](https://user-images.githubusercontent.com/124889495/219365294-9931331c-17a7-4351-a9b0-daef43feaa2b.png)
+![splash_logo](https://user-images.githubusercontent.com/124889495/219878352-059f453c-721a-4bdd-929b-c02ebb01fe76.png)
+
 
 Pleccer incorporates features to make it easier to make a colored 3d model and slice it for a multicolor mixing or non-mixing 3D printer. It is part of the PLEC (purgeless extruding colorer) project; which develops the needs to upgrade your/any printer to a mixing color 3D printer optimized for avoiding waste. You can find out more about PLEC on the [community site](https://plec.community).
 
