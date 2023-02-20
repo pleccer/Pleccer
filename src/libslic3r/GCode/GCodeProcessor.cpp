@@ -593,9 +593,11 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
         m_time_processor.filament_unload_times[i] = static_cast<float>(config.filament_unload_time.values[i]);
     }
 
+    m_single_extruder_multi_material = config.single_extruder_multi_material;
+
     // With MM setups like Prusa MMU2, the filaments may be expected to be parked at the beginning.
     // Remember the parking position so the initial load is not included in filament estimate.
-    if (config.single_extruder_multi_material && extruders_count > 1 && config.wipe_tower) {
+    if (m_single_extruder_multi_material && extruders_count > 1 && config.wipe_tower) {
         m_parking_position = float(config.parking_pos_retraction.value);
         m_extra_loading_move = float(config.extra_loading_move);
     }
@@ -772,8 +774,10 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
     const ConfigOptionFloat* parking_pos_retraction = config.option<ConfigOptionFloat>("parking_pos_retraction");
     const ConfigOptionFloat* extra_loading_move = config.option<ConfigOptionFloat>("extra_loading_move");
 
-    if (single_extruder_multi_material != nullptr && wipe_tower != nullptr && parking_pos_retraction != nullptr && extra_loading_move != nullptr) {
-        if (single_extruder_multi_material->value && m_result.extruders_count > 1 && wipe_tower->value) {
+    m_single_extruder_multi_material = single_extruder_multi_material != nullptr && single_extruder_multi_material->value;
+
+    if (m_single_extruder_multi_material && wipe_tower != nullptr && parking_pos_retraction != nullptr && extra_loading_move != nullptr) {
+        if (m_single_extruder_multi_material && m_result.extruders_count > 1 && wipe_tower->value) {
             m_parking_position = float(parking_pos_retraction->value);
             m_extra_loading_move = float(extra_loading_move->value);
         }
@@ -976,6 +980,8 @@ void GCodeProcessor::reset()
 
     m_spiral_vase_active = false;
     m_kissslicer_toolchange_time_correction = 0.0f;
+
+    m_single_extruder_multi_material = false;
 
 #if ENABLE_GCODE_VIEWER_DATA_CHECKING
     m_mm3_per_mm_compare.reset();
@@ -3371,6 +3377,11 @@ void GCodeProcessor::process_T(const std::string_view command)
                     if (m_producer == EProducer::KissSlicer && m_flavor == gcfMarlinLegacy)
                         extra_time += m_kissslicer_toolchange_time_correction;
                     simulate_st_synchronize(extra_time);
+
+                    // specific to single extruder multi material, set the extruder temperature
+                    // if not done yet
+                    if (m_single_extruder_multi_material && m_extruder_temps[m_extruder_id] == 0.0f)
+                        m_extruder_temps[m_extruder_id] = m_extruder_temps[old_extruder_id];
 
                     m_result.extruders_count = std::max<size_t>(m_result.extruders_count, m_extruder_id + 1);
                 }

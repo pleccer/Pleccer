@@ -720,28 +720,26 @@ void Transformation::reset()
 }
 
 #if ENABLE_WORLD_COORDINATE
+void Transformation::reset_rotation()
+{
+    const Geometry::TransformationSVD svd(*this);
+    m_matrix = get_offset_matrix() * Transform3d(svd.v * svd.s * svd.v.transpose()) * svd.mirror_matrix();
+}
+
+void Transformation::reset_scaling_factor()
+{
+    const Geometry::TransformationSVD svd(*this);
+    m_matrix = get_offset_matrix() * Transform3d(svd.u) * Transform3d(svd.v.transpose()) * svd.mirror_matrix();
+}
+
 void Transformation::reset_skew()
 {
-    Matrix3d rotation;
-    Matrix3d scale;
-    m_matrix.computeRotationScaling(&rotation, &scale);
+    auto new_scale_factor = [](const Matrix3d& s) {
+        return pow(s(0, 0) * s(1, 1) * s(2, 2), 1. / 3.); // scale average
+    };
 
-    const double average_scale = std::cbrt(scale(0, 0) * scale(1, 1) * scale(2, 2));
-
-    scale(0, 0) = is_left_handed() ? -average_scale : average_scale;
-    scale(1, 1) = average_scale;
-    scale(2, 2) = average_scale;
-
-    scale(0, 1) = 0.0;
-    scale(0, 2) = 0.0;
-    scale(1, 0) = 0.0;
-    scale(1, 2) = 0.0;
-    scale(2, 0) = 0.0;
-    scale(2, 1) = 0.0;
-
-    const Vec3d offset = get_offset();
-    m_matrix = rotation * scale;
-    m_matrix.translation() = offset;
+    const Geometry::TransformationSVD svd(*this);
+    m_matrix = get_offset_matrix() * Transform3d(svd.u) * scale_transform(new_scale_factor(svd.s)) * Transform3d(svd.v.transpose()) * svd.mirror_matrix();
 }
 
 Transform3d Transformation::get_matrix_no_offset() const
@@ -837,6 +835,43 @@ Transformation Transformation::volume_to_bed_transformation(const Transformation
     return out;
 }
 #endif // !ENABLE_WORLD_COORDINATE
+
+#if ENABLE_WORLD_COORDINATE
+TransformationSVD::TransformationSVD(const Transform3d& trafo)
+{
+    const auto &m0 = trafo.matrix().block<3, 3>(0, 0);
+    mirror = m0.determinant() < 0.0;
+
+    Matrix3d m;
+    if (mirror)
+        m = m0 * Eigen::DiagonalMatrix<double, 3, 3>(-1.0, 1.0, 1.0);
+    else
+        m = m0;
+    const Eigen::JacobiSVD<Matrix3d> svd(m, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    u = svd.matrixU();
+    v = svd.matrixV();
+    s = svd.singularValues().asDiagonal();
+
+    scale = !s.isApprox(Matrix3d::Identity());
+    anisotropic_scale = ! is_approx(s(0, 0), s(1, 1)) || ! is_approx(s(1, 1), s(2, 2));
+    rotation = !v.isApprox(u);
+
+    if (anisotropic_scale) {
+        rotation_90_degrees = true;
+        for (int i = 0; i < 3; ++i) {
+            const Vec3d row = v.row(i).cwiseAbs();
+            size_t num_zeros = is_approx(row[0], 0.) + is_approx(row[1], 0.) + is_approx(row[2], 0.);
+            size_t num_ones  = is_approx(row[0], 1.) + is_approx(row[1], 1.) + is_approx(row[2], 1.);
+            if (num_zeros != 2 || num_ones != 1) {
+                rotation_90_degrees = false;
+                break;
+            }
+        }
+        skew = ! rotation_90_degrees;
+    } else
+        skew = false;
+}
+#endif // ENABLE_WORLD_COORDINATE
 
 // For parsing a transformation matrix from 3MF / AMF.
 Transform3d transform3d_from_string(const std::string& transform_str)

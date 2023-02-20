@@ -537,7 +537,7 @@ void Preview::update_layers_slider(const std::vector<double>& layers_z, bool kee
 
     // Suggest the auto color change, if model looks like sign
     if (!color_change_already_exists &&
-        wxGetApp().app_config->get("allow_auto_color_change") == "1" && 
+        wxGetApp().app_config->get_bool("allow_auto_color_change") &&
         m_layers_slider->IsNewPrint())
     {
         const Print& print = wxGetApp().plater()->fff_print();

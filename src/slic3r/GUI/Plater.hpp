@@ -249,9 +249,9 @@ public:
     void reset_with_confirm();
     bool delete_object_from_model(size_t obj_idx);
     void remove_selected();
-    void increase_instances(size_t num = 1);
-    void decrease_instances(size_t num = 1);
-    void set_number_of_copies(/*size_t num*/);
+    void increase_instances(size_t num = 1, int obj_idx = -1);
+    void decrease_instances(size_t num = 1, int obj_idx = -1);
+    void set_number_of_copies();
     void fill_bed_with_instances();
     bool is_selection_empty() const;
     void scale_selection_to_fit_print_volume();
@@ -330,7 +330,6 @@ public:
     GLCanvas3D* get_current_canvas3D();
     
     void arrange();
-    void find_new_position(const ModelInstancePtrs  &instances);
 
     void set_current_canvas_as_dirty();
     void unbind_canvas_event_handlers();
@@ -350,7 +349,7 @@ public:
     bool can_delete() const;
     bool can_delete_all() const;
     bool can_increase_instances() const;
-    bool can_decrease_instances() const;
+    bool can_decrease_instances(int obj_idx = -1) const;
     bool can_set_instance_to_object() const;
     bool can_fix_through_netfabb() const;
     bool can_simplify() const;

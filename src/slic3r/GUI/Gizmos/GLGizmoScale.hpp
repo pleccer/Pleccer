@@ -102,9 +102,6 @@ private:
     void do_scale_uniform(const UpdateData& data);
 
     double calc_ratio(const UpdateData& data) const;
-#if ENABLE_WORLD_COORDINATE
-    Transform3d local_transform(const Selection& selection) const;
-#endif // ENABLE_WORLD_COORDINATE
 };
 
 

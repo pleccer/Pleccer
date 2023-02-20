@@ -230,6 +230,8 @@ namespace Slic3r {
 
         std::string tcr_rotated_gcode = post_process_wipe_tower_moves(tcr, wipe_tower_offset, wipe_tower_rotation);
 
+        gcode += gcodegen.writer().unlift(); // Make sure there is no z-hop (in most cases, there isn't).
+
         double current_z = gcodegen.writer().get_position().z();
         if (z == -1.) // in case no specific z was provided, print at current_z pos
             z = current_z;
@@ -1192,7 +1194,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         m_placeholder_parser.set("first_layer_print_size", new ConfigOptionFloats({ bbox.size().x(), bbox.size().y() }));
 
         std::vector<unsigned char> is_extruder_used(print.config().nozzle_diameter.size(), 0);
-        for (unsigned int extruder_id : print.extruders())
+        for (unsigned int extruder_id : tool_ordering.all_extruders())
             is_extruder_used[extruder_id] = true;
         m_placeholder_parser.set("is_extruder_used", new ConfigOptionBools(is_extruder_used));
     }
@@ -2246,29 +2248,24 @@ void GCode::process_layer_single_object(
     if (! print_wipe_extrusions && layer_to_print.support_layer != nullptr)
         if (const SupportLayer &support_layer = *layer_to_print.support_layer; ! support_layer.support_fills.entities.empty()) {
             ExtrusionRole   role               = support_layer.support_fills.role();
-            bool            has_support        = role == ExtrusionRole::Mixed || role == ExtrusionRole::SupportMaterial;
-            bool            has_interface      = role == ExtrusionRole::Mixed || role == ExtrusionRole::SupportMaterialInterface;
+            bool            has_support        = role.is_mixed() || role.is_support_base();
+            bool            has_interface      = role.is_mixed() || role.is_support_interface();
             // Extruder ID of the support base. -1 if "don't care".
             unsigned int    support_extruder   = print_object.config().support_material_extruder.value - 1;
             // Shall the support be printed with the active extruder, preferably with non-soluble, to avoid tool changes?
-            bool            support_dontcare   = print_object.config().support_material_extruder.value == 0;
+            bool            support_dontcare   = support_extruder == std::numeric_limits<unsigned int>::max();
             // Extruder ID of the support interface. -1 if "don't care".
             unsigned int    interface_extruder = print_object.config().support_material_interface_extruder.value - 1;
             // Shall the support interface be printed with the active extruder, preferably with non-soluble, to avoid tool changes?
-            bool            interface_dontcare = print_object.config().support_material_interface_extruder.value == 0;
+            bool            interface_dontcare = interface_extruder == std::numeric_limits<unsigned int>::max();
             if (support_dontcare || interface_dontcare) {
                 // Some support will be printed with "don't care" material, preferably non-soluble.
                 // Is the current extruder assigned a soluble filament?
-                unsigned int dontcare_extruder = layer_tools.extruders.front();
-                if (print.config().filament_soluble.get_at(dontcare_extruder)) {
-                    // The last extruder printed on the previous layer extrudes soluble filament.
-                    // Try to find a non-soluble extruder on the same layer.
-                    for (unsigned int extruder_id : layer_tools.extruders)
-                        if (! print.config().filament_soluble.get_at(extruder_id)) {
-                            dontcare_extruder = extruder_id;
-                            break;
-                        }
-                }
+                auto it_nonsoluble = std::find_if(layer_tools.extruders.begin(), layer_tools.extruders.end(), 
+                    [&soluble = std::as_const(print.config().filament_soluble)](unsigned int extruder_id) { return ! soluble.get_at(extruder_id); });
+                // There should be a non-soluble extruder available.
+                assert(it_nonsoluble != layer_tools.extruders.end());
+                unsigned int dontcare_extruder = it_nonsoluble == layer_tools.extruders.end() ? layer_tools.extruders.front() : *it_nonsoluble;
                 if (support_dontcare)
                     support_extruder = dontcare_extruder;
                 if (interface_dontcare)
@@ -2282,7 +2279,7 @@ void GCode::process_layer_single_object(
                 m_object_layer_over_raft = false;
                 gcode += this->extrude_support(
                     // support_extrusion_role is ExtrusionRole::SupportMaterial, ExtrusionRole::SupportMaterialInterface or ExtrusionRole::Mixed for all extrusion paths.
-                    support_layer.support_fills.chained_path_from(m_last_pos, has_support ? (has_interface ? ExtrusionRole::Mixed : ExtrusionRole::SupportMaterial) : ExtrusionRole::SupportMaterialInterface));
+                    support_layer.support_fills.chained_path_from(m_last_pos, extrude_support ? (extrude_interface ? ExtrusionRole::Mixed : ExtrusionRole::SupportMaterial) : ExtrusionRole::SupportMaterialInterface));
             }
         }
 
@@ -2796,8 +2793,14 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string_view de
             acceleration = m_config.first_layer_acceleration_over_raft.value;
         } else if (m_config.bridge_acceleration.value > 0 && path.role().is_bridge()) {
             acceleration = m_config.bridge_acceleration.value;
+        } else if (m_config.top_solid_infill_acceleration > 0 && path.role() == ExtrusionRole::TopSolidInfill) {
+            acceleration = m_config.top_solid_infill_acceleration.value;
+        } else if (m_config.solid_infill_acceleration > 0 && path.role().is_solid_infill()) {
+            acceleration = m_config.solid_infill_acceleration.value;
         } else if (m_config.infill_acceleration.value > 0 && path.role().is_infill()) {
             acceleration = m_config.infill_acceleration.value;
+        } else if (m_config.external_perimeter_acceleration > 0 && path.role().is_external_perimeter()) {
+            acceleration = m_config.external_perimeter_acceleration.value;
         } else if (m_config.perimeter_acceleration.value > 0 && path.role().is_perimeter()) {
             acceleration = m_config.perimeter_acceleration.value;
         } else {
@@ -2859,9 +2862,12 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string_view de
     bool                        variable_speed = false;
     std::vector<ProcessedPoint> new_points{};
     if (this->m_config.enable_dynamic_overhang_speeds && !this->on_first_layer() && path.role().is_perimeter()) {
+        double external_perim_reference_speed = std::min(m_config.get_abs_value("external_perimeter_speed"),
+                                                         std::min(EXTRUDER_CONFIG(filament_max_volumetric_speed) / path.mm3_per_mm,
+                                                                  m_config.max_volumetric_speed.value / path.mm3_per_mm));
         new_points     = m_extrusion_quality_estimator.estimate_extrusion_quality(path, m_config.overhang_overlap_levels,
                                                                                   m_config.dynamic_overhang_speeds,
-                                                                                  m_config.get_abs_value("external_perimeter_speed"), speed);
+                                                                                  external_perim_reference_speed, speed);
         variable_speed = std::any_of(new_points.begin(), new_points.end(), [speed](const ProcessedPoint &p) { return p.speed != speed; });
     }
 
@@ -2946,10 +2952,10 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string_view de
             prev = p;
         }
     } else {
-        std::string comment;
+        std::string marked_comment;
         if (m_config.gcode_comments) {
-            comment = description;
-            comment += description_bridge;
+            marked_comment = description;
+            marked_comment += description_bridge;
         }
         double last_set_speed = new_points[0].speed * 60.0;
         gcode += m_writer.set_speed(last_set_speed, "", comment);
@@ -2958,7 +2964,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string_view de
             const ProcessedPoint& processed_point = new_points[i];
             Vec2d p = this->point_to_gcode_quantized(processed_point.p);
             const double line_length = (p - prev).norm();
-            gcode += m_writer.extrude_to_xy(p, e_per_mm * line_length, comment);
+            gcode += m_writer.extrude_to_xy(p, e_per_mm * line_length, marked_comment);
             prev = p;
             double new_speed = processed_point.speed * 60.0;
             if (last_set_speed != new_speed) {

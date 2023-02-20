@@ -272,7 +272,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
     update_ui_from_settings();    // FIXME (?)
 
     if (m_plater != nullptr) {
-        m_plater->get_collapse_toolbar().set_enabled(wxGetApp().app_config->get("show_collapse_button") == "1");
+        m_plater->get_collapse_toolbar().set_enabled(wxGetApp().app_config->get_bool("show_collapse_button"));
         m_plater->show_action_buttons(true);
 
         preferences_dialog = new PreferencesDialog(this);
@@ -442,9 +442,9 @@ void MainFrame::update_layout()
     };
 
     ESettingsLayout layout = wxGetApp().is_gcode_viewer() ? ESettingsLayout::GCodeViewer :
-        (wxGetApp().app_config->get("old_settings_layout_mode") == "1" ? ESettingsLayout::Old :
-            wxGetApp().app_config->get("new_settings_layout_mode") == "1" ? ( wxGetApp().tabs_as_menu() ? ESettingsLayout::Old : ESettingsLayout::New) :
-            wxGetApp().app_config->get("dlg_settings_layout_mode") == "1" ? ESettingsLayout::Dlg : ESettingsLayout::Old);
+        (wxGetApp().app_config->get_bool("old_settings_layout_mode") ? ESettingsLayout::Old :
+         wxGetApp().app_config->get_bool("new_settings_layout_mode") ? ( wxGetApp().tabs_as_menu() ? ESettingsLayout::Old : ESettingsLayout::New) :
+         wxGetApp().app_config->get_bool("dlg_settings_layout_mode") ? ESettingsLayout::Dlg : ESettingsLayout::Old);
 
     if (m_layout == layout)
         return;
@@ -652,7 +652,8 @@ void MainFrame::shutdown()
 	wxGetApp().other_instance_message_handler()->shutdown(this);
     // Save the slic3r.ini.Usually the ini file is saved from "on idle" callback,
     // but in rare cases it may not have been called yet.
-    wxGetApp().app_config->save();
+    if (wxGetApp().app_config->dirty())
+        wxGetApp().app_config->save();
 //         if (m_plater)
 //             m_plater->print = undef;
 //         Slic3r::GUI::deregister_on_request_update_callback();
@@ -943,7 +944,7 @@ bool MainFrame::can_export_supports() const
     const PrintObjects& objects = m_plater->sla_print().objects();
     for (const SLAPrintObject* object : objects)
     {
-        if (!object->support_mesh().empty())
+        if (!object->support_mesh().empty() || !object->pad_mesh().empty())
         {
             can_export = true;
             break;
@@ -1000,7 +1001,7 @@ bool MainFrame::can_eject() const
 
 bool MainFrame::can_slice() const
 {
-    bool bg_proc = wxGetApp().app_config->get("background_processing") == "1";
+    bool bg_proc = wxGetApp().app_config->get_bool("background_processing");
     return (m_plater != nullptr) ? !m_plater->model().objects.empty() && !bg_proc : false;
 }
 
@@ -1253,7 +1254,6 @@ void MainFrame::init_menubar_as_editor()
                             recent_projects.push_back(into_u8(m_recent_projects.GetHistoryFile(i)));
                         }
                     wxGetApp().app_config->set_recent_projects(recent_projects);
-                    wxGetApp().app_config->save();
                 }
             }
             }, wxID_FILE1, wxID_FILE9);
@@ -1497,7 +1497,7 @@ void MainFrame::init_menubar_as_editor()
         
         windowMenu->AppendSeparator();
         append_menu_item(windowMenu, wxID_ANY, _L("Open New Instance") + "\tCtrl+Shift+I", _L("Open a new PrusaSlicer instance"),
-            [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr, [this]() {return m_plater != nullptr && wxGetApp().app_config->get("single_instance") != "1"; }, this);
+            [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr, [this]() {return m_plater != nullptr && !wxGetApp().app_config->get_bool("single_instance"); }, this);
 
         windowMenu->AppendSeparator();
         append_menu_item(windowMenu, wxID_ANY, _L("Compare Presets")/* + "\tCtrl+F"*/, _L("Compare presets"), 
@@ -2182,7 +2182,6 @@ void MainFrame::add_to_recent_projects(const wxString& filename)
             recent_projects.push_back(into_u8(m_recent_projects.GetHistoryFile(i)));
         }
         wxGetApp().app_config->set_recent_projects(recent_projects);
-        wxGetApp().app_config->save();
     }
 }
 
@@ -2203,7 +2202,7 @@ void MainFrame::technology_changed()
 // Update the UI based on the current preferences.
 void MainFrame::update_ui_from_settings()
 {
-//    const bool bp_on = wxGetApp().app_config->get("background_processing") == "1";
+//    const bool bp_on = wxGetApp().app_config->get_bool("background_processing");
 //     m_menu_item_reslice_now->Enable(!bp_on);
 //    m_plater->sidebar().show_reslice(!bp_on);
 //    m_plater->sidebar().show_export(bp_on);

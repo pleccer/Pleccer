@@ -38,16 +38,16 @@ class AnyPtr {
     }
 
 public:
-    template<class TT = T, class = std::enable_if_t<std::is_convertible_v<TT, T>>>
+    template<class TT = T, class = std::enable_if_t<std::is_convertible_v<TT*, T*>>>
     AnyPtr(TT *p = nullptr) : ptr{p}
     {}
-    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT, T>>>
+    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT*, T*>>>
     AnyPtr(std::unique_ptr<TT> p) : ptr{std::unique_ptr<T>(std::move(p))}
     {}
-    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT, T>>>
+    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT*, T*>>>
     AnyPtr(std::shared_ptr<TT> p) : ptr{std::shared_ptr<T>(std::move(p))}
     {}
-    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT, T>>>
+    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT*, T*>>>
     AnyPtr(std::weak_ptr<TT> p) : ptr{std::weak_ptr<T>(std::move(p))}
     {}
 
@@ -59,16 +59,16 @@ public:
     AnyPtr &operator=(AnyPtr &&other) noexcept { ptr = std::move(other.ptr); return *this; }
     AnyPtr &operator=(const AnyPtr &other) = delete;
 
-    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT, T>>>
+    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT*, T*>>>
     AnyPtr &operator=(TT *p) { ptr = p; return *this; }
 
-    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT, T>>>
+    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT*, T*>>>
     AnyPtr &operator=(std::unique_ptr<TT> p) { ptr = std::move(p); return *this; }
 
-    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT, T>>>
+    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT*, T*>>>
     AnyPtr &operator=(std::shared_ptr<TT> p) { ptr = p; return *this; }
 
-    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT, T>>>
+    template<class TT, class = std::enable_if_t<std::is_convertible_v<TT*, T*>>>
     AnyPtr &operator=(std::weak_ptr<TT> p) { ptr = std::move(p); return *this; }
 
     const T &operator*() const { return *get_ptr(*this); }

@@ -190,20 +190,20 @@ print_config_def()
             }
             
             // enum_values
-            if (!optdef->enum_values.empty()) {
+            if (optdef->enum_def && !optdef->enum_def->values().empty()) {
                 AV* av = newAV();
-                av_fill(av, optdef->enum_values.size()-1);
-                for (std::vector<std::string>::iterator it = optdef->enum_values.begin(); it != optdef->enum_values.end(); ++it)
-                    av_store(av, it - optdef->enum_values.begin(), newSVpvn(it->c_str(), it->length()));
+                av_fill(av, optdef->enum_def->values().size()-1);
+                for (std::vector<std::string>::const_iterator it = optdef->enum_def->values().begin(); it != optdef->enum_def->values().end(); ++it)
+                    av_store(av, it - optdef->enum_def->values().begin(), newSVpvn(it->c_str(), it->length()));
                 (void)hv_stores( hv, "values", newRV_noinc((SV*)av) );
             }
             
             // enum_labels
-            if (!optdef->enum_labels.empty()) {
+            if (optdef->enum_def && !optdef->enum_def->labels().empty()) {
                 AV* av = newAV();
-                av_fill(av, optdef->enum_labels.size()-1);
-                for (std::vector<std::string>::iterator it = optdef->enum_labels.begin(); it != optdef->enum_labels.end(); ++it)
-                    av_store(av, it - optdef->enum_labels.begin(), newSVpvn_utf8(it->c_str(), it->length(), true));
+                av_fill(av, optdef->enum_def->labels().size()-1);
+                for (std::vector<std::string>::const_iterator it = optdef->enum_def->labels().begin(); it != optdef->enum_def->labels().end(); ++it)
+                    av_store(av, it - optdef->enum_def->labels().begin(), newSVpvn_utf8(it->c_str(), it->length(), true));
                 (void)hv_stores( hv, "labels", newRV_noinc((SV*)av) );
             }
             

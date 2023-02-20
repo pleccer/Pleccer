@@ -398,7 +398,7 @@ bool inside_convex_polygon(const std::pair<std::vector<Vec2d>, std::vector<Vec2d
         // At min x.
         assert(pt.x() == it_bottom->x());
         assert(pt.x() == it_top->x());
-        assert(it_bottom->y() <= pt.y() <= it_top->y());
+        assert(it_bottom->y() <= pt.y() && pt.y() <= it_top->y());
         return pt.y() >= it_bottom->y() && pt.y() <= it_top->y();
     }
 

@@ -2962,7 +2962,7 @@ void GLGizmoEmboss::draw_style_edit() {
         process();
     }
 
-    bool use_inch = wxGetApp().app_config->get("use_inches") == "1";
+    bool use_inch = wxGetApp().app_config->get_bool("use_inches");
     draw_height(use_inch);
     draw_depth(use_inch);
 
@@ -3299,7 +3299,7 @@ void GLGizmoEmboss::draw_advanced()
         &stored_style->prop.distance : nullptr;    
     m_imgui->disabled_begin(!allowe_surface_distance);
     
-    bool use_inch = wxGetApp().app_config->get("use_inches") == "1";
+    bool use_inch = wxGetApp().app_config->get_bool("use_inches");
     const std::string undo_move_tooltip = _u8L("Undo translation");
     const wxString move_tooltip = _L("Distance center of text from model surface");
     bool is_moved = false;

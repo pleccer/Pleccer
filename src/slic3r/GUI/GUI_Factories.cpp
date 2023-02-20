@@ -1218,8 +1218,14 @@ wxMenu* MenuFactory::multi_selection_menu()
         append_menu_item_merge_to_multipart_object(menu);
     if (extruders_count() > 1)
         append_menu_item_change_extruder(menu);
-    if (list_model()->GetItemType(sels[0]) != itVolume)
+    if (list_model()->GetItemType(sels[0]) != itVolume) {
         append_menu_item_printable(menu);
+
+        if (wxGetApp().get_mode() != comSimple)
+            append_menu_item(menu, wxID_ANY, _L("Set number of instances") + dots, _L("Change the number of instances of the selected objects"),
+            [](wxCommandEvent&) { plater()->set_number_of_copies();    }, "number_of_copies", nullptr,
+            []() { return plater()->can_increase_instances(); }, m_parent);
+    }
 
     return menu;
 }

@@ -2373,7 +2373,7 @@ void GCodeViewer::refresh_render_paths(bool keep_sequential_current_first, bool 
     statistics->models_instances_size = 0;
 #endif // ENABLE_GCODE_VIEWER_STATISTICS
 
-    const bool top_layer_only = get_app_config()->get("seq_top_layer_only") == "1";
+    const bool top_layer_only = get_app_config()->get_bool("seq_top_layer_only");
 
     SequentialView::Endpoints global_endpoints = { m_moves_count , 0 };
     SequentialView::Endpoints top_layer_endpoints = global_endpoints;
@@ -3221,7 +3221,7 @@ void GCodeViewer::render_legend(float& legend_height)
     const float icon_size = ImGui::GetTextLineHeight();
     const float percent_bar_size = 2.0f * ImGui::GetTextLineHeight();
 
-    bool imperial_units = wxGetApp().app_config->get("use_inches") == "1";
+    bool imperial_units = wxGetApp().app_config->get_bool("use_inches");
 
     auto append_item = [icon_size, percent_bar_size, &imgui, imperial_units](EItemType type, const ColorRGBA& color, const std::string& label,
         bool visible = true, const std::string& time = "", float percent = 0.0f, float max_percent = 0.0f, const std::array<float, 4>& offsets = { 0.0f, 0.0f, 0.0f, 0.0f },

@@ -202,8 +202,12 @@ class SearchListModel : public wxDataViewVirtualListModel
 
 public:
     enum {
+#ifdef __WXMSW__
+        colIconMarkedText,
+#else
         colIcon,
         colMarkedText,
+#endif
         colMax
     };
 

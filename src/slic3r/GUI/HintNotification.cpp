@@ -883,7 +883,7 @@ void NotificationManager::HintNotification::render_close_button(ImGuiWrapper& im
 	//render_right_arrow_button(imgui, win_size_x, win_size_y, win_pos_x, win_pos_y);
 	render_logo(imgui, win_size_x, win_size_y, win_pos_x, win_pos_y);
 	render_preferences_button(imgui, win_pos_x, win_pos_y);
-	if (!m_documentation_link.empty() && wxGetApp().app_config->get("suppress_hyperlinks") != "1")
+	if (!m_documentation_link.empty() && !wxGetApp().app_config->get_bool("suppress_hyperlinks"))
 	{
 		render_documentation_button(imgui, win_size_x, win_size_y, win_pos_x, win_pos_y);
 	}

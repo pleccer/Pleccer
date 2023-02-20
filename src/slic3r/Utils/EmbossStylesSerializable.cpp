@@ -121,37 +121,37 @@ void EmbossStylesSerializable::store_style(AppConfig &     cfg,
                                            const EmbossStyle &fi,
                                            unsigned        index)
 {
-    std::string section_name = create_section_name(index);
-    cfg.clear_section(section_name);
-    cfg.set(section_name, APP_CONFIG_FONT_NAME, fi.name);
-    cfg.set(section_name, APP_CONFIG_FONT_DESCRIPTOR, fi.path);
+    std::map<std::string, std::string> data;
+    data[APP_CONFIG_FONT_NAME] = fi.name;
+    data[APP_CONFIG_FONT_DESCRIPTOR] = fi.path;
     const FontProp &fp = fi.prop;
-    cfg.set(section_name, APP_CONFIG_FONT_LINE_HEIGHT, std::to_string(fp.size_in_mm));
-    cfg.set(section_name, APP_CONFIG_FONT_DEPTH, std::to_string(fp.emboss));
+    data[APP_CONFIG_FONT_LINE_HEIGHT] = std::to_string(fp.size_in_mm);
+    data[APP_CONFIG_FONT_DEPTH] = std::to_string(fp.emboss);
     if (fp.use_surface)
-        cfg.set(section_name, APP_CONFIG_FONT_USE_SURFACE, "true");
+        data[APP_CONFIG_FONT_USE_SURFACE] = "true";
     if (fp.boldness.has_value())
-        cfg.set(section_name, APP_CONFIG_FONT_BOLDNESS, std::to_string(*fp.boldness));
+        data[APP_CONFIG_FONT_BOLDNESS] = std::to_string(*fp.boldness);
     if (fp.skew.has_value())
-        cfg.set(section_name, APP_CONFIG_FONT_SKEW, std::to_string(*fp.skew));
+        data[APP_CONFIG_FONT_SKEW] = std::to_string(*fp.skew);
     if (fp.distance.has_value())
-        cfg.set(section_name, APP_CONFIG_FONT_DISTANCE, std::to_string(*fp.distance));
+        data[APP_CONFIG_FONT_DISTANCE] = std::to_string(*fp.distance);
     if (fp.angle.has_value())
-        cfg.set(section_name, APP_CONFIG_FONT_ANGLE, std::to_string(*fp.angle));
+        data[APP_CONFIG_FONT_ANGLE] = std::to_string(*fp.angle);
     if (fp.collection_number.has_value())
-        cfg.set(section_name, APP_CONFIG_FONT_COLLECTION, std::to_string(*fp.collection_number));
+        data[APP_CONFIG_FONT_COLLECTION] = std::to_string(*fp.collection_number);
     if (fp.char_gap.has_value())
-        cfg.set(section_name, APP_CONFIG_FONT_CHAR_GAP, std::to_string(*fp.char_gap));
+        data[APP_CONFIG_FONT_CHAR_GAP] = std::to_string(*fp.char_gap);
     if (fp.line_gap.has_value())
-        cfg.set(section_name, APP_CONFIG_FONT_LINE_GAP, std::to_string(*fp.line_gap));
+        data[APP_CONFIG_FONT_LINE_GAP] = std::to_string(*fp.line_gap);
+    cfg.set_section(create_section_name(index), std::move(data));
 }
 
 void EmbossStylesSerializable::store_style_index(AppConfig &cfg, unsigned index) {
     // store actual font index
-    cfg.clear_section(AppConfig::SECTION_EMBOSS_STYLE);
-    // activ font first index is +1 to correspond with section name
-    std::string active_font = std::to_string(index);
-    cfg.set(AppConfig::SECTION_EMBOSS_STYLE, APP_CONFIG_ACTIVE_FONT, active_font);
+    // active font first index is +1 to correspond with section name
+    std::map<std::string, std::string> data;
+    data[APP_CONFIG_ACTIVE_FONT] = std::to_string(index);
+    cfg.set_section(AppConfig::SECTION_EMBOSS_STYLE, std::move(data));
 }
 
 std::optional<size_t> EmbossStylesSerializable::load_style_index(const AppConfig &cfg)
@@ -198,5 +198,4 @@ void EmbossStylesSerializable::store_styles(AppConfig &cfg, const EmbossStyles& 
         cfg.clear_section(section_name);
         section_name = create_section_name(++index);
     }
-    cfg.save();
 }

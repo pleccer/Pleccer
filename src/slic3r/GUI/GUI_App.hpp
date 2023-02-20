@@ -306,8 +306,8 @@ public:
     Plater*              plater();
     const Plater*        plater() const;
     Model&      		 model();
-    NotificationManager * notification_manager();
-    GalleryDialog *     gallery_dialog();
+    NotificationManager* notification_manager();
+    GalleryDialog *      gallery_dialog();
     Downloader*          downloader();
 
     // Parameters extracted from the command line to be passed to GUI after initialization.

@@ -29,6 +29,13 @@ inline bool set_thread_name(boost::thread &thread, const std::string &thread_nam
 bool set_current_thread_name(const char *thread_name);
 inline bool set_current_thread_name(const std::string &thread_name) { return set_current_thread_name(thread_name.c_str()); }
 
+// To be called at the start of the application to save the current thread ID as the main (UI) thread ID.
+void save_main_thread_id();
+// Retrieve the cached main (UI) thread ID.
+boost::thread::id get_main_thread_id();
+// Checks whether the main (UI) thread is active.
+bool is_main_thread_active();
+
 // OSX specific: Set Quality of Service to "user initiated", so that the threads will be scheduled to high performance
 // cores if available.
 void set_current_thread_qos();

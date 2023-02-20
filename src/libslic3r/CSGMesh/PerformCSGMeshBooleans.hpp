@@ -26,7 +26,6 @@ MeshBoolean::cgal::CGALMeshPtr get_cgalmesh(const CSGPartT &csgpart)
     MeshBoolean::cgal::CGALMeshPtr ret;
 
     indexed_triangle_set m = *its;
-    auto tr = get_transform(csgpart);
     its_transform(m, get_transform(csgpart), true);
 
     try {

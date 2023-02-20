@@ -147,6 +147,15 @@ struct SupportParameters {
     bool                    with_sheath;
 };
 
+// Remove bridges from support contact areas.
+// To be called if PrintObjectConfig::dont_support_bridges.
+void remove_bridges_from_contacts(
+    const PrintConfig   &print_config, 
+    const Layer         &lower_layer,
+    const LayerRegion   &layerm,
+    float                fw, 
+    Polygons            &contact_polygons);
+
 // Generate raft layers, also expand the 1st support layer
 // in case there is no raft layer to improve support adhesion.
 SupportGeneratorLayersPtr generate_raft_base(

@@ -1205,7 +1205,7 @@ void GLGizmoMeasure::render_dimensioning()
             ss_to_ndc_matrix * Geometry::translation_transform(v2ss_3) * q12ss);
         m_dimensioning.triangle.render();
 
-        const bool use_inches = wxGetApp().app_config->get("use_inches") == "1";
+        const bool use_inches = wxGetApp().app_config->get_bool("use_inches");
         const double curr_value = use_inches ? ObjectManipulation::mm_to_in * distance : distance;
         const std::string curr_value_str = format_double(curr_value);
         const std::string units = use_inches ? _u8L("in") : _u8L("mm");
@@ -1973,7 +1973,7 @@ void GLGizmoMeasure::on_render_input_window(float x, float y, float bottom_limit
         ImGui::EndTable();
     }
 
-    const bool use_inches = wxGetApp().app_config->get("use_inches") == "1";
+    const bool use_inches = wxGetApp().app_config->get_bool("use_inches");
     const std::string units = use_inches ? " " + _u8L("in") : " " + _u8L("mm");
 
     ImGui::Separator();

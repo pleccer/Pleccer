@@ -453,10 +453,17 @@ void ImGuiWrapper::end()
     ImGui::End();
 }
 
-bool ImGuiWrapper::button(const wxString &label)
+bool ImGuiWrapper::button(const wxString &label, const wxString& tooltip)
 {
     auto label_utf8 = into_u8(label);
-    return ImGui::Button(label_utf8.c_str());
+    const bool ret = ImGui::Button(label_utf8.c_str());
+
+    if (!tooltip.IsEmpty() && ImGui::IsItemHovered()) {
+        auto tooltip_utf8 = into_u8(tooltip);
+        ImGui::SetTooltip(tooltip_utf8.c_str());
+    }
+
+    return ret;
 }
 
 bool ImGuiWrapper::button(const wxString& label, float width, float height)

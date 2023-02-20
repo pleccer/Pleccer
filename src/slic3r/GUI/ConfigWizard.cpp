@@ -1129,16 +1129,15 @@ void PageMaterials::sort_list_data(StringList* list, bool add_All_item, bool mat
         else 
             other_profiles.push_back(data);
     }
-    if(material_type_ordering) {
+    if (material_type_ordering) {
         
         const ConfigOptionDef* def = print_config_def.get("filament_type");
-        std::vector<std::string>enum_values = def->enum_values;
         size_t end_of_sorted = 0;
-        for (size_t vals = 0; vals < enum_values.size(); vals++) {
+        for (const std::string &value : def->enum_def->values()) {
             for (size_t profs = end_of_sorted; profs < other_profiles.size(); profs++)
             {
                 // find instead compare because PET vs PETG
-                if (other_profiles[profs].get().find(enum_values[vals]) != std::string::npos) {
+                if (other_profiles[profs].get().find(value) != std::string::npos) {
                     //swap
                     if(profs != end_of_sorted) {
                         std::reference_wrapper<const std::string> aux = other_profiles[end_of_sorted];
@@ -1299,7 +1298,7 @@ PageUpdate::PageUpdate(ConfigWizard *parent)
     append_spacer(VERTICAL_SPACING);
 
     auto *box_presets = new wxCheckBox(this, wxID_ANY, _L("Update built-in Presets automatically"));
-    box_presets->SetValue(app_config->get("preset_update") == "1");
+    box_presets->SetValue(app_config->get_bool("preset_update"));
     append(box_presets);
     append_text(wxString::Format(_L(
         "If enabled, %s downloads updates of built-in system presets in the background."
@@ -1316,10 +1315,12 @@ PageUpdate::PageUpdate(ConfigWizard *parent)
     box_presets->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent &event) { this->preset_update = event.IsChecked(); });
 }
 
+
+
 namespace DownloaderUtils
 {
+namespace {
 #ifdef _WIN32
-
     wxString get_downloads_path()
     {
         wxString ret;
@@ -1331,7 +1332,6 @@ namespace DownloaderUtils
         CoTaskMemFree(path);
         return ret;
     }
-
 #elif  __APPLE__
     wxString get_downloads_path()
     {
@@ -1349,9 +1349,8 @@ namespace DownloaderUtils
         }
         return wxString();
     }
-
 #endif
-
+ }
 Worker::Worker(wxWindow* parent)
 : wxBoxSizer(wxHORIZONTAL)
 , m_parent(parent)
@@ -1417,7 +1416,7 @@ PageDownloader::PageDownloader(ConfigWizard* parent)
 
     auto* box_allow_downloads = new wxCheckBox(this, wxID_ANY, _L("Allow build-in downloader"));
     // TODO: Do we want it like this? The downloader is allowed for very first time the wizard is run. 
-    bool box_allow_value = (app_config->has("downloader_url_registered") ? app_config->get("downloader_url_registered") == "1" : true);
+    bool box_allow_value = (app_config->has("downloader_url_registered") ? app_config->get_bool("downloader_url_registered") : true);
     box_allow_downloads->SetValue(box_allow_value);
     append(box_allow_downloads);
 
@@ -1433,16 +1432,16 @@ PageDownloader::PageDownloader(ConfigWizard* parent)
     )));
 #endif
 
-    box_allow_downloads->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& event) { this->downloader->allow(event.IsChecked()); });
+    box_allow_downloads->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent& event) { this->m_downloader->allow(event.IsChecked()); });
 
-    downloader = new DownloaderUtils::Worker(this);
-    append(downloader);
-    downloader->allow(box_allow_value);
+    m_downloader = new DownloaderUtils::Worker(this);
+    append(m_downloader);
+    m_downloader->allow(box_allow_value);
 }
 
 bool PageDownloader::on_finish_downloader() const
 {
-    return downloader->on_finish();
+    return m_downloader->on_finish();
 }
 
 bool DownloaderUtils::Worker::perform_register(const std::string& path_override/* = {}*/)
@@ -1518,7 +1517,7 @@ void DownloaderUtils::Worker::deregister()
 
 bool DownloaderUtils::Worker::on_finish() {
     AppConfig* app_config = wxGetApp().app_config;
-    bool ac_value = app_config->get("downloader_url_registered") == "1";
+    bool ac_value = app_config->get_bool("downloader_url_registered");
     BOOST_LOG_TRIVIAL(debug) << "PageDownloader::on_finish_downloader ac_value " << ac_value << " downloader_checked " << downloader_checked;
     if (ac_value && downloader_checked) {
         // already registered but we need to do it again
@@ -1547,7 +1546,7 @@ PageReloadFromDisk::PageReloadFromDisk(ConfigWizard* parent)
     , full_pathnames(false)
 {
     auto* box_pathnames = new wxCheckBox(this, wxID_ANY, _L("Export full pathnames of models and parts sources into 3mf and amf files"));
-    box_pathnames->SetValue(wxGetApp().app_config->get("export_sources_full_pathnames") == "1");
+    box_pathnames->SetValue(wxGetApp().app_config->get_bool("export_sources_full_pathnames"));
     append(box_pathnames);
     append_text(_L(
         "If enabled, allows the Reload from disk command to automatically find and load the files when invoked.\n"
@@ -1596,7 +1595,7 @@ PageMode::PageMode(ConfigWizard *parent)
 
     append_text("\n" + _L("The size of the object can be specified in inches"));
     check_inch = new wxCheckBox(this, wxID_ANY, _L("Use inches"));
-    check_inch->SetValue(wxGetApp().app_config->get("use_inches") == "1");
+    check_inch->SetValue(wxGetApp().app_config->get_bool("use_inches"));
     append(check_inch);
 
     on_activate();
@@ -1660,14 +1659,14 @@ PageFirmware::PageFirmware(ConfigWizard *parent)
     append_text(_(gcode_opt.tooltip));
 
     wxArrayString choices;
-    choices.Alloc(gcode_opt.enum_labels.size());
-    for (const auto &label : gcode_opt.enum_labels) {
+    choices.Alloc(gcode_opt.enum_def->labels().size());
+    for (const auto &label : gcode_opt.enum_def->labels()) {
         choices.Add(label);
     }
 
     gcode_picker = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, choices);
     wxGetApp().UpdateDarkUI(gcode_picker);
-    const auto &enum_values = gcode_opt.enum_values;
+    const auto &enum_values = gcode_opt.enum_def->values();
     auto needle = enum_values.cend();
     if (gcode_opt.default_value) {
         needle = std::find(enum_values.cbegin(), enum_values.cend(), gcode_opt.default_value->serialize());
@@ -1684,7 +1683,7 @@ PageFirmware::PageFirmware(ConfigWizard *parent)
 void PageFirmware::apply_custom_config(DynamicPrintConfig &config)
 {
     auto sel = gcode_picker->GetSelection();
-    if (sel >= 0 && (size_t)sel < gcode_opt.enum_labels.size()) {
+    if (sel >= 0 && (size_t)sel < gcode_opt.enum_def->labels().size()) {
         auto *opt = new ConfigOptionEnum<GCodeFlavor>(static_cast<GCodeFlavor>(sel));
         config.set_key_value("gcode_flavor", opt);
     }
@@ -3036,9 +3035,11 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
 
 #ifdef __linux__
     // Desktop integration on Linux
-    BOOST_LOG_TRIVIAL(debug) << "ConfigWizard::priv::apply_config integrate_desktop" << page_welcome->integrate_desktop()  << " perform_registration_linux " << page_downloader->downloader->get_perform_registration_linux();
-    if (page_welcome->integrate_desktop() || page_downloader->downloader->get_perform_registration_linux())
-        DesktopIntegrationDialog::perform_desktop_integration(page_downloader->downloader->get_perform_registration_linux());
+    BOOST_LOG_TRIVIAL(debug) << "ConfigWizard::priv::apply_config integrate_desktop" << page_welcome->integrate_desktop()  << " perform_registration_linux " << page_downloader->m_downloader->get_perform_registration_linux();
+    if (page_welcome->integrate_desktop())
+        DesktopIntegrationDialog::perform_desktop_integration();
+    if (page_downloader->m_downloader->get_perform_registration_linux())
+        DesktopIntegrationDialog::perform_downloader_desktop_integration();
 #endif
 
     // Decide whether to create snapshot based on run_reason and the reset profile checkbox
@@ -3176,7 +3177,8 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
 
     // apply materials in app_config
     for (const std::string& section_name : {AppConfig::SECTION_FILAMENTS, AppConfig::SECTION_MATERIALS})
-        app_config->set_section(section_name, appconfig_new.get_section(section_name));
+        if (appconfig_new.has_section(section_name))
+            app_config->set_section(section_name, appconfig_new.get_section(section_name));
 
     app_config->set_vendors(appconfig_new);
 

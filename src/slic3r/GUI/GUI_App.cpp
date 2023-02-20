@@ -79,7 +79,6 @@
 #include "DesktopIntegrationDialog.hpp"
 #include "SendSystemInfoDialog.hpp"
 #include "Downloader.hpp"
-#include "ConfigWizard_private.hpp"
 
 #include "BitmapCache.hpp"
 #include "Notebook.hpp"
@@ -804,7 +803,7 @@ void GUI_App::post_init()
     }
 
     // show "Did you know" notification
-    if (app_config->get("show_hints") == "1" && ! is_gcode_viewer())
+    if (app_config->get_bool("show_hints") && ! is_gcode_viewer())
         plater_->get_notification_manager()->push_hint_notification(true);
 
     // The extra CallAfter() is needed because of Mac, where this is the only way
@@ -832,7 +831,6 @@ void GUI_App::post_init()
 
     // Set PrusaSlicer version and save to PrusaSlicer.ini or PrusaSlicerGcodeViewer.ini.
     app_config->set("version", SLIC3R_VERSION);
-    app_config->save();
 
 #ifdef _WIN32
     // Sets window property to mainframe so other instances can indentify it.
@@ -859,14 +857,9 @@ GUI_App::GUI_App(EAppMode mode)
 
 GUI_App::~GUI_App()
 {
-    if (app_config != nullptr)
-        delete app_config;
-
-    if (preset_bundle != nullptr)
-        delete preset_bundle;
-
-    if (preset_updater != nullptr)
-        delete preset_updater;
+    delete app_config;
+    delete preset_bundle;
+    delete preset_updater;
 }
 
 // If formatted for github, plaintext with OpenGL extensions enclosed into <details>.
@@ -1145,8 +1138,8 @@ bool GUI_App::on_init_inner()
     // If load_language() fails, the application closes.
     load_language(wxString(), true);
 #ifdef _MSW_DARK_MODE
-    bool init_dark_color_mode = app_config->get("dark_color_mode") == "1";
-    bool init_sys_menu_enabled = app_config->get("sys_menu_enabled") == "1";
+    bool init_dark_color_mode = app_config->get_bool("dark_color_mode");
+    bool init_sys_menu_enabled = app_config->get_bool("sys_menu_enabled");
     NppDarkMode::InitDarkMode(init_dark_color_mode, init_sys_menu_enabled);
 #endif
     // initialize label colors and fonts
@@ -1169,13 +1162,13 @@ bool GUI_App::on_init_inner()
 
 #ifdef _MSW_DARK_MODE
     // app_config can be updated in check_older_app_config(), so check if dark_color_mode and sys_menu_enabled was changed
-    if (bool new_dark_color_mode = app_config->get("dark_color_mode") == "1";
+    if (bool new_dark_color_mode = app_config->get_bool("dark_color_mode");
         init_dark_color_mode != new_dark_color_mode) {
         NppDarkMode::SetDarkMode(new_dark_color_mode);
         init_ui_colours();
         update_ui_colours_from_appconfig();
     }
-    if (bool new_sys_menu_enabled = app_config->get("sys_menu_enabled") == "1";
+    if (bool new_sys_menu_enabled = app_config->get_bool("sys_menu_enabled");
         init_sys_menu_enabled != new_sys_menu_enabled)
         NppDarkMode::SetSystemMenuForApp(new_sys_menu_enabled);
 #endif
@@ -1201,7 +1194,7 @@ bool GUI_App::on_init_inner()
     }
 
     SplashScreen* scrn = nullptr;
-    if (app_config->get("show_splash_screen") == "1") {
+    if (app_config->get_bool("show_splash_screen")) {
         // make a bitmap with dark grey banner on the left side
         wxBitmap bmp = SplashScreen::MakeBitmap(wxBitmap(from_u8(var(is_editor() ? "splashscreen.jpg" : "splashscreen-gcodepreview.jpg")), wxBITMAP_TYPE_JPEG));
 
@@ -1209,7 +1202,7 @@ bool GUI_App::on_init_inner()
         // Now this position is equal to the mainframe position
         wxPoint splashscreen_pos = wxDefaultPosition;
         bool default_splashscreen_pos = true;
-        if (app_config->has("window_mainframe") && app_config->get("restore_win_position") == "1") {
+        if (app_config->has("window_mainframe") && app_config->get_bool("restore_win_position")) {
             auto metrics = WindowMetrics::deserialize(app_config->get("window_mainframe"));
             default_splashscreen_pos = metrics == boost::none;
             if (!default_splashscreen_pos)
@@ -1243,14 +1236,14 @@ bool GUI_App::on_init_inner()
     
     if (! older_data_dir_path.empty()) {
         preset_bundle->import_newer_configs(older_data_dir_path);
-        app_config->save();
+        //app_config->save(); // It looks like redundant call of save. ysFIXME delete after testing
     }
 
     if (is_editor()) {
 #ifdef __WXMSW__ 
-        if (app_config->get("associate_3mf") == "1")
+        if (app_config->get_bool("associate_3mf"))
             associate_3mf_files();
-        if (app_config->get("associate_stl") == "1")
+        if (app_config->get_bool("associate_stl"))
             associate_stl_files();
 #endif // __WXMSW__
 
@@ -1290,14 +1283,14 @@ bool GUI_App::on_init_inner()
     }
     else {
 #ifdef __WXMSW__ 
-        if (app_config->get("associate_gcode") == "1")
+        if (app_config->get_bool("associate_gcode"))
             associate_gcode_files();
 #endif // __WXMSW__
     }
     
     std::string delayed_error_load_presets;
     // Suppress the '- default -' presets.
-    preset_bundle->set_default_suppressed(app_config->get("no_defaults") == "1");
+    preset_bundle->set_default_suppressed(app_config->get_bool("no_defaults"));
     try {
         // Enable all substitutions (in both user and system profiles), but log the substitutions in user profiles only.
         // If there are substitutions in system profiles, then a "reconfigure" event shall be triggered, which will force
@@ -1387,7 +1380,7 @@ bool GUI_App::on_init_inner()
             this->post_init();
         }
 
-        if (m_post_initialized && app_config->dirty() && app_config->get("autosave") == "1")
+        if (m_post_initialized && app_config->dirty())
             app_config->save();
     });
 
@@ -1419,7 +1412,6 @@ bool GUI_App::on_init_inner()
             app_config->set("restore_win_position", "0");
         else if (answer == wxID_NO)
             app_config->set("restore_win_position", "1");
-        app_config->save();
     }
 
     return true;
@@ -1448,7 +1440,7 @@ bool GUI_App::dark_mode()
     return wxPlatformInfo::Get().CheckOSVersion(10, 14) && mac_dark_mode();
 #else
     if (wxGetApp().app_config->has("dark_color_mode"))
-        return wxGetApp().app_config->get("dark_color_mode") == "1";
+        return wxGetApp().app_config->get_bool("dark_color_mode");
     return check_dark_mode();
 #endif
 }
@@ -1685,7 +1677,6 @@ void GUI_App::set_label_clr_modified(const wxColour& clr)
     m_color_label_modified = clr;
     const std::string str = encode_color(ColorRGB(clr.Red(), clr.Green(), clr.Blue()));
     app_config->set("label_clr_modified", str);
-    app_config->save();
 }
 
 void GUI_App::set_label_clr_sys(const wxColour& clr)
@@ -1695,7 +1686,6 @@ void GUI_App::set_label_clr_sys(const wxColour& clr)
     m_color_label_sys = clr;
     const std::string str = encode_color(ColorRGB(clr.Red(), clr.Green(), clr.Blue()));
     app_config->set("label_clr_sys", str);
-    app_config->save();
 }
 
 const std::string& GUI_App::get_mode_btn_color(int mode_id)
@@ -1727,13 +1717,12 @@ void GUI_App::set_mode_palette(const std::vector<wxColour>& palette)
     if (save) {
         mainframe->update_mode_markers();
         app_config->set("mode_palette", escape_strings_cstyle(m_mode_palette));
-        app_config->save();
     }
 }
 
 bool GUI_App::tabs_as_menu() const
 {
-    return app_config->get("tabs_as_menu") == "1"; // || dark_mode();
+    return app_config->get_bool("tabs_as_menu"); // || dark_mode();
 }
 
 wxSize GUI_App::get_min_size() const
@@ -1902,14 +1891,14 @@ static void update_scrolls(wxWindow* window)
 #ifdef _MSW_DARK_MODE
 void GUI_App::force_menu_update()
 {
-    NppDarkMode::SetSystemMenuForApp(app_config->get("sys_menu_enabled") == "1");
+    NppDarkMode::SetSystemMenuForApp(app_config->get_bool("sys_menu_enabled"));
 }
 #endif //_MSW_DARK_MODE
 
 void GUI_App::force_colors_update()
 {
 #ifdef _MSW_DARK_MODE
-    NppDarkMode::SetDarkMode(app_config->get("dark_color_mode") == "1");
+    NppDarkMode::SetDarkMode(app_config->get_bool("dark_color_mode"));
     if (WXHWND wxHWND = wxToolTip::GetToolTipCtrl())
         NppDarkMode::SetDarkExplorerTheme((HWND)wxHWND);
     NppDarkMode::SetDarkTitleBar(mainframe->GetHWND());
@@ -2158,7 +2147,6 @@ bool GUI_App::select_language()
             //    m_wxLocale->GetCanonicalName()
             // 3) new_language_info->CanonicalName is a safe bet. It points to a valid dictionary name.
 			app_config->set("translation_language", new_language_info->CanonicalName.ToUTF8().data());            
-			app_config->save();
     		return true;
     	}
     }
@@ -2367,7 +2355,6 @@ bool GUI_App::save_mode(const /*ConfigOptionMode*/int mode)
         return false;
     }
     app_config->set("view_mode", mode_str);
-    app_config->save(); 
     update_mode();
     return true;
 }
@@ -2569,13 +2556,13 @@ void GUI_App::open_preferences(const std::string& highlight_option /*= std::stri
 
 #ifdef _WIN32
     if (is_editor()) {
-        if (app_config->get("associate_3mf") == "1")
+        if (app_config->get_bool("associate_3mf"))
             associate_3mf_files();
-        if (app_config->get("associate_stl") == "1")
+        if (app_config->get_bool("associate_stl"))
             associate_stl_files();
     }
     else {
-        if (app_config->get("associate_gcode") == "1")
+        if (app_config->get_bool("associate_gcode"))
             associate_gcode_files();
     }
 #endif // _WIN32
@@ -2900,8 +2887,9 @@ void GUI_App::MacOpenFiles(const wxArrayString &fileNames)
 
 void GUI_App::MacOpenURL(const wxString& url)
 {
-    if (app_config && app_config->get("downloader_url_registered") != "1")
+    if (app_config && !app_config->get_bool("downloader_url_registered"))
     {
+        notification_manager()->push_notification(NotificationType::URLNotRegistered);
         BOOST_LOG_TRIVIAL(error) << "Recieved command to open URL, but it is not allowed in app configuration. URL: " << url;
         return;
     }
@@ -3093,11 +3081,11 @@ void GUI_App::show_downloader_registration_dialog()
             ), SLIC3R_APP_NAME, SLIC3R_VERSION)
         , true, wxYES_NO);
     if (msg.ShowModal() == wxID_YES) {
-        auto downloader = new DownloaderUtils::Worker(nullptr);
-        downloader->perform_register(app_config->get("url_downloader_dest"));
+        auto downloader_worker = new DownloaderUtils::Worker(nullptr);
+        downloader_worker->perform_register(app_config->get("url_downloader_dest"));
 #ifdef __linux__
-        if (downloader->get_perform_registration_linux())
-            DesktopIntegrationDialog::perform_desktop_integration(true);
+        if (downloader_worker->get_perform_registration_linux())
+            DesktopIntegrationDialog::perform_downloader_desktop_integration();
 #endif // __linux__
     } else {
         app_config->set("downloader_url_registered", "0");
@@ -3178,7 +3166,9 @@ void GUI_App::window_pos_save(wxTopLevelWindow* window, const std::string &name)
 
     WindowMetrics metrics = WindowMetrics::from_window(window);
     app_config->set(config_key, metrics.serialize());
-    app_config->save();
+    // save changed app_config here, before all action related to a close of application is processed
+    if (app_config->dirty())
+        app_config->save();
 }
 
 void GUI_App::window_pos_restore(wxTopLevelWindow* window, const std::string &name, bool default_maximized)
@@ -3199,7 +3189,7 @@ void GUI_App::window_pos_restore(wxTopLevelWindow* window, const std::string &na
 
     const wxRect& rect = metrics->get_rect();
 
-    if (app_config->get("restore_win_position") == "1") {
+    if (app_config->get_bool("restore_win_position")) {
         // workaround for crash related to the positioning of the window on secondary monitor
         app_config->set("restore_win_position", (boost::format("crashed_at_%1%_pos") % name).str());
         app_config->save();
@@ -3254,7 +3244,7 @@ bool GUI_App::config_wizard_startup()
         return true;
     } 
 #ifndef __APPLE__    
-    else if (is_editor() && m_last_app_conf_lower_version && app_config->get("downloader_url_registered") == "1") {
+    else if (is_editor() && m_last_app_conf_lower_version && app_config->get_bool("downloader_url_registered")) {
         show_downloader_registration_dialog();
         return true;
     }
@@ -3314,11 +3304,11 @@ bool GUI_App::open_browser_with_warning_dialog(const wxString& url, wxWindow* pa
             }
         }
         if (launch)
-            launch = app_config->get(option_key) != "1";
+            launch = !app_config->get_bool(option_key);
     }
     // warning dialog doesn't containe a "Remember my choice" checkbox
     // and will be shown only when "Suppress to open hyperlink in browser" is ON.
-    else if (app_config->get(option_key) == "1") {
+    else if (app_config->get_bool(option_key)) {
         MessageDialog dialog(parent, _L("Open hyperlink in default browser?"), _L("PrusaSlicer: Open hyperlink"), wxICON_QUESTION | wxYES_NO);
         launch = dialog.ShowModal() == wxID_YES;
     }
@@ -3372,7 +3362,6 @@ void GUI_App::associate_gcode_files()
 void GUI_App::on_version_read(wxCommandEvent& evt)
 {
     app_config->set("version_online", into_u8(evt.GetString()));
-    app_config->save();
     std::string opt = app_config->get("notify_release");
     if (this->plater_ == nullptr || (!m_app_updater->get_triggered_by_user() && opt != "all" && opt != "release")) {
         BOOST_LOG_TRIVIAL(info) << "Version online: " << evt.GetString() << ". User does not wish to be notified.";

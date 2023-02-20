@@ -417,12 +417,8 @@ std::string AppConfig::load()
 
 void AppConfig::save()
 {
-    {
-        // Returns "undefined" if the thread naming functionality is not supported by the operating system.
-        std::optional<std::string> current_thread_name = get_current_thread_name();
-        if (current_thread_name && *current_thread_name != "slic3r_main")
-            throw CriticalException("Calling AppConfig::save() from a worker thread!");
-    }
+    if (! is_main_thread_active())
+        throw CriticalException("Calling AppConfig::save() from a worker thread!");
 
     // The config is first written to a file with a PID suffix and then moved
     // to avoid race conditions with multiple instances of Slic3r
@@ -491,6 +487,46 @@ void AppConfig::save()
     m_dirty = false;
 }
 
+bool AppConfig::erase(const std::string &section, const std::string &key)
+{       
+    if (auto it_storage = m_storage.find(section); it_storage != m_storage.end()) {
+        auto &section = it_storage->second;
+        auto it = section.find(key);
+        if (it != section.end()) {
+            section.erase(it);
+            m_dirty = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool AppConfig::set_section(const std::string &section, std::map<std::string, std::string> data)
+{ 
+    auto it_section = m_storage.find(section);
+    if (it_section == m_storage.end()) {
+        if (data.empty())
+            return false;
+        it_section = m_storage.insert({ section, {} }).first;
+    }
+    auto &dst = it_section->second;
+    if (dst == data)
+        return false;
+    dst = std::move(data);
+    m_dirty = true;
+    return true;
+}
+
+bool AppConfig::clear_section(const std::string &section)
+{ 
+    if (auto it_section = m_storage.find(section); it_section != m_storage.end() && ! it_section->second.empty()) {
+        it_section->second.clear();
+        m_dirty = true;
+        return true;
+    }
+    return false;
+}
+
 bool AppConfig::get_variant(const std::string &vendor, const std::string &model, const std::string &variant) const
 {
     const auto it_v = m_vendors.find(vendor);
@@ -499,28 +535,47 @@ bool AppConfig::get_variant(const std::string &vendor, const std::string &model,
     return it_m == it_v->second.end() ? false : it_m->second.find(variant) != it_m->second.end();
 }
 
-void AppConfig::set_variant(const std::string &vendor, const std::string &model, const std::string &variant, bool enable)
+bool AppConfig::set_variant(const std::string &vendor, const std::string &model, const std::string &variant, bool enable)
 {
     if (enable) {
-        if (get_variant(vendor, model, variant)) { return; }
+        if (get_variant(vendor, model, variant))
+            return false;
         m_vendors[vendor][model].insert(variant);
     } else {
         auto it_v = m_vendors.find(vendor);
-        if (it_v == m_vendors.end()) { return; }
+        if (it_v == m_vendors.end())
+            return false;
         auto it_m = it_v->second.find(model);
-        if (it_m == it_v->second.end()) { return; }
+        if (it_m == it_v->second.end())
+            return false;
         auto it_var = it_m->second.find(variant);
-        if (it_var == it_m->second.end()) { return; }
+        if (it_var == it_m->second.end())
+            return false;
         it_m->second.erase(it_var);
     }
     // If we got here, there was an update
     m_dirty = true;
+    return true;
 }
 
-void AppConfig::set_vendors(const AppConfig &from)
+bool AppConfig::set_vendors(const VendorMap &vendors)
 {
-    m_vendors = from.m_vendors;
-    m_dirty = true;
+    if (m_vendors != vendors) {
+        m_vendors = vendors;
+        m_dirty = true;
+        return true;
+    } else
+        return false;
+}
+
+bool AppConfig::set_vendors(VendorMap &&vendors)
+{
+    if (m_vendors != vendors) {
+        m_vendors = std::move(vendors);
+        m_dirty = true;
+        return true;
+    } else
+        return false;
 }
 
 std::string AppConfig::get_last_dir() const
@@ -555,34 +610,52 @@ std::vector<std::string> AppConfig::get_recent_projects() const
     return ret;
 }
 
-void AppConfig::set_recent_projects(const std::vector<std::string>& recent_projects)
+bool AppConfig::set_recent_projects(const std::vector<std::string>& recent_projects)
 {
-    auto it = m_storage.find("recent_projects");
-    if (it == m_storage.end())
-        it = m_storage.insert(std::map<std::string, std::map<std::string, std::string>>::value_type("recent_projects", std::map<std::string, std::string>())).first;
-
-    it->second.clear();
-    for (unsigned int i = 0; i < (unsigned int)recent_projects.size(); ++i)
-    {
-        it->second[std::to_string(i + 1)] = recent_projects[i];
+    static constexpr const char *section = "recent_projects";
+    auto it_section = m_storage.find(section);
+    if (it_section == m_storage.end()) {
+        if (recent_projects.empty())
+            return false;
+        it_section = m_storage.insert({ std::string(section), {} }).first;
     }
+    auto &dst = it_section->second;
+
+    std::map<std::string, std::string> src;
+    for (unsigned int i = 0; i < (unsigned int)recent_projects.size(); ++i)
+        src[std::to_string(i + 1)] = recent_projects[i];
+
+    if (src != dst) {
+        dst = std::move(src);
+        m_dirty = true;
+        return true;
+    } else
+        return false;
 }
 
-void AppConfig::set_mouse_device(const std::string& name, double translation_speed, double translation_deadzone,
+bool AppConfig::set_mouse_device(const std::string& name, double translation_speed, double translation_deadzone,
                                  float rotation_speed, float rotation_deadzone, double zoom_speed, bool swap_yz)
 {
-    std::string key = std::string("mouse_device:") + name;
-    auto it = m_storage.find(key);
-    if (it == m_storage.end())
-        it = m_storage.insert(std::map<std::string, std::map<std::string, std::string>>::value_type(key, std::map<std::string, std::string>())).first;
+    const std::string key = std::string("mouse_device:") + name;
+    auto it_section = m_storage.find(key);
+    if (it_section == m_storage.end())
+        it_section = m_storage.insert({ key, {} }).first;
+    auto &dst = it_section->second;
 
-    it->second.clear();
-    it->second["translation_speed"] = float_to_string_decimal_point(translation_speed);
-    it->second["translation_deadzone"] = float_to_string_decimal_point(translation_deadzone);
-    it->second["rotation_speed"] = float_to_string_decimal_point(rotation_speed);
-    it->second["rotation_deadzone"] = float_to_string_decimal_point(rotation_deadzone);
-    it->second["zoom_speed"] = float_to_string_decimal_point(zoom_speed);
-    it->second["swap_yz"] = swap_yz ? "1" : "0";
+    std::map<std::string, std::string> src;
+    src["translation_speed"]    = float_to_string_decimal_point(translation_speed);
+    src["translation_deadzone"] = float_to_string_decimal_point(translation_deadzone);
+    src["rotation_speed"]       = float_to_string_decimal_point(rotation_speed);
+    src["rotation_deadzone"]    = float_to_string_decimal_point(rotation_deadzone);
+    src["zoom_speed"]           = float_to_string_decimal_point(zoom_speed);
+    src["swap_yz"]              = swap_yz ? "1" : "0";
+
+    if (src != dst) {
+        dst = std::move(src);
+        m_dirty = true;
+        return true;
+    } else
+        return false;
 }
 
 std::vector<std::string> AppConfig::get_mouse_device_names() const
@@ -596,16 +669,16 @@ std::vector<std::string> AppConfig::get_mouse_device_names() const
     return out;
 }
 
-void AppConfig::update_config_dir(const std::string &dir)
+bool AppConfig::update_config_dir(const std::string &dir)
 {
-    this->set("recent", "config_directory", dir);
+    return this->set("recent", "config_directory", dir);
 }
 
-void AppConfig::update_skein_dir(const std::string &dir)
+bool AppConfig::update_skein_dir(const std::string &dir)
 {
     if (is_shapes_dir(dir))
-        return; // do not save "shapes gallery" directory
-    this->set("recent", "skein_directory", dir);
+        return false; // do not save "shapes gallery" directory
+    return this->set("recent", "skein_directory", dir);
 }
 /*
 std::string AppConfig::get_last_output_dir(const std::string &alt) const
@@ -640,9 +713,9 @@ std::string AppConfig::get_last_output_dir(const std::string& alt, const bool re
 	return is_shapes_dir(alt) ? get_last_dir() : alt;
 }
 
-void AppConfig::update_last_output_dir(const std::string& dir, const bool removable)
+bool AppConfig::update_last_output_dir(const std::string& dir, const bool removable)
 {
-	this->set("", (removable ? "last_output_path_removable" : "last_output_path"), dir);
+	return this->set("", (removable ? "last_output_path_removable" : "last_output_path"), dir);
 }
 
 
@@ -660,7 +733,7 @@ void AppConfig::reset_selections()
     }
 }
 
-std::string AppConfig::config_path()
+std::string AppConfig::config_path() const
 {
     std::string path = (m_mode == EAppMode::Editor) ?
         (boost::filesystem::path(Slic3r::data_dir()) / (SLIC3R_APP_KEY ".ini")).make_preferred().string() :
@@ -695,7 +768,7 @@ std::string AppConfig::profile_folder_url() const
     return PROFILE_FOLDER_URL;
 }
 
-bool AppConfig::exists()
+bool AppConfig::exists() const
 {
     return boost::filesystem::exists(config_path());
 }

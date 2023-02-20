@@ -44,6 +44,7 @@ struct Params
 
     const std::pair<float,float> malformation_distance_factors = std::pair<float, float> { 0.5, 1.1 };
     const float max_curled_height_factor = 10.0f;
+    const float curling_tolerance_limit = 0.1f;
 
     const float min_distance_between_support_points = 3.0f; //mm
     const float support_points_interface_radius = 1.5f; // mm

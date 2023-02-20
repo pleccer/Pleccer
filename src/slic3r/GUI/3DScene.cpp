@@ -385,8 +385,10 @@ void GLVolume::render()
     GLShaderProgram* shader = GUI::wxGetApp().get_current_shader();
     if (shader == nullptr)
         return;
+    
+    const bool is_left_handed = this->is_left_handed();
 
-    if (this->is_left_handed())
+    if (is_left_handed)
         glsafe(::glFrontFace(GL_CW));
     glsafe(::glCullFace(GL_BACK));
 
@@ -395,7 +397,7 @@ void GLVolume::render()
     else
         model.render(this->tverts_range);
 
-    if (this->is_left_handed())
+    if (is_left_handed)
         glsafe(::glFrontFace(GL_CCW));
 }
 
@@ -793,6 +795,7 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
         glsafe(::glDisable(GL_CULL_FACE));
 
     for (GLVolumeWithIdAndZ& volume : to_render) {
+        const Transform3d& world_matrix = volume.first->world_matrix();
         volume.first->set_render_color(true);
 
         // render sinking contours of non-hovered volumes
@@ -811,17 +814,21 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
 
         shader->set_uniform("z_range", m_z_range);
         shader->set_uniform("clipping_plane", m_clipping_plane);
+        shader->set_uniform("use_color_clip_plane", m_use_color_clip_plane);
+        shader->set_uniform("color_clip_plane", m_color_clip_plane);
+        shader->set_uniform("uniform_color_clip_plane_1", m_color_clip_plane_colors[0]);
+        shader->set_uniform("uniform_color_clip_plane_2", m_color_clip_plane_colors[1]);
         shader->set_uniform("print_volume.type", static_cast<int>(m_print_volume.type));
         shader->set_uniform("print_volume.xy_data", m_print_volume.data);
         shader->set_uniform("print_volume.z_data", m_print_volume.zs);
-        shader->set_uniform("volume_world_matrix", volume.first->world_matrix());
+        shader->set_uniform("volume_world_matrix", world_matrix);
         shader->set_uniform("slope.actived", m_slope.active && !volume.first->is_modifier && !volume.first->is_wipe_tower);
-        shader->set_uniform("slope.volume_world_normal_matrix", static_cast<Matrix3f>(volume.first->world_matrix().matrix().block(0, 0, 3, 3).inverse().transpose().cast<float>()));
+        shader->set_uniform("slope.volume_world_normal_matrix", static_cast<Matrix3f>(world_matrix.matrix().block(0, 0, 3, 3).inverse().transpose().cast<float>()));
         shader->set_uniform("slope.normal_z", m_slope.normal_z);
 
 #if ENABLE_ENVIRONMENT_MAP
         unsigned int environment_texture_id = GUI::wxGetApp().plater()->get_environment_texture_id();
-        bool use_environment_texture = environment_texture_id > 0 && GUI::wxGetApp().app_config->get("use_environment_map") == "1";
+        bool use_environment_texture = environment_texture_id > 0 && GUI::wxGetApp().app_config->get_bool("use_environment_map");
         shader->set_uniform("use_environment_tex", use_environment_texture);
         if (use_environment_texture)
             glsafe(::glBindTexture(GL_TEXTURE_2D, environment_texture_id));
@@ -829,7 +836,7 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
         glcheck();
 
         volume.first->model.set_color(volume.first->render_color);
-        const Transform3d model_matrix = volume.first->world_matrix();
+        const Transform3d model_matrix = world_matrix;
         shader->set_uniform("view_model_matrix", view_matrix * model_matrix);
         shader->set_uniform("projection_matrix", projection_matrix);
         const Matrix3d view_normal_matrix = view_matrix.matrix().block(0, 0, 3, 3) * model_matrix.matrix().block(0, 0, 3, 3).inverse().transpose();
@@ -866,7 +873,7 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
     shader->stop_using();
     if (edges_shader != nullptr) {
         edges_shader->start_using();
-        if (m_show_non_manifold_edges && GUI::wxGetApp().app_config->get("non_manifold_edges") == "1") {
+        if (m_show_non_manifold_edges && GUI::wxGetApp().app_config->get_bool("non_manifold_edges")) {
             for (GLVolumeWithIdAndZ& volume : to_render) {
                 volume.first->render_non_manifold_edges();
             }

@@ -118,8 +118,8 @@ static const wxString axes_color_back[] = { "#f5dcdc", "#dcf5dc", "#dcdcf5" };
 ObjectManipulation::ObjectManipulation(wxWindow* parent) :
     OG_Settings(parent, true)
 {
-    m_imperial_units = wxGetApp().app_config->get("use_inches") == "1";
-    m_use_colors     = wxGetApp().app_config->get("color_mapinulation_panel") == "1";
+    m_imperial_units = wxGetApp().app_config->get_bool("use_inches");
+    m_use_colors     = wxGetApp().app_config->get_bool("color_mapinulation_panel");
 
     m_manifold_warning_bmp = ScalableBitmap(parent, "exclamation");
 
@@ -448,14 +448,21 @@ ObjectManipulation::ObjectManipulation(wxWindow* parent) :
         Selection& selection = canvas->get_selection();
 
 #if ENABLE_WORLD_COORDINATE
-        if (selection.is_single_volume_or_modifier())
+        if (selection.is_single_volume_or_modifier()) {
+            GLVolume* vol = const_cast<GLVolume*>(selection.get_first_volume());
+            Geometry::Transformation trafo = vol->get_volume_transformation();
+            trafo.reset_rotation();
+            vol->set_volume_transformation(trafo);
+        }
 #else
         if (selection.is_single_volume() || selection.is_single_modifier())
-#endif // ENABLE_WORLD_COORDINATE
             const_cast<GLVolume*>(selection.get_first_volume())->set_volume_rotation(Vec3d::Zero());
+#endif // ENABLE_WORLD_COORDINATE
         else if (selection.is_single_full_instance()) {
+            Geometry::Transformation trafo = selection.get_first_volume()->get_instance_transformation();
+            trafo.reset_rotation();
             for (unsigned int idx : selection.get_volume_idxs()) {
-                const_cast<GLVolume*>(selection.get_volume(idx))->set_instance_rotation(Vec3d::Zero());
+                const_cast<GLVolume*>(selection.get_volume(idx))->set_instance_transformation(trafo);
             }
         }
         else
@@ -484,24 +491,22 @@ ObjectManipulation::ObjectManipulation(wxWindow* parent) :
         GLCanvas3D* canvas = wxGetApp().plater()->canvas3D();
         Selection& selection = canvas->get_selection();
         if (selection.is_single_volume_or_modifier()) {
-            const bool is_left_handed = selection.get_first_volume()->get_volume_transformation().is_left_handed();
-            const_cast<GLVolume*>(selection.get_first_volume())->set_volume_scaling_factor(Vec3d::Ones());
-            if (is_left_handed)
-                const_cast<GLVolume*>(selection.get_first_volume())->set_volume_mirror({ -1.0 , 1.0, 1.0 });
+            GLVolume* vol = const_cast<GLVolume*>(selection.get_first_volume());
+            Geometry::Transformation trafo = vol->get_volume_transformation();
+            trafo.reset_scaling_factor();
+            vol->set_volume_transformation(trafo);
         }
         else if (selection.is_single_full_instance()) {
-            const bool is_left_handed = selection.get_first_volume()->get_instance_transformation().is_left_handed();
+            Geometry::Transformation trafo = selection.get_first_volume()->get_instance_transformation();
+            trafo.reset_scaling_factor();
             for (unsigned int idx : selection.get_volume_idxs()) {
-                const_cast<GLVolume*>(selection.get_volume(idx))->set_instance_scaling_factor(Vec3d::Ones());
-                if (is_left_handed)
-                    const_cast<GLVolume*>(selection.get_volume(idx))->set_instance_mirror({ -1.0 , 1.0, 1.0 });
+                const_cast<GLVolume*>(selection.get_volume(idx))->set_instance_transformation(trafo);
             }
         }
         else
             return;
 
         canvas->do_scale(L("Reset scale"));
-
         UpdateAndShow(true);
 #else
         Plater::TakeSnapshot snapshot(wxGetApp().plater(), _L("Reset scale"));
@@ -642,8 +647,8 @@ void ObjectManipulation::DisableUnuniformScale()
 
 void ObjectManipulation::update_ui_from_settings()
 {
-    if (m_imperial_units != (wxGetApp().app_config->get("use_inches") == "1")) {
-        m_imperial_units = wxGetApp().app_config->get("use_inches") == "1";
+    if (m_imperial_units != wxGetApp().app_config->get_bool("use_inches")) {
+        m_imperial_units  = wxGetApp().app_config->get_bool("use_inches");
 
         auto update_unit_text = [](const wxString& new_unit_text, wxStaticText* widget) {
             widget->SetLabel(new_unit_text);
@@ -667,8 +672,8 @@ void ObjectManipulation::update_ui_from_settings()
     }
     m_check_inch->SetValue(m_imperial_units);
 
-    if (m_use_colors != (wxGetApp().app_config->get("color_mapinulation_panel") == "1")) {
-        m_use_colors = wxGetApp().app_config->get("color_mapinulation_panel") == "1";
+    if (m_use_colors != wxGetApp().app_config->get_bool("color_mapinulation_panel")) {
+        m_use_colors  = wxGetApp().app_config->get_bool("color_mapinulation_panel");
         // update colors for edit-boxes
         int axis_id = 0;
         for (ManipulationEditor* editor : m_editors) {
@@ -740,7 +745,6 @@ void ObjectManipulation::update_settings_value(const Selection& selection)
             m_new_rotate_label_string = L("Rotate (relative)");
             m_new_position = Vec3d::Zero();
             m_new_rotation = Vec3d::Zero();
-            m_new_scale = Vec3d(100.0, 100.0, 100.0);
             m_new_size = selection.get_bounding_box_in_current_reference_system().first.size();
 #else
             m_new_rotation = volume->get_instance_rotation() * (180.0 / M_PI);
@@ -927,93 +931,48 @@ void ObjectManipulation::update_if_dirty()
 
 
 
+#if ENABLE_WORLD_COORDINATE
 void ObjectManipulation::update_reset_buttons_visibility()
 {
     GLCanvas3D* canvas = wxGetApp().plater()->canvas3D();
     if (!canvas)
         return;
-    const Selection& selection = canvas->get_selection();
 
+    bool show_drop_to_bed = false;
     bool show_rotation = false;
     bool show_scale = false;
-    bool show_drop_to_bed = false;
-#if ENABLE_WORLD_COORDINATE
+    bool show_mirror = false;
     bool show_skew = false;
-    bool show_mirror_warning = false;
 
+    const Selection& selection = canvas->get_selection();
     if (selection.is_single_full_instance() || selection.is_single_volume_or_modifier()) {
         const double min_z = selection.is_single_full_instance() ? selection.get_scaled_instance_bounding_box().min.z() :
             get_volume_min_z(*selection.get_first_volume());
 
         show_drop_to_bed = std::abs(min_z) > EPSILON;
         const GLVolume* volume = selection.get_first_volume();
-        Geometry::Transformation trafo;
-#else
-    if (selection.is_single_full_instance() || selection.is_single_modifier() || selection.is_single_volume()) {
-        const GLVolume* volume = selection.get_first_volume();
-        Vec3d rotation;
-        Vec3d scale;
-        double min_z = 0.0;
-#endif // ENABLE_WORLD_COORDINATE
+        const Geometry::Transformation trafo = selection.is_single_full_instance() ? volume->get_instance_transformation() : volume->get_volume_transformation();
 
-        if (selection.is_single_full_instance()) {
-#if ENABLE_WORLD_COORDINATE
-            trafo = volume->get_instance_transformation();
-            const Selection::IndicesList& idxs = selection.get_volume_idxs();
-            for (unsigned int id : idxs) {
-                const Geometry::Transformation world_trafo(selection.get_volume(id)->world_matrix());
-                show_skew |= world_trafo.has_skew();
-                show_mirror_warning |= world_trafo.get_matrix().matrix().determinant() < 0.0;
-            }
-#else
-            rotation = volume->get_instance_rotation();
-            scale = volume->get_instance_scaling_factor();
-            min_z = selection.get_scaled_instance_bounding_box().min.z();
-#endif // ENABLE_WORLD_COORDINATE
-        }
-        else {
-#if ENABLE_WORLD_COORDINATE
-            Geometry::Transformation trafo = volume->get_volume_transformation();
-            const Geometry::Transformation world_trafo(volume->world_matrix());
-            show_skew |= world_trafo.has_skew();
-            show_mirror_warning |= world_trafo.get_matrix().matrix().determinant() < 0.0;
-#else
-            rotation = volume->get_volume_rotation();
-            scale = volume->get_volume_scaling_factor();
-            min_z = get_volume_min_z(*volume);
-#endif // ENABLE_WORLD_COORDINATE
-        }
-#if ENABLE_WORLD_COORDINATE
-        const Transform3d rotation = trafo.get_rotation_matrix();
-        const Transform3d scale = trafo.get_scaling_factor_matrix();
-        show_rotation = show_mirror_warning ? !trafo.get_matrix().matrix().block<3, 3>(0, 0).isDiagonal() : !rotation.isApprox(Transform3d::Identity());
-        show_scale = !scale.isApprox(Transform3d::Identity());
-#else
-        show_rotation = !rotation.isApprox(Vec3d::Zero());
-        show_scale = !scale.isApprox(Vec3d::Ones());
-        show_drop_to_bed = std::abs(min_z) > SINKING_Z_THRESHOLD;
-#endif // ENABLE_WORLD_COORDINATE
+        const Geometry::TransformationSVD trafo_svd(trafo);
+        show_rotation = trafo_svd.rotation;
+        show_scale    = trafo_svd.scale;
+        show_mirror   = trafo_svd.mirror;
+        show_skew     = trafo_svd.skew;
     }
 
-#if ENABLE_WORLD_COORDINATE
-    wxGetApp().CallAfter([this, show_rotation, show_scale, show_drop_to_bed, show_skew, show_mirror_warning] {
-#else
-    wxGetApp().CallAfter([this, show_rotation, show_scale, show_drop_to_bed] {
-#endif // ENABLE_WORLD_COORDINATE
+    wxGetApp().CallAfter([this, show_drop_to_bed, show_rotation, show_scale, show_mirror, show_skew] {
         // There is a case (under OSX), when this function is called after the Manipulation panel is hidden
         // So, let check if Manipulation panel is still shown for this moment
         if (!this->IsShown())
             return;
+        m_drop_to_bed_button->Show(show_drop_to_bed);
         m_reset_rotation_button->Show(show_rotation);
         m_reset_scale_button->Show(show_scale);
-        m_drop_to_bed_button->Show(show_drop_to_bed);
-#if ENABLE_WORLD_COORDINATE
+        m_mirror_warning_bitmap->SetBitmap(show_mirror ? m_manifold_warning_bmp.bmp() : wxNullBitmap);
+        m_mirror_warning_bitmap->SetMinSize(show_mirror ? m_manifold_warning_bmp.GetSize() : wxSize(0, 0));
+        m_mirror_warning_bitmap->SetToolTip(show_mirror ? _L("Left handed") : "");
         m_reset_skew_button->Show(show_skew);
         m_skew_label->Show(show_skew);
-        m_mirror_warning_bitmap->SetBitmap(show_mirror_warning ? m_manifold_warning_bmp.bmp() : wxNullBitmap);
-        m_mirror_warning_bitmap->SetMinSize(show_mirror_warning ? m_manifold_warning_bmp.GetSize() : wxSize(0, 0));
-        m_mirror_warning_bitmap->SetToolTip(show_mirror_warning ? _L("Left handed") : "");
-#endif // ENABLE_WORLD_COORDINATE
 
         // Because of CallAfter we need to layout sidebar after Show/hide of reset buttons one more time
         Sidebar& panel = wxGetApp().sidebar();
@@ -1024,23 +983,75 @@ void ObjectManipulation::update_reset_buttons_visibility()
         }
     });
 }
+#else
+void ObjectManipulation::update_reset_buttons_visibility()
+{
+    GLCanvas3D* canvas = wxGetApp().plater()->canvas3D();
+    if (!canvas)
+        return;
+    const Selection& selection = canvas->get_selection();
+
+    bool show_rotation = false;
+    bool show_scale = false;
+    bool show_drop_to_bed = false;
+    if (selection.is_single_full_instance() || selection.is_single_modifier() || selection.is_single_volume()) {
+        const GLVolume* volume = selection.get_first_volume();
+        Vec3d rotation;
+        Vec3d scale;
+        double min_z = 0.0;
+
+        if (selection.is_single_full_instance()) {
+            rotation = volume->get_instance_rotation();
+            scale = volume->get_instance_scaling_factor();
+            min_z = selection.get_scaled_instance_bounding_box().min.z();
+        }
+        else {
+            rotation = volume->get_volume_rotation();
+            scale = volume->get_volume_scaling_factor();
+            min_z = get_volume_min_z(*volume);
+        }
+        show_rotation = !rotation.isApprox(Vec3d::Zero());
+        show_scale = !scale.isApprox(Vec3d::Ones());
+        show_drop_to_bed = std::abs(min_z) > SINKING_Z_THRESHOLD;
+    }
+
+    wxGetApp().CallAfter([this, show_rotation, show_scale, show_drop_to_bed] {
+        // There is a case (under OSX), when this function is called after the Manipulation panel is hidden
+        // So, let check if Manipulation panel is still shown for this moment
+        if (!this->IsShown())
+            return;
+        m_reset_rotation_button->Show(show_rotation);
+        m_reset_scale_button->Show(show_scale);
+        m_drop_to_bed_button->Show(show_drop_to_bed);
+
+        // Because of CallAfter we need to layout sidebar after Show/hide of reset buttons one more time
+        Sidebar& panel = wxGetApp().sidebar();
+        if (!panel.IsFrozen()) {
+            panel.Freeze();
+            panel.Layout();
+            panel.Thaw();
+        }
+    });
+}
+#endif // ENABLE_WORLD_COORDINATE
 
 
 
 void ObjectManipulation::update_mirror_buttons_visibility()
 {
+#if ENABLE_WORLD_COORDINATE
+    const bool can_mirror = wxGetApp().plater()->can_mirror();
+    for (ScalableButton* button : m_mirror_buttons) {
+        button->Enable(can_mirror);
+    }
+#else
     GLCanvas3D* canvas = wxGetApp().plater()->canvas3D();
     Selection& selection = canvas->get_selection();
 
-#if ENABLE_WORLD_COORDINATE
-    if (is_local_coordinates()) {
-        if (selection.is_single_full_instance() || selection.is_single_volume_or_modifier()) {
-#else
     std::array<MirrorButtonState, 3> new_states = { mbHidden, mbHidden, mbHidden };
 
     if (!m_world_coordinates) {
         if (selection.is_single_full_instance() || selection.is_single_modifier() || selection.is_single_volume()) {
-#endif // ENABLE_WORLD_COORDINATE
             const GLVolume* volume = selection.get_first_volume();
             Vec3d mirror;
 
@@ -1049,19 +1060,10 @@ void ObjectManipulation::update_mirror_buttons_visibility()
             else
                 mirror = volume->get_volume_mirror();
 
-#if !ENABLE_WORLD_COORDINATE
             for (unsigned char i=0; i<3; ++i)
                 new_states[i] = (mirror[i] < 0. ? mbActive : mbShown);
-#endif // !ENABLE_WORLD_COORDINATE
         }
     }
-
-#if ENABLE_WORLD_COORDINATE
-    const bool can_mirror = wxGetApp().plater()->can_mirror();
-    for (ScalableButton* button : m_mirror_buttons) {
-        button->Enable(can_mirror);
-    }
-#else
     else {
         // the mirroring buttons should be hidden in world coordinates,
         // unless we make it actually mirror in world coords.

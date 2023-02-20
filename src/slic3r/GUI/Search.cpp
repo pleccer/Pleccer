@@ -16,6 +16,7 @@
 #include "Tab.hpp"
 
 #define FTS_FUZZY_MATCH_IMPLEMENTATION
+#include "ExtraRenderers.hpp"
 #include "fts_fuzzy_match.h"
 
 #include "imgui/imconfig.h"
@@ -111,7 +112,7 @@ void OptionsSearcher::append_options(DynamicPrintConfig* config, Preset::Type ty
 
     for (std::string opt_key : config->keys())
     {
-        const ConfigOptionDef& opt = config->def()->options.at(opt_key);
+        const ConfigOptionDef& opt = *config->option_def(opt_key);
         if (opt.mode > mode)
             continue;
 
@@ -500,6 +501,10 @@ SearchDialog::SearchDialog(OptionsSearcher* searcher)
     search_list_model = new SearchListModel(this);
     search_list->AssociateModel(search_list_model);
 
+#ifdef __WXMSW__
+    search_list->AppendColumn(new wxDataViewColumn("", new BitmapTextRenderer(true, wxDATAVIEW_CELL_INERT), SearchListModel::colIconMarkedText, wxCOL_WIDTH_AUTOSIZE, wxALIGN_LEFT));
+    search_list->GetColumn(SearchListModel::colIconMarkedText)->SetWidth(48  * em_unit());
+#else
     search_list->AppendBitmapColumn("", SearchListModel::colIcon);
 
     wxDataViewTextRenderer* const markupRenderer = new wxDataViewTextRenderer();
@@ -512,6 +517,7 @@ SearchDialog::SearchDialog(OptionsSearcher* searcher)
 
     search_list->GetColumn(SearchListModel::colIcon      )->SetWidth(3  * em_unit());
     search_list->GetColumn(SearchListModel::colMarkedText)->SetWidth(40 * em_unit());
+#endif
 
     wxBoxSizer* check_sizer = new wxBoxSizer(wxHORIZONTAL);
 
@@ -725,10 +731,12 @@ void SearchDialog::OnLeftDown(wxMouseEvent& event)
 void SearchDialog::msw_rescale()
 {
     const int& em = em_unit();
-
+#ifdef __WXMSW__
+    search_list->GetColumn(SearchListModel::colIconMarkedText)->SetWidth(48  * em);
+#else
     search_list->GetColumn(SearchListModel::colIcon      )->SetWidth(3  * em);
     search_list->GetColumn(SearchListModel::colMarkedText)->SetWidth(45 * em);
-
+#endif
     const wxSize& size = wxSize(40 * em, 30 * em);
     SetMinSize(size);
 
@@ -787,8 +795,13 @@ void SearchListModel::sys_color_changed()
 
 wxString SearchListModel::GetColumnType(unsigned int col) const 
 {
+#ifdef __WXMSW__
+    if (col == colIconMarkedText)
+        return "DataViewBitmapText";
+#else
     if (col == colIcon)
         return "wxBitmap";
+#endif
     return "string";
 }
 
@@ -797,12 +810,20 @@ void SearchListModel::GetValueByRow(wxVariant& variant,
 {
     switch (col)
     {
+#ifdef __WXMSW__
+    case colIconMarkedText: {
+        const ScalableBitmap& icon = m_icon[m_values[row].second];
+        variant << DataViewBitmapText(m_values[row].first, icon.bmp().GetBitmapFor(icon.parent()));
+        break;
+    }
+#else
     case colIcon: 
         variant << m_icon[m_values[row].second].bmp().GetBitmapFor(m_icon[m_values[row].second].parent());
         break;
     case colMarkedText:
         variant = m_values[row].first;
         break;
+#endif
     case colMax:
         wxFAIL_MSG("invalid column");
     default:

@@ -154,7 +154,7 @@ static std::vector<std::pair<TreeSupportSettings, std::vector<size_t>>> group_me
         const PrintObjectConfig &object_config = print_object.config();
 #endif // NDEBUG
         // Support must be enabled and set to Tree style.
-        assert(object_config.support_material);
+        assert(object_config.support_material || object_config.support_material_enforce_layers > 0);
         assert(object_config.support_material_style == smsTree || object_config.support_material_style == smsOrganic);
 
         bool found_existing_group = false;
@@ -226,8 +226,9 @@ void tree_supports_show_error(std::string_view message, bool critical)
 {
     std::vector<Polygons> out(print_object.layer_count(), Polygons{});
 
+    const PrintConfig       &print_config           = print_object.print()->config();
     const PrintObjectConfig &config                 = print_object.config();
-    const bool               support_auto           = config.support_material_auto.value;
+    const bool               support_auto           = config.support_material.value && config.support_material_auto.value;
     const int                support_enforce_layers = config.support_material_enforce_layers.value;
     std::vector<Polygons>    enforcers_layers{ print_object.slice_support_enforcers() };
     std::vector<Polygons>    blockers_layers{ print_object.slice_support_blockers() };
@@ -240,8 +241,10 @@ void tree_supports_show_error(std::string_view message, bool critical)
     //FIXME this is a fudge constant!
     auto                     enforcer_overhang_offset = scaled<double>(config.support_tree_tip_diameter.value);
 
-    tbb::parallel_for(tbb::blocked_range<LayerIndex>(1, out.size()),
-        [&print_object, &enforcers_layers, &blockers_layers, support_auto, support_enforce_layers, support_threshold_auto, tan_threshold, enforcer_overhang_offset, &throw_on_cancel, &out]
+    size_t num_overhang_layers = support_auto ? out.size() : std::max(size_t(support_enforce_layers), enforcers_layers.size());
+    tbb::parallel_for(tbb::blocked_range<LayerIndex>(1, num_overhang_layers),
+        [&print_object, &config, &print_config, &enforcers_layers, &blockers_layers, 
+         support_auto, support_enforce_layers, support_threshold_auto, tan_threshold, enforcer_overhang_offset, &throw_on_cancel, &out]
         (const tbb::blocked_range<LayerIndex> &range) {
         for (LayerIndex layer_id = range.begin(); layer_id < range.end(); ++ layer_id) {
             const Layer   &current_layer  = *print_object.get_layer(layer_id);
@@ -274,6 +277,11 @@ void tree_supports_show_error(std::string_view message, bool critical)
                 }
                 if (! (enforced_layer || blockers_layers.empty() || blockers_layers[layer_id].empty()))
                     overhangs = diff(overhangs, blockers_layers[layer_id], ApplySafetyOffset::Yes);
+                if (config.dont_support_bridges) {
+                    for (const LayerRegion *layerm : current_layer.regions())
+                        remove_bridges_from_contacts(print_config, lower_layer, *layerm, 
+                            float(layerm->flow(frExternalPerimeter).scaled_width()), overhangs);
+                }
             }
             //check_self_intersections(overhangs, "generate_overhangs1");
             if (! enforcers_layers.empty() && ! enforcers_layers[layer_id].empty()) {
@@ -488,15 +496,15 @@ static std::optional<std::pair<Point, size_t>> polyline_sample_next_point_at_dis
             Vec2d xf = p0f - foot_pt;
             // Squared distance of "start_pt" from the ray (p0, p1).
             double l2_from_line = xf.squaredNorm();
-            double det = dist2 - l2_from_line;
-
-            if (det > - SCALED_EPSILON) {
+            // Squared distance of an intersection point of a circle with center at the foot point.
+            if (double l2_intersection = dist2 - l2_from_line; 
+                l2_intersection > - SCALED_EPSILON) {
                 // The ray (p0, p1) touches or intersects a circle centered at "start_pt" with radius "dist".
                 // Distance of the circle intersection point from the foot point.
-                double dist_circle_intersection = std::sqrt(std::max(0., det));
-                if ((v - foot_pt).cast<double>().norm() > dist_circle_intersection) {
+                l2_intersection = std::max(l2_intersection, 0.);
+                if ((v - foot_pt).cast<double>().squaredNorm() >= l2_intersection) {
                     // Intersection of the circle with the segment (p0, p1) is on the right side (close to p1) from the foot point.
-                    Point p = p0 + (foot_pt + v * (dist_circle_intersection / sqrt(l2v))).cast<coord_t>();
+                    Point p = p0 + (foot_pt + v * sqrt(l2_intersection / l2v)).cast<coord_t>();
                     validate_range(p);
                     return std::pair<Point, size_t>{ p, i - 1 };
                 }
@@ -908,7 +916,7 @@ static void generate_initial_areas(
     //FIXME Vojtech: This is not sufficient for support enforcers to work.
     //FIXME There is no account for the support overhang angle.
     //FIXME There is no account for the width of the collision regions.
-    const coord_t extra_outset = std::max(coord_t(0), mesh_config.min_radius - mesh_config.support_line_width) + (min_xy_dist ? mesh_config.support_line_width / 2 : 0)
+    const coord_t extra_outset = std::max(coord_t(0), mesh_config.min_radius - mesh_config.support_line_width / 2) + (min_xy_dist ? mesh_config.support_line_width / 2 : 0)
         //FIXME this is a heuristic value for support enforcers to work.
 //        + 10 * mesh_config.support_line_width;
         ;
@@ -923,7 +931,9 @@ static void generate_initial_areas(
     // does not turn valid in double the amount of layers a slope of support angle would take to travel xy_distance, nothing reasonable will come from it. 
     // The 2*z_distance_delta is only a catch for when the support angle is very high.
     // Used only if not min_xy_dist.
-    const coord_t max_overhang_insert_lag = std::max<coord_t>(round_up_divide(mesh_config.xy_distance, max_overhang_speed / 2), 2 * mesh_config.z_distance_top_layers);
+    const coord_t max_overhang_insert_lag = mesh_config.z_distance_top_layers > 0 ?
+        std::max<coord_t>(round_up_divide(mesh_config.xy_distance, max_overhang_speed / 2), 2 * mesh_config.z_distance_top_layers) :
+        0;
 
     //FIXME 
     size_t num_support_layers = print_object.layer_count();
@@ -1069,9 +1079,8 @@ static void generate_initial_areas(
             Polygons overhang_regular;
             {
                 const Polygons &overhang_raw = overhangs[layer_idx + z_distance_delta];
-                overhang_regular = mesh_group_settings.support_offset == 0 ? 
-                    overhang_raw :
-                    safe_offset_inc(overhang_raw, mesh_group_settings.support_offset, relevant_forbidden, mesh_config.min_radius * 1.75 + mesh_config.xy_min_distance, 0, 1);
+                // When support_offset = 0 safe_offset_inc will only be the difference between overhang_raw and relevant_forbidden, that has to be calculated anyway. 
+                overhang_regular = safe_offset_inc(overhang_raw, mesh_group_settings.support_offset, relevant_forbidden, mesh_config.min_radius * 1.75 + mesh_config.xy_min_distance, 0, 1);
                 //check_self_intersections(overhang_regular, "overhang_regular1");
 
                 // offset ensures that areas that could be supported by a part of a support line, are not considered unsupported overhang
@@ -2498,8 +2507,10 @@ static void create_nodes_from_area(
     // Point is chosen based on an inaccurate estimate where the branches will split into two, but every point inside the influence area would produce a valid result.
     {
         SupportElements *layer_above = move_bounds.size() > 1 ? &move_bounds[1] : nullptr;
-        for (SupportElement &elem : *layer_above)
-            elem.state.marked = false;
+        if (layer_above) {
+            for (SupportElement &elem : *layer_above)
+                elem.state.marked = false;
+        }
         for (SupportElement &init : move_bounds.front()) {
             init.state.result_on_layer = move_inside_if_outside(init.influence_area, init.state.next_position);
             // Also set the parent nodes, as these will be required for the first iteration of the loop below and mark the parent nodes.
@@ -2932,7 +2943,11 @@ static void finalize_interface_and_support_areas(
     
     std::function<void()>            throw_on_cancel)
 {
-    InterfacePreference interface_pref = config.interface_preference; // InterfacePreference::SupportLinesOverwriteInterface;
+    assert(std::all_of(bottom_contacts.begin(), bottom_contacts.end(), [](auto *p) { return p == nullptr; }));
+//    assert(std::all_of(top_contacts.begin(), top_contacts.end(), [](auto* p) { return p == nullptr; }));
+    assert(std::all_of(intermediate_layers.begin(), intermediate_layers.end(), [](auto* p) { return p == nullptr; }));
+
+    InterfacePreference interface_pref = config.interface_preference; // InterfacePreference::InterfaceAreaOverwritesSupport;
 
 #ifdef SLIC3R_TREESUPPORTS_PROGRESS
     double progress_total = TREE_PROGRESS_PRECALC_AVO + TREE_PROGRESS_PRECALC_COLL + TREE_PROGRESS_GENERATE_NODES + TREE_PROGRESS_AREA_CALC + TREE_PROGRESS_GENERATE_BRANCH_AREAS + TREE_PROGRESS_SMOOTH_BRANCH_AREAS;
@@ -2943,29 +2958,41 @@ static void finalize_interface_and_support_areas(
     tbb::parallel_for(tbb::blocked_range<size_t>(0, support_layer_storage.size()),
         [&](const tbb::blocked_range<size_t> &range) {
         for (size_t layer_idx = range.begin(); layer_idx < range.end(); ++ layer_idx) {
-            // Most of the time in this function is this union call. Can take 300+ ms when a lot of areas are to be unioned.
-            support_layer_storage[layer_idx] = smooth_outward(union_(support_layer_storage[layer_idx]), config.support_line_width); //FIXME was .smooth(50);
-            //smooth_outward(closing(std::move(bottom), closing_distance + minimum_island_radius, closing_distance, SUPPORT_SURFACES_OFFSET_PARAMETERS), smoothing_distance) :
-
-            // simplify a bit, to ensure the output does not contain outrageous amounts of vertices. Should not be necessary, just a precaution.
-            support_layer_storage[layer_idx] = polygons_simplify(support_layer_storage[layer_idx], std::min(scaled<double>(0.03), double(config.resolution)));
             // Subtract support lines of the branches from the roof
-            SupportGeneratorLayer*& support_roof = top_contacts[layer_idx];
-            if (! support_roof_storage[layer_idx].empty() || support_roof != nullptr) {
-                if (support_roof == nullptr) {
-                    support_roof = &layer_allocate(layer_storage, layer_storage_mutex, SupporLayerType::TopContact, print_object.slicing_parameters(), layer_idx);
-                    support_roof->polygons = union_(support_roof_storage[layer_idx]);
-                } else
-                    support_roof->polygons = union_(support_roof->polygons, support_roof_storage[layer_idx]);
+            SupportGeneratorLayer *support_roof = top_contacts[layer_idx];
+            Polygons               support_roof_polygons;
 
-                if (! support_roof->polygons.empty() &&
-                    area(intersection(support_layer_storage[layer_idx], support_roof->polygons)) > tiny_area_threshold) {
+            if (Polygons &src = support_roof_storage[layer_idx]; ! src.empty()) {
+                if (support_roof != nullptr && ! support_roof->polygons.empty()) {
+                    support_roof_polygons = union_(src, support_roof->polygons);
+                    support_roof->polygons.clear();
+                } else
+                    support_roof_polygons = std::move(src);
+            } else if (support_roof != nullptr) {
+                support_roof_polygons = std::move(support_roof->polygons);
+                support_roof->polygons.clear();
+            }
+
+            assert(intermediate_layers[layer_idx] == nullptr);
+            Polygons                base_layer_polygons = std::move(support_layer_storage[layer_idx]);
+
+            if (! base_layer_polygons.empty()) {
+                // Most of the time in this function is this union call. Can take 300+ ms when a lot of areas are to be unioned.
+                base_layer_polygons = smooth_outward(union_(base_layer_polygons), config.support_line_width); //FIXME was .smooth(50);
+                //smooth_outward(closing(std::move(bottom), closing_distance + minimum_island_radius, closing_distance, SUPPORT_SURFACES_OFFSET_PARAMETERS), smoothing_distance) :
+                // simplify a bit, to ensure the output does not contain outrageous amounts of vertices. Should not be necessary, just a precaution.
+                base_layer_polygons = polygons_simplify(base_layer_polygons, std::min(scaled<double>(0.03), double(config.resolution)));
+            }
+
+            if (! support_roof_polygons.empty() && ! base_layer_polygons.empty()) {
+//              if (area(intersection(base_layer_polygons, support_roof_polygons)) > tiny_area_threshold)
+                {
                     switch (interface_pref) {
                         case InterfacePreference::InterfaceAreaOverwritesSupport:
-                            support_layer_storage[layer_idx] = diff(support_layer_storage[layer_idx], support_roof->polygons);
+                            base_layer_polygons = diff(base_layer_polygons, support_roof_polygons);
                             break;
                         case InterfacePreference::SupportAreaOverwritesInterface:
-                            support_roof->polygons = diff(support_roof->polygons, support_layer_storage[layer_idx]);
+                            support_roof_polygons = diff(support_roof_polygons, base_layer_polygons);
                             break;
     //FIXME
     #if 1
@@ -2980,14 +3007,14 @@ static void finalize_interface_and_support_areas(
                             Polygons interface_lines = offset(to_polylines(
                                 generate_support_infill_lines(support_roof->polygons, true, layer_idx, config.support_roof_line_distance)),
                                 config.support_roof_line_width / 2);
-                            support_layer_storage[layer_idx] = diff(support_layer_storage[layer_idx], interface_lines);
+                            base_layer_polygons = diff(base_layer_polygons, interface_lines);
                             break;
                         }
                         case InterfacePreference::SupportLinesOverwriteInterface:
                         {
                             // Hatch the support roof interfaces, offset them by their line width and subtract them from support base.
                             Polygons tree_lines = union_(offset(to_polylines(
-                                generate_support_infill_lines(support_layer_storage[layer_idx], false, layer_idx, config.support_line_distance, true)),
+                                generate_support_infill_lines(base_layer_polygons, false, layer_idx, config.support_line_distance, true)),
                                 config.support_line_width / 2));
                             // do not draw roof where the tree is. I prefer it this way as otherwise the roof may cut of a branch from its support below.
                             support_roof->polygons = diff(support_roof->polygons, tree_lines);
@@ -3001,10 +3028,10 @@ static void finalize_interface_and_support_areas(
             }
 
             // Subtract support floors from the support area and add them to the support floor instead.
-            if (config.support_bottom_layers > 0 && !support_layer_storage[layer_idx].empty()) {
+            if (config.support_bottom_layers > 0 && ! base_layer_polygons.empty()) {
                 SupportGeneratorLayer*& support_bottom = bottom_contacts[layer_idx];
                 Polygons layer_outset = diff_clipped(
-                    config.support_bottom_offset > 0 ? offset(support_layer_storage[layer_idx], config.support_bottom_offset, jtMiter, 1.2) : support_layer_storage[layer_idx],
+                    config.support_bottom_offset > 0 ? offset(base_layer_polygons, config.support_bottom_offset, jtMiter, 1.2) : base_layer_polygons,
                     volumes.getCollision(0, layer_idx, false));
                 Polygons floor_layer;
                 size_t layers_below = 0;
@@ -3022,15 +3049,18 @@ static void finalize_interface_and_support_areas(
                     if (support_bottom == nullptr)
                         support_bottom = &layer_allocate(layer_storage, layer_storage_mutex, SupporLayerType::BottomContact, print_object.slicing_parameters(), layer_idx);
                     support_bottom->polygons = union_(floor_layer, support_bottom->polygons);
-                    support_layer_storage[layer_idx] = diff_clipped(support_layer_storage[layer_idx], offset(support_bottom->polygons, scaled<float>(0.01), jtMiter, 1.2)); // Subtract the support floor from the normal support.
+                    base_layer_polygons = diff_clipped(base_layer_polygons, offset(support_bottom->polygons, scaled<float>(0.01), jtMiter, 1.2)); // Subtract the support floor from the normal support.
                 }
             }
 
-            if (! support_layer_storage[layer_idx].empty()) {
-                SupportGeneratorLayer *&l = intermediate_layers[layer_idx];
-                if (l == nullptr)
-                    l = &layer_allocate(layer_storage, layer_storage_mutex, SupporLayerType::Base, print_object.slicing_parameters(), layer_idx);
-                append(l->polygons, union_(support_layer_storage[layer_idx]));
+            if (! support_roof_polygons.empty()) {
+                if (support_roof == nullptr)
+                    support_roof = top_contacts[layer_idx] = &layer_allocate(layer_storage, layer_storage_mutex, SupporLayerType::TopContact, print_object.slicing_parameters(), layer_idx);
+                support_roof->polygons = union_(support_roof_polygons);
+            }
+            if (! base_layer_polygons.empty()) {
+                SupportGeneratorLayer *base_layer = intermediate_layers[layer_idx] = &layer_allocate(layer_storage, layer_storage_mutex, SupporLayerType::Base, print_object.slicing_parameters(), layer_idx);
+                base_layer->polygons = union_(base_layer_polygons);
             }
 
 #ifdef SLIC3R_TREESUPPORTS_PROGRESS
@@ -3907,25 +3937,15 @@ static void slice_branches(
     params.closing_radius = float(print_object.config().slice_closing_radius.value);
     params.mode = MeshSlicingParams::SlicingMode::Positive;
     std::vector<ExPolygons> slices = slice_mesh_ex(cummulative_mesh, slice_z, params, throw_on_cancel);
-    for (size_t layer_idx = 0; layer_idx < slice_z.size(); ++ layer_idx)
-        if (! slices[layer_idx].empty()) {
-            SupportGeneratorLayer *&l = intermediate_layers[layer_idx];
-            if (l == nullptr)
-                l = &layer_allocate(layer_storage, SupporLayerType::Base, slicing_params, layer_idx);
-            append(l->polygons, to_polygons(std::move(slices[layer_idx])));
-        }
-
     // Trim the slices.
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, intermediate_layers.size()),
+    std::vector<Polygons> support_layer_storage(move_bounds.size());
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, slices.size()),
         [&](const tbb::blocked_range<size_t> &range) {
-            for (size_t layer_idx = range.begin(); layer_idx < range.end(); ++ layer_idx)
-                if (SupportGeneratorLayer *layer = intermediate_layers[layer_idx]; layer) {
-                    Polygons &poly = intermediate_layers[layer_idx]->polygons;
-                    poly = diff_clipped(poly, volumes.getCollision(0, layer_idx, true));
-                }
+            for (size_t layer_idx = range.begin(); layer_idx < range.end(); ++layer_idx)
+                if (ExPolygons &src = slices[layer_idx]; ! src.empty())
+                    support_layer_storage[layer_idx] = diff_clipped(to_polygons(std::move(src)), volumes.getCollision(0, layer_idx, true));
         });
 
-    std::vector<Polygons> support_layer_storage(move_bounds.size());
     std::vector<Polygons> support_roof_storage(move_bounds.size());
     finalize_interface_and_support_areas(print_object, volumes, config, overhangs, support_layer_storage, support_roof_storage,
         bottom_contacts, top_contacts, intermediate_layers, layer_storage, throw_on_cancel);

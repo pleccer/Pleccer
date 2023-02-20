@@ -1250,7 +1250,7 @@ bool ObjectList::can_drop(const wxDataViewItem& item) const
 
         if (dragged_item_v_type == item_v_type && dragged_item_v_type != ModelVolumeType::MODEL_PART)
             return true;
-        if ((wxGetApp().app_config->get("order_volumes") == "1" && dragged_item_v_type != item_v_type) ||   // we can't reorder volumes outside of types
+        if ((wxGetApp().app_config->get_bool("order_volumes") && dragged_item_v_type != item_v_type) ||   // we can't reorder volumes outside of types
             item_v_type >= ModelVolumeType::SUPPORT_BLOCKER)        // support blockers/enforcers can't change its place
             return false; 
 
@@ -1855,7 +1855,7 @@ void ObjectList::load_mesh_object(
     new_object->add_instance(); // each object should have at list one instance
     
     ModelVolume* new_volume = new_object->add_volume(mesh);
-    new_object->sort_volumes(wxGetApp().app_config->get("order_volumes") == "1");
+    new_object->sort_volumes(wxGetApp().app_config->get_bool("order_volumes"));
     new_volume->name = name;
     if (text_config)
         new_volume->text_configuration = *text_config;
@@ -2327,7 +2327,7 @@ void ObjectList::merge(bool to_multipart_object)
                 const Vec3d vol_offset = volume_offset_correction* new_volume->get_offset();
                 new_volume->set_offset(vol_offset);
             }
-            new_object->sort_volumes(wxGetApp().app_config->get("order_volumes") == "1");
+            new_object->sort_volumes(wxGetApp().app_config->get_bool("order_volumes"));
 
             // merge settings
             auto new_opt_keys = config.keys();
@@ -4896,7 +4896,7 @@ void ObjectList::set_extruder_for_selected_items(const int extruder) const
 
 wxDataViewItemArray ObjectList::reorder_volumes_and_get_selection(size_t obj_idx, std::function<bool(const ModelVolume*)> add_to_selection/* = nullptr*/)
 {
-    (*m_objects)[obj_idx]->sort_volumes(wxGetApp().app_config->get("order_volumes") == "1");
+    (*m_objects)[obj_idx]->sort_volumes(wxGetApp().app_config->get_bool("order_volumes"));
 
     wxDataViewItemArray items = add_volumes_to_object_in_list(obj_idx, std::move(add_to_selection));
 
@@ -4907,7 +4907,7 @@ wxDataViewItemArray ObjectList::reorder_volumes_and_get_selection(size_t obj_idx
 
 void ObjectList::apply_volumes_order()
 {
-    if (wxGetApp().app_config->get("order_volumes") != "1" || !m_objects)
+    if (!wxGetApp().app_config->get_bool("order_volumes") || !m_objects)
         return;
 
     for (size_t obj_idx = 0; obj_idx < m_objects->size(); obj_idx++)

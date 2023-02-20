@@ -1526,7 +1526,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("dont_support_bridges", category_path + "dont-support-bridges");
         optgroup->append_single_option_line("support_material_synchronize_layers", category_path + "synchronize-with-object-layers");
 
-        optgroup = page->new_optgroup(L("Tree supports"));
+        optgroup = page->new_optgroup(L("Organic supports"));
         optgroup->append_single_option_line("support_tree_angle", category_path + "tree_angle");
         optgroup->append_single_option_line("support_tree_angle_slow", category_path + "tree_angle_slow");
         optgroup->append_single_option_line("support_tree_branch_diameter", category_path + "tree_branch_diameter");
@@ -1571,7 +1571,10 @@ void TabPrint::build()
         optgroup->append_single_option_line("first_layer_speed_over_raft");
 
         optgroup = page->new_optgroup(L("Acceleration control (advanced)"));
+        optgroup->append_single_option_line("external_perimeter_acceleration");
         optgroup->append_single_option_line("perimeter_acceleration");
+        optgroup->append_single_option_line("top_solid_infill_acceleration");
+        optgroup->append_single_option_line("solid_infill_acceleration");
         optgroup->append_single_option_line("infill_acceleration");
         optgroup->append_single_option_line("bridge_acceleration");
         optgroup->append_single_option_line("first_layer_acceleration");
@@ -1637,9 +1640,6 @@ void TabPrint::build()
         optgroup->append_single_option_line("gcode_resolution");
         optgroup->append_single_option_line("xy_size_compensation");
         optgroup->append_single_option_line("elefant_foot_compensation", "elephant-foot-compensation_114487");
-
-        optgroup = page->new_optgroup(L("Other"));
-        optgroup->append_single_option_line("clip_multipart_objects");
 
         optgroup = page->new_optgroup(L("Arachne perimeter generator"));
         optgroup->append_single_option_line("wall_transition_angle");
@@ -1729,9 +1729,7 @@ void TabPrint::update_description_lines()
         if (m_post_process_explanation) {
             m_post_process_explanation->SetText(
                 _L("Post processing scripts shall modify G-code file in place."));
-#ifndef __linux__
             m_post_process_explanation->SetPathEnd("post-processing-scripts_283913");
-#endif // __linux__
         }
         // upadte G-code substitutions from the current configuration
         {

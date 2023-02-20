@@ -31,6 +31,9 @@ public:
     virtual void reverse() = 0;
     virtual const Point& first_point() const = 0;
     virtual const Point& last_point() const = 0;
+    // Returns an approximately middle point of a path, loop or an extrusion collection.
+    // Used to get a sample point of an extrusion or extrusion collection, which is possibly deep inside its island.
+    virtual const Point& middle_point() const = 0;
     // Produce a list of 2D polygons covered by the extruded paths, offsetted by the extrusion width.
     // Increase the offset by scaled_epsilon to achieve an overlap, so a union will produce no gaps.
     virtual void polygons_covered_by_width(Polygons &out, const float scaled_epsilon) const = 0;
@@ -81,6 +84,7 @@ public:
     void reverse() override { this->polyline.reverse(); }
     const Point& first_point() const override { return this->polyline.points.front(); }
     const Point& last_point() const override { return this->polyline.points.back(); }
+    const Point& middle_point() const override { return this->polyline.points[this->polyline.size() / 2]; }
     size_t size() const { return this->polyline.size(); }
     bool empty() const { return this->polyline.empty(); }
     bool is_closed() const { return ! this->empty() && this->polyline.points.front() == this->polyline.points.back(); }
@@ -153,6 +157,7 @@ public:
     void reverse() override;
     const Point& first_point() const override { return this->paths.front().polyline.points.front(); }
     const Point& last_point() const override { return this->paths.back().polyline.points.back(); }
+    const Point& middle_point() const override { auto &path = this->paths[this->paths.size() / 2]; return path.polyline.points[path.polyline.size() / 2]; }
     size_t size() const { return this->paths.size(); }
     bool empty() const { return this->paths.empty(); }
     double length() const override;
@@ -204,6 +209,7 @@ public:
     void reverse() override;
     const Point& first_point() const override { return this->paths.front().polyline.points.front(); }
     const Point& last_point() const override { assert(this->first_point() == this->paths.back().polyline.points.back()); return this->first_point(); }
+    const Point& middle_point() const override { auto& path = this->paths[this->paths.size() / 2]; return path.polyline.points[path.polyline.size() / 2]; }
     Polygon polygon() const;
     double length() const override;
     bool split_at_vertex(const Point &point, const double scaled_epsilon = scaled<double>(0.001));
@@ -288,12 +294,12 @@ inline void extrusion_entities_append_paths(ExtrusionEntitiesPtr &dst, const Pol
         }
 }
 
-inline void extrusion_entities_append_paths(ExtrusionEntitiesPtr &dst, Polylines &&polylines, ExtrusionRole role, double mm3_per_mm, float width, float height)
+inline void extrusion_entities_append_paths(ExtrusionEntitiesPtr &dst, Polylines &&polylines, ExtrusionRole role, double mm3_per_mm, float width, float height, bool can_reverse = true)
 {
     dst.reserve(dst.size() + polylines.size());
     for (Polyline &polyline : polylines)
         if (polyline.is_valid()) {
-            ExtrusionPath *extrusion_path = new ExtrusionPath(role, mm3_per_mm, width, height);
+            ExtrusionPath *extrusion_path = can_reverse ? new ExtrusionPath(role, mm3_per_mm, width, height) : new ExtrusionPathOriented(role, mm3_per_mm, width, height);
             dst.push_back(extrusion_path);
             extrusion_path->polyline = std::move(polyline);
         }

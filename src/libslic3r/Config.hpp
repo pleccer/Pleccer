@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 #include <float.h>
 #include "libslic3r.h"
@@ -226,6 +227,7 @@ enum ForwardCompatibilitySubstitutionRule
     EnableSilentDisableSystem,
 };
 
+class  ConfigDef;
 class  ConfigOption;
 class  ConfigOptionDef;
 // For forward definition of ConfigOption in ConfigOptionUniquePtr, we have to define a custom deleter.
@@ -1547,7 +1549,7 @@ public:
         return false;
     }
 
-    // Map from an enum name to an enum integer value.
+    // Map from an enum integer value to name.
     static const t_config_enum_names& get_enum_names();
     // Map from an enum name to an enum integer value.
     static const t_config_enum_values& get_enum_values();
@@ -1619,6 +1621,177 @@ private:
 	template<class Archive> void serialize(Archive& ar) { ar(cereal::base_class<ConfigOptionInt>(this)); }
 };
 
+// Definition of values / labels for a combo box.
+// Mostly used for closed enums (when type == coEnum), but may be used for 
+// open enums with ints resp. floats, if gui_type is set to GUIType::i_enum_open" resp. GUIType::f_enum_open.
+class ConfigOptionEnumDef {
+public:
+    bool                            has_values() const { return ! m_values.empty(); }
+    bool                            has_labels() const { return ! m_labels.empty(); }
+    const std::vector<std::string>& values() const { return m_values; }
+    const std::string&              value(int idx) const { return m_values[idx]; }
+    // Used for open enums (gui_type is set to GUIType::i_enum_open" resp. GUIType::f_enum_open).
+    // If values not defined, use labels.
+    const std::vector<std::string>& enums() const { 
+        assert(this->is_valid_open_enum());
+        return this->has_values() ? m_values : m_labels;
+    }
+    // Used for closed enums. If labels are not defined, use values instead.
+    const std::vector<std::string>& labels() const { return this->has_labels() ? m_labels : m_values; }
+    const std::string&              label(int idx) const { return this->labels()[idx]; }
+
+    // Look up a closed enum value of this combo box based on an index of the combo box value / label.
+    // Such a mapping should always succeed.
+    int index_to_enum(int index) const {
+        // It has to be a closed enum, thus values have to be defined.
+        assert(this->is_valid_closed_enum());
+        assert(index >= 0 && index < int(m_values.size()));
+        if (m_values_ordinary)
+            return index;
+        else {
+            auto it = m_enum_keys_map->find(m_values[index]);
+            assert(it != m_enum_keys_map->end());
+            return it->second;
+        }
+    }
+
+    // Look up an index of value / label of this combo box based on enum value. 
+    // Such a mapping may fail, thus an optional is returned.
+    std::optional<int> enum_to_index(int enum_val) const {
+        assert(this->is_valid_closed_enum());
+        assert(enum_val >= 0 && enum_val < int(m_enum_names->size()));
+        if (m_values_ordinary)
+            return { enum_val };
+        else {
+            auto it = std::find(m_values.begin(), m_values.end(), (*m_enum_names)[enum_val]);
+            return it == m_values.end() ? std::optional<int>{} : std::optional<int>{ int(it - m_values.begin()) };
+        }
+    }
+
+    // Look up an index of value / label of this combo box based on value string. 
+    std::optional<int> value_to_index(const std::string &value) const {
+        assert(this->is_valid_open_enum() || this->is_valid_closed_enum());
+        auto it = std::find(m_values.begin(), m_values.end(), value);
+        return it == m_values.end() ? 
+            std::optional<int>{} : std::optional<int>{ it - m_values.begin() };
+    }
+
+    // Look up an index of label of this combo box. Used for open enums.
+    std::optional<int> label_to_index(const std::string &value) const {
+        assert(is_valid_open_enum());
+        const auto &ls = this->labels();
+        auto it = std::find(ls.begin(), ls.end(), value);
+        return it == ls.end() ? 
+            std::optional<int>{} : std::optional<int>{ it - ls.begin() };
+    }
+
+    std::optional<std::reference_wrapper<const std::string>> enum_to_value(int enum_val) const {
+        assert(this->is_valid_closed_enum());
+        auto opt = this->enum_to_index(enum_val);
+        return opt.has_value() ?
+            std::optional<std::reference_wrapper<const std::string>>{ this->value(*opt) } :
+            std::optional<std::reference_wrapper<const std::string>>{};
+    }
+
+    std::optional<std::reference_wrapper<const std::string>> enum_to_label(int enum_val) const {
+        assert(this->is_valid_closed_enum());
+        auto opt = this->enum_to_index(enum_val);
+        return opt.has_value() ?
+            std::optional<std::reference_wrapper<const std::string>>{ this->label(*opt) } : 
+            std::optional<std::reference_wrapper<const std::string>>{};
+    }
+
+#ifndef NDEBUG
+    bool is_valid_closed_enum() const {
+        return m_enum_names != nullptr && m_enum_keys_map != nullptr &&
+            ! m_values.empty() && (m_labels.empty() || m_values.size() == m_labels.size());
+    }
+    bool is_valid_open_enum() const {
+        return m_enum_names == nullptr && m_enum_keys_map == nullptr &&
+            (! m_values.empty() || ! m_labels.empty()) && (m_values.empty() || m_labels.empty() || m_values.size() == m_labels.size());
+    }
+#endif // NDEBUG
+
+    void                    clear() {
+        m_values_ordinary = false;
+        m_enum_names      = nullptr;
+        m_enum_keys_map   = nullptr;
+        m_values.clear();
+        m_labels.clear();
+    }
+
+    ConfigOptionEnumDef*    clone() const { return new ConfigOptionEnumDef{ *this }; }
+
+private:
+    friend ConfigDef;
+    friend ConfigOptionDef;
+
+    // Only allow ConfigOptionEnumDef() to be created from ConfigOptionDef.
+    ConfigOptionEnumDef() = default;
+
+    void set_values(const std::vector<std::string> &v) {
+        m_values = v;
+        assert(m_labels.empty() || m_labels.size() == m_values.size());
+    }
+    void set_values(const std::initializer_list<std::string_view> il) {
+        m_values.clear();
+        m_values.reserve(il.size());
+        for (const std::string_view p : il)
+            m_values.emplace_back(p);
+        assert(m_labels.empty() || m_labels.size() == m_values.size());
+    }
+    void set_values(const std::initializer_list<std::pair<std::string_view, std::string_view>> il) {
+        m_values.clear();
+        m_values.reserve(il.size());
+        m_labels.clear();
+        m_labels.reserve(il.size());
+        for (const std::pair<std::string_view, std::string_view> p : il) {
+            m_values.emplace_back(p.first);
+            m_labels.emplace_back(p.second);
+        }
+    }
+    void set_labels(const std::initializer_list<std::string_view> il) {
+        m_labels.clear();
+        m_labels.reserve(il.size());
+        for (const std::string_view p : il)
+            m_labels.emplace_back(p);
+        assert(m_values.empty() || m_labels.size() == m_values.size());
+    }
+    void finalize_closed_enum() {
+        assert(this->is_valid_closed_enum());
+        // Check whether def.enum_values contains all the values of def.enum_keys_map and
+        // that they are sorted by their ordinary values.
+        m_values_ordinary = true;
+        for (const std::pair<std::string, int>& key : *m_enum_keys_map) {
+            assert(key.second >= 0);
+            if (key.second >= this->values().size() || this->value(key.second) != key.first) {
+                m_values_ordinary = false;
+                break;
+            }
+        }
+    }
+
+    std::vector<std::string>        m_values;
+    std::vector<std::string>        m_labels;
+    // If true, then enum_values are sorted and they contain all the values, thus the UI element ordinary
+    // to enum value could be converted directly.
+    bool                            m_values_ordinary { false };
+
+    template<typename EnumType>
+    void set_enum_map()
+    {
+        m_enum_names    = &ConfigOptionEnum<EnumType>::get_enum_names();
+        m_enum_keys_map = &ConfigOptionEnum<EnumType>::get_enum_values();
+    }
+
+    // For enums (when type == coEnum). Maps enums to enum names.
+    // Initialized by ConfigOptionEnum<xxx>::get_enum_names()
+    const t_config_enum_names*  m_enum_names{ nullptr };
+    // For enums (when type == coEnum). Maps enum_values to enums.
+    // Initialized by ConfigOptionEnum<xxx>::get_enum_values()
+    const t_config_enum_values* m_enum_keys_map{ nullptr };
+};
+
 // Definition of a configuration value for the purpose of GUI presentation, editing, value mapping and config file handling.
 class ConfigOptionDef
 {
@@ -1629,16 +1802,18 @@ public:
         i_enum_open,
         // Open enums, float value could be one of the enumerated values or something else.
         f_enum_open,
+        // Open enums, string value could be one of the enumerated values or something else.
+        select_open,
         // Color picker, string value.
         color,
-        // ???
-        select_open,
         // Currently unused.
         slider,
         // Static text
         legend,
         // Vector value, but edited as a single string.
         one_string,
+        // Close parameter, string value could be one of the list values.
+        select_close,
     };
 
 	// Identifier of this option. It is stored here so that it is accessible through the by_serialization_key_ordinal map.
@@ -1683,7 +1858,7 @@ public:
 		    case coPoint3:          { auto opt = new ConfigOptionPoint3(); 			archive(*opt); return opt; }
 		    case coBool:            { auto opt = new ConfigOptionBool(); 			archive(*opt); return opt; }
 		    case coBools:           { auto opt = new ConfigOptionBools(); 			archive(*opt); return opt; }
-		    case coEnum:            { auto opt = new ConfigOptionEnumGeneric(this->enum_keys_map); archive(*opt); return opt; }
+		    case coEnum:            { auto opt = new ConfigOptionEnumGeneric(this->enum_def->m_enum_keys_map); archive(*opt); return opt; }
 		    default:                throw ConfigurationError(std::string("ConfigOptionDef::load_option_from_archive(): Unknown option type for option ") + this->opt_key);
 		    }
 		}
@@ -1780,30 +1955,73 @@ public:
     // Sometimes a single value may well define multiple values in a "beginner" mode.
     // Currently used for aliasing "solid_layers" to "top_solid_layers", "bottom_solid_layers".
     std::vector<t_config_option_key>    shortcut;
-    // Definition of values / labels for a combo box.
-    // Mostly used for enums (when type == coEnum), but may be used for ints resp. floats, if gui_type is set to "i_enum_open" resp. "f_enum_open".
-    std::vector<std::string>            enum_values;
-    std::vector<std::string>            enum_labels;
-    // For enums (when type == coEnum). Maps enum_values to enums.
-    // Initialized by ConfigOptionEnum<xxx>::get_enum_values()
-    const t_config_enum_values         *enum_keys_map   = nullptr;
 
-    void set_enum_values(std::initializer_list<std::pair<std::string_view, std::string_view>> il) {
-        enum_values.clear();
-        enum_values.reserve(il.size());
-        enum_labels.clear();
-        enum_labels.reserve(il.size());
-        for (const std::pair<std::string_view, std::string_view> p : il) {
-            enum_values.emplace_back(p.first);
-            enum_labels.emplace_back(p.second);
-        }
+    Slic3r::clonable_ptr<ConfigOptionEnumDef> enum_def;
+
+    void set_enum_values(const std::initializer_list<std::string_view> il) {
+        this->enum_def_new();
+        enum_def->set_values(il);
+    }
+
+    void set_enum_values(GUIType gui_type, const std::initializer_list<std::string_view> il) {
+        this->enum_def_new();
+        assert(gui_type == GUIType::i_enum_open || gui_type == GUIType::f_enum_open || gui_type == GUIType::select_open);
+        this->gui_type = gui_type;
+        enum_def->set_values(il);
+    }
+
+    void set_enum_values(const std::initializer_list<std::pair<std::string_view, std::string_view>> il) {
+        this->enum_def_new();
+        enum_def->set_values(il);
+    }
+
+    void set_enum_values(GUIType gui_type, const std::initializer_list<std::pair<std::string_view, std::string_view>> il) {
+        this->enum_def_new();
+        assert(gui_type == GUIType::i_enum_open || gui_type == GUIType::f_enum_open);
+        this->gui_type = gui_type;
+        enum_def->set_values(il);
+    }
+
+    template<typename Values, typename Labels>
+    void set_enum_values(Values &&values, Labels &&labels) {
+        this->enum_def_new();
+        enum_def->set_values(std::move(values));
+        enum_def->set_labels(std::move(labels));
+    }
+
+    void set_enum_labels(GUIType gui_type, const std::initializer_list<std::string_view> il) {
+        this->enum_def_new();
+        assert(gui_type == GUIType::i_enum_open || gui_type == GUIType::f_enum_open || gui_type == ConfigOptionDef::GUIType::select_open);
+        this->gui_type = gui_type;
+        enum_def->set_labels(il);
+    }
+
+    template<typename EnumType>
+    void set_enum(std::initializer_list<std::string_view> il) {
+        this->set_enum_values(il);
+        enum_def->set_enum_map<EnumType>();
+    }
+
+    template<typename EnumType>
+    void set_enum(std::initializer_list<std::pair<std::string_view, std::string_view>> il) {
+        this->set_enum_values(il);
+        enum_def->set_enum_map<EnumType>();
+    }
+
+    template<typename EnumType, typename Values, typename Labels>
+    void set_enum(Values &&values, Labels &&labels) {
+        this->set_enum_values(std::move(values), std::move(labels));
+        enum_def->set_enum_map<EnumType>();
+    }
+
+    template<typename EnumType, typename Values>
+    void set_enum(Values &&values, const std::initializer_list<std::string_view> labels) {
+        this->set_enum_values(std::move(values), labels);
+        enum_def->set_enum_map<EnumType>();
     }
 
     bool has_enum_value(const std::string &value) const {
-        for (const std::string &v : enum_values)
-            if (v == value)
-                return true;
-        return false;
+        return enum_def && enum_def->value_to_index(value).has_value();
     }
 
     // 0 is an invalid key.
@@ -1815,6 +2033,14 @@ public:
 
     // Assign this key to cli to disable CLI for this option.
     static const constexpr char *nocli =  "~~~noCLI";
+
+private:
+    void    enum_def_new() {
+        if (enum_def)
+            enum_def->clear();
+        else
+            enum_def = Slic3r::clonable_ptr<ConfigOptionEnumDef>(new ConfigOptionEnumDef{});
+    }
 };
 
 inline bool operator<(const ConfigSubstitution &lhs, const ConfigSubstitution &rhs) throw() {
@@ -1860,6 +2086,8 @@ public:
 protected:
     ConfigOptionDef*        add(const t_config_option_key &opt_key, ConfigOptionType type);
     ConfigOptionDef*        add_nullable(const t_config_option_key &opt_key, ConfigOptionType type);
+    // Finalize open / close enums, validate everything.
+    void                    finalize();
 };
 
 // A pure interface to resolving ConfigOptions.
@@ -1969,7 +2197,12 @@ public:
         { return dynamic_cast<T*>(this->optptr(opt_key, create)); }
     template<class T> const T* opt(const t_config_option_key &opt_key) const
         { return dynamic_cast<const T*>(this->optptr(opt_key)); }
-    
+
+    // Get definition for a particular option.
+    // Returns null if such an option definition does not exist.
+    const ConfigOptionDef*           option_def(const t_config_option_key &opt_key) const
+        { return this->def()->get(opt_key); }
+
     // Apply all keys of other ConfigBase defined by this->def() to this ConfigBase.
     // An UnknownOptionException is thrown in case some option keys of other are not defined by this->def(),
     // or this ConfigBase is of a StaticConfig type and it does not support some of the keys, and ignore_nonexistent is not set.

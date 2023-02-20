@@ -361,6 +361,8 @@ inline Slic3r::Polygons   expand(const Slic3r::Polygon &polygon, const float del
     { assert(delta > 0); return offset(polygon, delta, joinType, miterLimit); }
 inline Slic3r::Polygons   expand(const Slic3r::Polygons &polygons, const float delta, ClipperLib::JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
     { assert(delta > 0); return offset(polygons, delta, joinType, miterLimit); }
+inline Slic3r::Polygons   expand(const Slic3r::ExPolygons &polygons, const float delta, ClipperLib::JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+    { assert(delta > 0); return offset(polygons, delta, joinType, miterLimit); }
 inline Slic3r::ExPolygons expand_ex(const Slic3r::Polygons &polygons, const float delta, ClipperLib::JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
     { assert(delta > 0); return offset_ex(polygons, delta, joinType, miterLimit); }
 // Input polygons for shrinking shall be "normalized": There must be no overlap / intersections between the input polygons.

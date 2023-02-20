@@ -424,8 +424,12 @@ void PrintObject::generate_support_spots()
                                                  float(this->print()->m_config.perimeter_acceleration.getFloat()),
                                                  this->config().raft_layers.getInt(), this->config().brim_type.value,
                                                  float(this->config().brim_width.getFloat())};
-            auto [supp_points, partial_objects]              = SupportSpotsGenerator::full_search(this, cancel_func, params);
-            this->m_shared_regions->generated_support_points = {this->trafo_centered(), supp_points, partial_objects};
+            auto [supp_points, partial_objects] = SupportSpotsGenerator::full_search(this, cancel_func, params);
+            Transform3d po_transform            = this->trafo_centered();
+            if (this->layer_count() > 0) {
+                po_transform = Geometry::translation_transform(Vec3d{0, 0, this->layers().front()->bottom_z()}) * po_transform;
+            }
+            this->m_shared_regions->generated_support_points = {po_transform, supp_points, partial_objects};
             m_print->throw_if_canceled();
         }
         BOOST_LOG_TRIVIAL(debug) << "Searching support spots - end";
@@ -620,8 +624,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "slicing_mode") {
             steps.emplace_back(posSlice);
 		} else if (
-               opt_key == "clip_multipart_objects"
-            || opt_key == "elefant_foot_compensation"
+               opt_key == "elefant_foot_compensation"
             || opt_key == "support_material_contact_distance" 
             || opt_key == "xy_size_compensation") {
             steps.emplace_back(posSlice);

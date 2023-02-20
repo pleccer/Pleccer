@@ -102,6 +102,7 @@ public:
     void reverse() override;
     const Point& first_point() const override { return this->entities.front()->first_point(); }
     const Point& last_point() const override { return this->entities.back()->last_point(); }
+    const Point& middle_point() const override { return this->entities[this->entities.size() / 2]->middle_point(); }
     // Produce a list of 2D polygons covered by the extruded paths, offsetted by the extrusion width.
     // Increase the offset by scaled_epsilon to achieve an overlap, so a union will produce no gaps.
     void polygons_covered_by_width(Polygons &out, const float scaled_epsilon) const override;

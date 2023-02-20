@@ -453,6 +453,8 @@ public:
     std::vector<unsigned int> get_missing_volume_idxs_from(const std::vector<unsigned int>& volume_idxs) const;
     // returns the list of idxs of the volumes contained in the given list but not in the selection
     std::vector<unsigned int> get_unselected_volume_idxs_from(const std::vector<unsigned int>& volume_idxs) const;
+    // returns the list of idxs of the objects which are in the selection
+    std::set<unsigned int> get_object_idxs() const;
 
 #if ENABLE_WORLD_COORDINATE_DEBUG
     void render_debug_window() const;
@@ -497,10 +499,6 @@ public:
         NONE = 0,
         // Synchronize after rotation by an axis not parallel with Z.
         GENERAL = 1,
-#if ENABLE_WORLD_COORDINATE
-        // Fully synchronize rotation.
-        FULL = 2,
-#endif // ENABLE_WORLD_COORDINATE
     };
     void synchronize_unselected_instances(SyncRotationType sync_rotation_type);
     void synchronize_unselected_volumes();

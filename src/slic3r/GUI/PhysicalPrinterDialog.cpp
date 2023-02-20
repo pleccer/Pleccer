@@ -241,9 +241,7 @@ PhysicalPrinterDialog::PhysicalPrinterDialog(wxWindow* parent, wxString printer_
         m_printer_name->SelectAll();
     }
 
-    const wxSize& bestsize = this->GetBestSize();
-    const wxSize& size = wxSize(bestsize.x, 1.1f * bestsize.y);
-    this->SetSize(size);
+    this->Fit();
     this->Layout();
 
     this->CenterOnScreen();
@@ -464,7 +462,7 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
         choice->set_selection();
     }
 
-    update();
+    update(true);
 }
 
 void PhysicalPrinterDialog::update_printhost_buttons()
@@ -532,10 +530,11 @@ void PhysicalPrinterDialog::update(bool printer_change)
 
     update_printhost_buttons();
 
-    const wxSize& bestsize= this->GetBestSize();
-    const wxSize& size = wxSize( bestsize.x, 1.1f * bestsize.y);
-    this->SetSize(size);
+    this->Fit();
     this->Layout();
+#ifdef __WXMSW__
+    this->Refresh();
+#endif
 }
 
 void PhysicalPrinterDialog::update_host_type(bool printer_change)
@@ -614,32 +613,34 @@ void PhysicalPrinterDialog::update_host_type(bool printer_change)
 
 
     // Append localized enum_labels
-    assert(ht->m_opt.enum_labels.size() == ht->m_opt.enum_values.size());
-    for (size_t i = 0; i < ht->m_opt.enum_labels.size(); i++) {
-        if (ht->m_opt.enum_values[i] == "prusalink"){
-            link.label = _(ht->m_opt.enum_labels[i]);
+    assert(ht->m_opt.enum_def->labels().size() == ht->m_opt.enum_def->values().size());
+    for (size_t i = 0; i < ht->m_opt.enum_def->labels().size(); ++ i) {
+        wxString label = _(ht->m_opt.enum_def->label(i));
+        if (const std::string &value = ht->m_opt.enum_def->value(i);
+            value == "prusalink") {
+            link.label = label;
             if (!link.supported)
                 continue;
-        }
-        if (ht->m_opt.enum_values[i] == "prusaconnect") {
-            connect.label = _(ht->m_opt.enum_labels[i]);
+        } else if (value == "prusaconnect") {
+            connect.label = label;
             if (!connect.supported)
                 continue;
         }
 
-        types.Add(_(ht->m_opt.enum_labels[i]));
+        types.Add(label);
     }
 
     Choice* choice = dynamic_cast<Choice*>(ht);
     choice->set_values(types);
-    int index_in_choice = (printer_change ? 0 : last_in_conf);
+    int dif = (int)ht->m_opt.enum_def->values().size() - (int)types.size();
+    int index_in_choice = (printer_change ? std::clamp(last_in_conf - ((int)ht->m_opt.enum_def->values().size() - (int)types.size()), 0, (int)ht->m_opt.enum_def->values().size() - 1) : last_in_conf);
     choice->set_value(index_in_choice);
-    if (link.supported && link.label == _(ht->m_opt.enum_labels[index_in_choice]))
+    if (link.supported && link.label == _(ht->m_opt.enum_def->label(index_in_choice)))
         m_config->set_key_value("host_type", new ConfigOptionEnum<PrintHostType>(htPrusaLink));
-    else if (link.supported && link.label == _(ht->m_opt.enum_labels[index_in_choice]))
+    else if (connect.supported && connect.label == _(ht->m_opt.enum_def->label(index_in_choice)))
         m_config->set_key_value("host_type", new ConfigOptionEnum<PrintHostType>(htPrusaConnect));
     else {
-        int host_type = std::clamp(index_in_choice + ((int)ht->m_opt.enum_values.size() - (int)types.size()), 0, (int)ht->m_opt.enum_values.size() - 1);
+        int host_type = std::clamp(index_in_choice + ((int)ht->m_opt.enum_def->values().size() - (int)types.size()), 0, (int)ht->m_opt.enum_def->values().size() - 1);
         PrintHostType type = static_cast<PrintHostType>(host_type);
         m_config->set_key_value("host_type", new ConfigOptionEnum<PrintHostType>(type));
     }

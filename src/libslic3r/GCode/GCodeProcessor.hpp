@@ -559,6 +559,7 @@ namespace Slic3r {
 #if ENABLE_GCODE_VIEWER_STATISTICS
         std::chrono::time_point<std::chrono::high_resolution_clock> m_start_time;
 #endif // ENABLE_GCODE_VIEWER_STATISTICS
+        bool m_single_extruder_multi_material;
 
         enum class EProducer
         {

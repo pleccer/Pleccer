@@ -219,6 +219,7 @@ protected:
 
     void render_grabbers(const BoundingBoxf3& box) const;
     void render_grabbers(float size) const;
+    void render_grabbers(size_t first, size_t last, float size, bool force_hover) const;
 
     std::string format(float value, unsigned int decimals) const;
 

@@ -300,7 +300,7 @@ bool OctoPrint::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
     boost::asio::ip::address host_ip = boost::asio::ip::make_address(host, ec);
     if (!ec) {
         resolved_addr.push_back(host_ip);
-    } else if ( GUI::get_app_config()->get("allow_ip_resolve") == "1" && boost::algorithm::ends_with(host, ".local")){
+    } else if ( GUI::get_app_config()->get_bool("allow_ip_resolve") && boost::algorithm::ends_with(host, ".local")){
         Bonjour("octoprint")
             .set_hostname(host)
             .set_retries(5) // number of rounds of queries send
@@ -428,7 +428,7 @@ bool OctoPrint::upload_inner_with_host(PrintHostUpload upload_data, ProgressFn p
 
 #ifdef WIN32
     // Workaround for Windows 10/11 mDNS resolve issue, where two mDNS resolves in succession fail.
-    if (m_host.find("https://") == 0 || test_msg_or_host_ip.empty() || GUI::get_app_config()->get("allow_ip_resolve") != "1")
+    if (m_host.find("https://") == 0 || test_msg_or_host_ip.empty() || !GUI::get_app_config()->get_bool("allow_ip_resolve"))
 #endif // _WIN32
     {
         // If https is entered we assume signed ceritificate is being used
@@ -734,11 +734,14 @@ bool PrusaLink::get_storage(wxArrayString& output) const
                 const auto path = section.second.get_optional<std::string>("path");
                 const auto space = section.second.get_optional<std::string>("free_space");
                 const auto read_only = section.second.get_optional<bool>("read_only");
+                const auto ro = section.second.get_optional<bool>("ro"); // In PrusaLink 0.7.0RC2 "read_only" value is stored under "ro".
                 const auto available = section.second.get_optional<bool>("available");
                 if (path && (!available || *available)) {
                     StorageInfo si;
                     si.name = boost::nowide::widen(*path);
-                    si.read_only = read_only ? *read_only : false; // If read_only is missing, assume it is NOT read only.
+                    // If read_only is missing, assume it is NOT read only.
+                    // si.read_only = read_only ? *read_only : false; // version without "ro"
+                    si.read_only = (read_only ? *read_only : (ro ? *ro : false));
                     si.free_space = space ? std::stoll(*space) : 1;  // If free_space is missing, assume there is free space.
                     storage.emplace_back(std::move(si));
                 }
@@ -972,7 +975,7 @@ bool PrusaLink::upload_inner_with_host(PrintHostUpload upload_data, ProgressFn p
     storage_path += (upload_data.storage.empty() ? "/local" : upload_data.storage);
 #ifdef WIN32
     // Workaround for Windows 10/11 mDNS resolve issue, where two mDNS resolves in succession fail.
-    if (m_host.find("https://") == 0 || test_msg_or_host_ip.empty() || GUI::get_app_config()->get("allow_ip_resolve") != "1")
+    if (m_host.find("https://") == 0 || test_msg_or_host_ip.empty() || !GUI::get_app_config()->get_bool("allow_ip_resolve"))
 #endif // _WIN32
     {
         // If https is entered we assume signed ceritificate is being used

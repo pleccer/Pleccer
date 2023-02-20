@@ -818,8 +818,11 @@ static float get_cursor_height()
 void GLCanvas3D::Tooltip::set_text(const std::string& text)
 {
     // If the mouse is inside an ImGUI dialog, then the tooltip is suppressed.
-    m_text = m_in_imgui ? std::string() : text;
-    m_cursor_height = get_cursor_height();
+    const std::string& new_text = m_in_imgui ? std::string() : text;
+    if (m_text != new_text) { // To avoid calling the expensive call to get_cursor_height.
+        m_text = new_text;
+        m_cursor_height = get_cursor_height();
+    }
 }
 
 void GLCanvas3D::Tooltip::render(const Vec2d& mouse_position, GLCanvas3D& canvas)
@@ -2305,7 +2308,7 @@ void GLCanvas3D::on_char(wxKeyEvent& evt)
 #endif /* __APPLE__ */
         {
 #ifdef _WIN32
-            if (wxGetApp().app_config->get("use_legacy_3DConnexion") == "1") {
+            if (wxGetApp().app_config->get_bool("use_legacy_3DConnexion")) {
 #endif //_WIN32
 #ifdef __APPLE__
             // On OSX use Cmd+Shift+M to "Show/Hide 3Dconnexion devices settings dialog"
@@ -2780,7 +2783,7 @@ void GLCanvas3D::on_mouse_wheel(wxMouseEvent& evt)
         return;
 
     // Calculate the zoom delta and apply it to the current zoom factor
-    double direction_factor = (wxGetApp().app_config->get("reverse_mouse_wheel_zoom") == "1") ? -1.0 : 1.0;
+    double direction_factor = wxGetApp().app_config->get_bool("reverse_mouse_wheel_zoom") ? -1.0 : 1.0;
     _update_camera_zoom(direction_factor * (double)evt.GetWheelRotation() / (double)evt.GetWheelDelta());
 }
 
@@ -3209,7 +3212,7 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             if (!m_moving) {
                 if ((any_gizmo_active || evt.CmdDown() || m_hover_volume_idxs.empty()) && m_mouse.is_start_position_3D_defined()) {
                     const Vec3d rot = (Vec3d(pos.x(), pos.y(), 0.0) - m_mouse.drag.start_position_3D) * (PI * TRACKBALLSIZE / 180.0);
-                    if (wxGetApp().app_config->get("use_free_camera") == "1")
+                    if (wxGetApp().app_config->get_bool("use_free_camera"))
                         // Virtual track ball (similar to the 3DConnexion mouse).
                         wxGetApp().plater()->get_camera().rotate_local_around_target(Vec3d(rot.y(), rot.x(), 0.0));
                     else {
@@ -3235,7 +3238,7 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
                 const Vec3d cur_pos = _mouse_to_3d(pos, &z);
                 const Vec3d orig = _mouse_to_3d(m_mouse.drag.start_position_2D, &z);
                 Camera& camera = wxGetApp().plater()->get_camera();
-                if (wxGetApp().app_config->get("use_free_camera") != "1")
+                if (!wxGetApp().app_config->get_bool("use_free_camera"))
                     // Forces camera right vector to be parallel to XY plane in case it has been misaligned using the 3D mouse free rotation.
                     // It is cheaper to call this function right away instead of testing wxGetApp().plater()->get_mouse3d_controller().connected(),
                     // which checks an atomics (flushes CPU caches).
@@ -3803,7 +3806,7 @@ void GLCanvas3D::update_ui_from_settings()
     // Update OpenGL scaling on OSX after the user toggled the "use_retina_opengl" settings in Preferences dialog.
     const float orig_scaling = m_retina_helper->get_scale_factor();
 
-    const bool use_retina = wxGetApp().app_config->get("use_retina_opengl") == "1";
+    const bool use_retina = wxGetApp().app_config->get_bool("use_retina_opengl");
     BOOST_LOG_TRIVIAL(debug) << "GLCanvas3D: Use Retina OpenGL: " << use_retina;
     m_retina_helper->set_use_retina(use_retina);
     const float new_scaling = m_retina_helper->get_scale_factor();
@@ -3818,7 +3821,7 @@ void GLCanvas3D::update_ui_from_settings()
 #endif // ENABLE_RETINA_GL
 
     if (wxGetApp().is_editor())
-        wxGetApp().plater()->enable_collapse_toolbar(wxGetApp().app_config->get("show_collapse_button") == "1");
+        wxGetApp().plater()->enable_collapse_toolbar(wxGetApp().app_config->get_bool("show_collapse_button"));
 }
 
 GLCanvas3D::WipeTowerInfo GLCanvas3D::get_wipe_tower_info() const
@@ -3944,8 +3947,8 @@ void GLCanvas3D::update_sequential_clearance()
     // the results are then cached for following displacements
     if (m_sequential_print_clearance_first_displacement) {
         m_sequential_print_clearance.m_hull_2d_cache.clear();
-        float shrink_factor = static_cast<float>(scale_(0.5 * fff_print()->config().extruder_clearance_radius.value - EPSILON));
-        double mitter_limit = scale_(0.1);
+        const float shrink_factor = static_cast<float>(scale_(0.5 * fff_print()->config().extruder_clearance_radius.value - EPSILON));
+        const double mitter_limit = scale_(0.1);
         m_sequential_print_clearance.m_hull_2d_cache.reserve(m_model->objects.size());
         for (size_t i = 0; i < m_model->objects.size(); ++i) {
             ModelObject* model_object = m_model->objects[i];
@@ -3953,7 +3956,7 @@ void GLCanvas3D::update_sequential_clearance()
 #if ENABLE_WORLD_COORDINATE
             Geometry::Transformation trafo = model_instance0->get_transformation();
             trafo.set_offset({ 0.0, 0.0, model_instance0->get_offset().z() });
-            Polygon hull_2d = offset(model_object->convex_hull_2d(trafo.get_matrix()),
+            const Polygon hull_2d = offset(model_object->convex_hull_2d(trafo.get_matrix()),
                 // Shrink the extruder_clearance_radius a tiny bit, so that if the object arrangement algorithm placed the objects
                 // exactly by satisfying the extruder_clearance_radius, this test will not trigger collision.
                 shrink_factor,
@@ -3969,8 +3972,9 @@ void GLCanvas3D::update_sequential_clearance()
 
             Pointf3s& cache_hull_2d = m_sequential_print_clearance.m_hull_2d_cache.emplace_back(Pointf3s());
             cache_hull_2d.reserve(hull_2d.points.size());
+            const Transform3d inv_trafo = trafo.get_matrix().inverse();
             for (const Point& p : hull_2d.points) {
-                cache_hull_2d.emplace_back(unscale<double>(p.x()), unscale<double>(p.y()), 0.0);
+                cache_hull_2d.emplace_back(inv_trafo * Vec3d(unscale<double>(p.x()), unscale<double>(p.y()), 0.0));
             }
         }
         m_sequential_print_clearance_first_displacement = false;
@@ -3981,13 +3985,8 @@ void GLCanvas3D::update_sequential_clearance()
     polygons.reserve(instances_count);
     for (size_t i = 0; i < instance_transforms.size(); ++i) {
         const auto& instances = instance_transforms[i];
-        double rotation_z0 = instances.front()->get_rotation().z();
         for (const auto& instance : instances) {
-            Geometry::Transformation transformation;
-            const Vec3d& offset = instance->get_offset();
-            transformation.set_offset({ offset.x(), offset.y(), 0.0 });
-            transformation.set_rotation(Z, instance->get_rotation().z() - rotation_z0);
-            const Transform3d& trafo = transformation.get_matrix();
+            const Transform3d& trafo = instance->get_matrix();
             const Pointf3s& hull_2d = m_sequential_print_clearance.m_hull_2d_cache[i];
             Points inst_pts;
             inst_pts.reserve(hull_2d.size());
@@ -4722,8 +4721,8 @@ bool GLCanvas3D::_init_main_toolbar()
                                                 "\n" + "[" + GUI::shortkey_ctrl_prefix() + "4] - " + _u8L("Printer Settings Tab") ;
     item.sprite_id = 10;
     item.enabling_callback    = GLToolbarItem::Default_Enabling_Callback;
-    item.visibility_callback  = []() { return (wxGetApp().app_config->get("new_settings_layout_mode") == "1" ||
-                                               wxGetApp().app_config->get("dlg_settings_layout_mode") == "1"); };
+    item.visibility_callback  = []() { return wxGetApp().app_config->get_bool("new_settings_layout_mode") ||
+                                              wxGetApp().app_config->get_bool("dlg_settings_layout_mode"); };
     item.left.action_callback = []() { wxGetApp().mainframe->select_tab(); };
     if (!m_main_toolbar.add_item(item))
         return false;
@@ -7057,7 +7056,7 @@ void GLCanvas3D::GizmoHighlighter::init(GLGizmosManager* manager, GLGizmosManage
 {
     if (m_timer.IsRunning())
         invalidate();
-    if (!gizmo || !canvas)
+    if (gizmo == GLGizmosManager::EType::Undefined || !canvas)
         return;
 
     m_timer.Start(300, false);

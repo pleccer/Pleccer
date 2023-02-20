@@ -42,7 +42,7 @@ TreeSupportMeshGroupSettings::TreeSupportMeshGroupSettings(const PrintObject &pr
 //    const std::vector<unsigned int>  printing_extruders = print_object.object_extruders();
 
     // Support must be enabled and set to Tree style.
-    assert(config.support_material);
+    assert(config.support_material || config.support_material_enforce_layers > 0);
     assert(config.support_material_style == smsTree || config.support_material_style == smsOrganic);
 
     // Calculate maximum external perimeter width over all printing regions, taking into account the default layer height.
@@ -505,7 +505,7 @@ void TreeModelVolumes::calculateCollision(const coord_t radius, const LayerIndex
             // 1) Calculate offsets of collision areas in parallel.
             std::vector<Polygons> collision_areas_offsetted(max_required_layer + 1 - min_layer_bottom);
             tbb::parallel_for(tbb::blocked_range<LayerIndex>(min_layer_bottom, max_required_layer + 1),
-                [&outlines, &machine_border = m_machine_border, offset_value = radius + xy_distance, min_layer_bottom, &collision_areas_offsetted, &throw_on_cancel]
+                [&outlines, &machine_border = std::as_const(m_machine_border), offset_value = radius + xy_distance, min_layer_bottom, &collision_areas_offsetted, &throw_on_cancel]
                 (const tbb::blocked_range<LayerIndex> &range) {
                 for (LayerIndex layer_idx = range.begin(); layer_idx != range.end(); ++ layer_idx) {
                     Polygons collision_areas = machine_border;
@@ -520,14 +520,54 @@ void TreeModelVolumes::calculateCollision(const coord_t radius, const LayerIndex
             // 2) Sum over top / bottom ranges.
             const bool last = outline_idx == layer_outline_indices.size();
             tbb::parallel_for(tbb::blocked_range<LayerIndex>(min_layer_last + 1, max_layer_idx + 1),
-                [&collision_areas_offsetted, &anti_overhang = m_anti_overhang, min_layer_bottom, radius, z_distance_bottom_layers, z_distance_top_layers, min_resolution = m_min_resolution, &data, min_layer_last, last, &throw_on_cancel]
+                [&collision_areas_offsetted, &outlines, &machine_border = m_machine_border, &anti_overhang = m_anti_overhang, min_layer_bottom, radius, 
+                    xy_distance, z_distance_bottom_layers, z_distance_top_layers, min_resolution = m_min_resolution, &data, min_layer_last, last, &throw_on_cancel]
             (const tbb::blocked_range<LayerIndex>& range) {
                     for (LayerIndex layer_idx = range.begin(); layer_idx != range.end(); ++layer_idx) {
                         Polygons collisions;
                         for (int i = -z_distance_bottom_layers; i <= z_distance_top_layers; ++ i) {
                             int j = layer_idx + i - min_layer_bottom;
-                            if (j >= 0 && j < int(collision_areas_offsetted.size()))
+                            if (j >= 0 && j < int(collision_areas_offsetted.size()) && i <= 0)
                                 append(collisions, collision_areas_offsetted[j]);
+                            else if (j >= 0 && layer_idx + i < int(outlines.size()) && i > 0) {
+                                Polygons collision_areas_original = machine_border;
+                                append(collision_areas_original, outlines[layer_idx + i]);
+
+                                // If just the collision (including the xy distance) of the layers above is accumulated, it leads to the
+                                // following issue:
+                                // Example: assuming the z distance is 2 layer
+                                // + = xy_distance
+                                // - = model
+                                // o = overhang of the area two layers above that should result in tips on this layer
+                                //
+                                //  +-----+
+                                //   +-----+
+                                //    +-----+
+                                //   o +-----+
+                                // If just the collision above is accumulated the overhang will get overwritten by the xy_distance of the
+                                // layer below the overhang...
+                                //
+                                // This only causes issues if the overhang area is thinner than xy_distance
+                                // Just accumulating areas of the model above without the xy distance is also problematic, as then support
+                                // may get closer to the model (on the diagonal downwards) than the user intended. Example (s = support):
+                                //  +-----+
+                                //   +-----+
+                                //   +-----+
+                                //   s+-----+
+
+                                // technically the calculation below is off by one layer, as the actual distance between plastic one layer
+                                // down is 0 not layer height, as this layer is filled with said plastic. But otherwise a part of the
+                                // overhang that is expected to be supported is overwritten by the remaining part of the xy distance of the
+                                // layer below the to be supported area.
+                                coord_t required_range_x =
+                                    (xy_distance - ((i - (z_distance_top_layers == 1 ? 0.5 : 0)) * xy_distance / z_distance_top_layers)); 
+                                    // the conditional -0.5 ensures that plastic can never touch on the diagonal
+                                    // downward when the z_distance_top_layers = 1. It is assumed to be better to
+                                    // not support an overhang<90 degree than to risk fusing to it.
+
+                                collision_areas_original = offset(union_ex(collision_areas_original), radius + required_range_x, ClipperLib::jtMiter, 1.2);
+                                append(collisions, collision_areas_original);
+                            }
                         }
                         collisions = last && layer_idx < int(anti_overhang.size()) ? union_(collisions, offset(union_ex(anti_overhang[layer_idx]), radius, ClipperLib::jtMiter, 1.2)) : union_(collisions);
                         auto &dst = data[layer_idx - (min_layer_last + 1)];
@@ -644,7 +684,8 @@ void TreeModelVolumes::calculateAvoidance(const std::vector<RadiusLayerPair> &ke
             BOOST_LOG_TRIVIAL(debug) << "Calculation requested for value already calculated?";
             continue;
         }
-        if (! task.holefree() || task.radius < m_increase_until_radius + m_current_min_xy_dist_delta)
+        if ((task.to_model ? to_model : to_build_plate) &&
+            (! task.holefree() || task.radius < m_increase_until_radius + m_current_min_xy_dist_delta))
             avoidance_tasks.emplace_back(task);
     }
 

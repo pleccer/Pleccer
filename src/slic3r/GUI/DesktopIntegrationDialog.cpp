@@ -218,9 +218,9 @@ bool DesktopIntegrationDialog::integration_possible()
 {
     return true;
 }
-void DesktopIntegrationDialog::perform_desktop_integration(bool perform_downloader)
+void DesktopIntegrationDialog::perform_desktop_integration()
 {
-	BOOST_LOG_TRIVIAL(debug) << "performing desktop integration. With downloader integration: " << perform_downloader;
+	BOOST_LOG_TRIVIAL(debug) << "performing desktop integration.";
     // Path to appimage
     const char *appimage_env = std::getenv("APPIMAGE");
     std::string excutable_path;
@@ -338,42 +338,47 @@ void DesktopIntegrationDialog::perform_desktop_integration(bool perform_download
         "StartupNotify=false\n"
         "StartupWMClass=prusa-slicer\n", name_suffix, version_suffix, excutable_path);
 
+    bool candidate_found = false;
     for (size_t i = 0; i < target_candidates.size(); ++i) {
         if (contains_path_dir(target_candidates[i], "applications")) {
             target_dir_desktop = target_candidates[i];
             // Write slicer desktop file
             std::string path = GUI::format("%1%/applications/PrusaSlicer%2%.desktop", target_dir_desktop, version_suffix);
-            if (create_desktop_file(path, desktop_file)){
+            if (create_desktop_file(path, desktop_file)) {
+                candidate_found = true;
                 BOOST_LOG_TRIVIAL(debug) << "PrusaSlicer.desktop file installation success.";
                 break;
-            } else {
-            	// write failed - try another path
-                BOOST_LOG_TRIVIAL(debug) << "Attempt to PrusaSlicer.desktop file installation failed. failed path: " << target_candidates[i];
-                target_dir_desktop.clear(); 
             }
-        }
-        // if all failed - try creating default home folder
-        if (i == target_candidates.size() - 1) {
-            // create $HOME/.local/share
-            create_path(boost::nowide::narrow(wxFileName::GetHomeDir()), ".local/share/applications");
-            // create desktop file
-            target_dir_desktop = GUI::format("%1%/.local/share",wxFileName::GetHomeDir());
-            std::string path = GUI::format("%1%/applications/PrusaSlicer%2%.desktop", target_dir_desktop, version_suffix);
-            if (contains_path_dir(target_dir_desktop, "applications")) {
-                if (!create_desktop_file(path, desktop_file)) {    
-                    // Desktop file not written - end desktop integration
-                    BOOST_LOG_TRIVIAL(error) << "Performing desktop integration failed - could not create desktop file";
-                    return;
-                }
-             } else {
-             	// Desktop file not written - end desktop integration
-                BOOST_LOG_TRIVIAL(error) << "Performing desktop integration failed because the application directory was not found.";
-                return;
+            else {
+                // write failed - try another path
+                BOOST_LOG_TRIVIAL(debug) << "Attempt to PrusaSlicer.desktop file installation failed. failed path: " << target_candidates[i];
+                target_dir_desktop.clear();
             }
         }
     }
-    if(target_dir_desktop.empty()) {
-    	// Desktop file not written - end desktop integration
+    // if all failed - try creating default home folder
+    if (!candidate_found) {
+        // create $HOME/.local/share
+        create_path(boost::nowide::narrow(wxFileName::GetHomeDir()), ".local/share/applications");
+        // create desktop file
+        target_dir_desktop = GUI::format("%1%/.local/share", wxFileName::GetHomeDir());
+        std::string path = GUI::format("%1%/applications/PrusaSlicer%2%.desktop", target_dir_desktop, version_suffix);
+        if (contains_path_dir(target_dir_desktop, "applications")) {
+            if (!create_desktop_file(path, desktop_file)) {
+                // Desktop file not written - end desktop integration
+                BOOST_LOG_TRIVIAL(error) << "Performing desktop integration failed - could not create desktop file";
+                return;
+            }
+        }
+        else {
+            // Desktop file not written - end desktop integration
+            BOOST_LOG_TRIVIAL(error) << "Performing desktop integration failed because the application directory was not found.";
+            return;
+        }
+    }
+    assert(!target_dir_desktop.empty());
+    if (target_dir_desktop.empty()) {
+        // Desktop file not written - end desktop integration
         BOOST_LOG_TRIVIAL(error) << "Performing desktop integration failed because the application directory was not found.";
         show_error(nullptr, _L("Performing desktop integration failed because the application directory was not found."));
         return;
@@ -418,38 +423,6 @@ void DesktopIntegrationDialog::perform_desktop_integration(bool perform_download
             show_error(nullptr, _L("Performing desktop integration failed - could not create Gcodeviewer desktop file. PrusaSlicer desktop file was probably created successfully."));
         }
     }
-    
-    if (perform_downloader)
-    {
-         std::string desktop_file_downloader = GUI::format(
-            "[Desktop Entry]\n"
-            "Name=PrusaSlicer URL Protocol%1%\n"
-            "Exec=\"%3%\" --single-instance %%u\n"
-            "Icon=PrusaSlicer%4%\n"
-            "Terminal=false\n"
-            "Type=Application\n"
-            "MimeType=x-scheme-handler/prusaslicer;\n"
-            "StartupNotify=false\n"
-            , name_suffix, version_suffix, excutable_path, version_suffix);
-        
-        // desktop file for downloader as part of main app
-        std::string desktop_path = GUI::format("%1%/applications/PrusaSlicerURLProtocol%2%.desktop", target_dir_desktop, version_suffix);
-        if (create_desktop_file(desktop_path, desktop_file_downloader)) {
-            // save path to desktop file
-            app_config->set("desktop_integration_URL_path", desktop_path);
-            // finish registration on mime type
-            std::string command = GUI::format("xdg-mime default PrusaSlicerURLProtocol%1%.desktop x-scheme-handler/prusaslicer", version_suffix);
-            BOOST_LOG_TRIVIAL(debug) << "system command: " << command;
-            int r = system(command.c_str());
-            BOOST_LOG_TRIVIAL(debug) << "system result: " << r;
-
-        } else {
-            BOOST_LOG_TRIVIAL(error) << "Performing desktop integration failed - could not create URL Protocol desktop file";
-            show_error(nullptr, _L("Performing desktop integration failed - could not create URL Protocol desktop file."));
-            return;
-        }
-    }
-
     wxGetApp().plater()->get_notification_manager()->push_notification(NotificationType::DesktopIntegrationSuccess);
 }
 void DesktopIntegrationDialog::undo_desktop_intgration()
@@ -482,15 +455,162 @@ void DesktopIntegrationDialog::undo_desktop_intgration()
             std::remove(path.c_str());
         }
     }
-    // URL Protocol
-    path = std::string(app_config->get("desktop_integration_URL_path"));
-    if (!path.empty()) {
-        BOOST_LOG_TRIVIAL(debug) << "removing " << path;
-        std::remove(path.c_str());  
-    }
     wxGetApp().plater()->get_notification_manager()->push_notification(NotificationType::UndoDesktopIntegrationSuccess);
 }
+void DesktopIntegrationDialog::perform_downloader_desktop_integration()
+{
+    BOOST_LOG_TRIVIAL(debug) << "performing downloader desktop integration.";
+    // Path to appimage
+    const char* appimage_env = std::getenv("APPIMAGE");
+    std::string excutable_path;
+    if (appimage_env) {
+        try {
+            excutable_path = boost::filesystem::canonical(boost::filesystem::path(appimage_env)).string();
+        }
+        catch (std::exception&) {
+            BOOST_LOG_TRIVIAL(error) << "Performing downloader desktop integration failed - boost::filesystem::canonical did not return appimage path.";
+            show_error(nullptr, _L("Performing downloader desktop integration failed - boost::filesystem::canonical did not return appimage path."));
+            return;
+        }
+    }
+    else {
+        // not appimage - find executable
+        excutable_path = boost::dll::program_location().string();
+        //excutable_path = wxStandardPaths::Get().GetExecutablePath().string();
+        BOOST_LOG_TRIVIAL(debug) << "non-appimage path to executable: " << excutable_path;
+        if (excutable_path.empty())
+        {
+            BOOST_LOG_TRIVIAL(error) << "Performing downloader desktop integration failed - no executable found.";
+            show_error(nullptr, _L("Performing downloader desktop integration failed - Could not find executable."));
+            return;
+        }
+    }
 
+    // Escape ' characters in appimage, other special symbols will be esacaped in desktop file by 'excutable_path'
+    //boost::replace_all(excutable_path, "'", "'\\''");
+    excutable_path = escape_string(excutable_path);
+
+    // Find directories icons and applications
+    // $XDG_DATA_HOME defines the base directory relative to which user specific data files should be stored. 
+    // If $XDG_DATA_HOME is either not set or empty, a default equal to $HOME/.local/share should be used. 
+    // $XDG_DATA_DIRS defines the preference-ordered set of base directories to search for data files in addition to the $XDG_DATA_HOME base directory.
+    // The directories in $XDG_DATA_DIRS should be seperated with a colon ':'.
+    // If $XDG_DATA_DIRS is either not set or empty, a value equal to /usr/local/share/:/usr/share/ should be used. 
+    std::vector<std::string>target_candidates;
+    resolve_path_from_var("XDG_DATA_HOME", target_candidates);
+    resolve_path_from_var("XDG_DATA_DIRS", target_candidates);
+
+    AppConfig* app_config = wxGetApp().app_config;
+    // suffix string to create different desktop file for alpha, beta.
+
+    std::string version_suffix;
+    std::string name_suffix;
+    std::string version(SLIC3R_VERSION);
+    if (version.find("alpha") != std::string::npos)
+    {
+        version_suffix = "-alpha";
+        name_suffix = " - alpha";
+    }
+    else if (version.find("beta") != std::string::npos)
+    {
+        version_suffix = "-beta";
+        name_suffix = " - beta";
+    }
+
+    // theme path to icon destination    
+    std::string icon_theme_path;
+    std::string icon_theme_dirs;
+
+    if (platform_flavor() == PlatformFlavor::LinuxOnChromium) {
+        icon_theme_path = "hicolor/96x96/apps/";
+        icon_theme_dirs = "/hicolor/96x96/apps";
+    }
+
+    std::string target_dir_desktop;
+
+    // desktop file
+    // iterate thru target_candidates to find applications folder
+
+    std::string desktop_file_downloader = GUI::format(
+        "[Desktop Entry]\n"
+        "Name=PrusaSlicer URL Protocol%1%\n"
+        "Exec=\"%2%\" --single-instance %%u\n"
+        "Terminal=false\n"
+        "Type=Application\n"
+        "MimeType=x-scheme-handler/prusaslicer;\n"
+        "StartupNotify=false\n"
+        "NoDisplay=true\n"
+        , name_suffix, excutable_path);
+
+    // desktop file for downloader as part of main app
+    std::string desktop_path = GUI::format("%1%/applications/PrusaSlicerURLProtocol%2%.desktop", target_dir_desktop, version_suffix);
+    if (create_desktop_file(desktop_path, desktop_file_downloader)) {
+        // save path to desktop file
+        app_config->set("desktop_integration_URL_path", desktop_path);
+        // finish registration on mime type
+        std::string command = GUI::format("xdg-mime default PrusaSlicerURLProtocol%1%.desktop x-scheme-handler/prusaslicer", version_suffix);
+        BOOST_LOG_TRIVIAL(debug) << "system command: " << command;
+        int r = system(command.c_str());
+        BOOST_LOG_TRIVIAL(debug) << "system result: " << r;
+
+    }
+
+    bool candidate_found = false;
+    for (size_t i = 0; i < target_candidates.size(); ++i) {
+        if (contains_path_dir(target_candidates[i], "applications")) {
+            target_dir_desktop = target_candidates[i];
+            // Write slicer desktop file
+            std::string path = GUI::format("%1%/applications/PrusaSlicerURLProtocol%2%.desktop", target_dir_desktop, version_suffix);
+            if (create_desktop_file(path, desktop_file_downloader)) {
+                app_config->set("desktop_integration_URL_path", path);
+                candidate_found = true;
+                BOOST_LOG_TRIVIAL(debug) << "PrusaSlicerURLProtocol.desktop file installation success.";
+                break;
+            }
+            else {
+                // write failed - try another path
+                BOOST_LOG_TRIVIAL(debug) << "Attempt to PrusaSlicerURLProtocol.desktop file installation failed. failed path: " << target_candidates[i];
+                target_dir_desktop.clear();
+            }
+        }
+    }
+    // if all failed - try creating default home folder
+    if (!candidate_found) {
+        // create $HOME/.local/share
+        create_path(boost::nowide::narrow(wxFileName::GetHomeDir()), ".local/share/applications");
+        // create desktop file
+        target_dir_desktop = GUI::format("%1%/.local/share", wxFileName::GetHomeDir());
+        std::string path = GUI::format("%1%/applications/PrusaSlicerURLProtocol%2%.desktop", target_dir_desktop, version_suffix);
+        if (contains_path_dir(target_dir_desktop, "applications")) {
+            if (!create_desktop_file(path, desktop_file_downloader)) {
+                // Desktop file not written - end desktop integration
+                BOOST_LOG_TRIVIAL(error) << "Performing downloader desktop integration failed - could not create desktop file.";
+                return;
+            }
+            app_config->set("desktop_integration_URL_path", path);
+        }
+        else {
+            // Desktop file not written - end desktop integration
+            BOOST_LOG_TRIVIAL(error) << "Performing downloader desktop integration failed because the application directory was not found.";
+            return;
+        }
+    }
+    assert(!target_dir_desktop.empty());
+    if (target_dir_desktop.empty()) {
+        // Desktop file not written - end desktop integration
+        BOOST_LOG_TRIVIAL(error) << "Performing downloader desktop integration failed because the application directory was not found.";
+        show_error(nullptr, _L("Performing downloader desktop integration failed because the application directory was not found."));
+        return;
+    }
+
+    // finish registration on mime type
+    std::string command = GUI::format("xdg-mime default PrusaSlicerURLProtocol%1%.desktop x-scheme-handler/prusaslicer", version_suffix);
+    BOOST_LOG_TRIVIAL(debug) << "system command: " << command;
+    int r = system(command.c_str());
+    BOOST_LOG_TRIVIAL(debug) << "system result: " << r;
+
+    wxGetApp().plater()->get_notification_manager()->push_notification(NotificationType::DesktopIntegrationSuccess);
+}
 void DesktopIntegrationDialog::undo_downloader_registration()
 {
     const AppConfig *app_config = wxGetApp().app_config;
@@ -527,7 +647,7 @@ DesktopIntegrationDialog::DesktopIntegrationDialog(wxWindow *parent)
 	wxButton *btn_perform = new wxButton(this, wxID_ANY, _L("Perform"));
 	btn_szr->Add(btn_perform, 0, wxALL, 10);
 
-	btn_perform->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { DesktopIntegrationDialog::perform_desktop_integration(false); EndModal(wxID_ANY); });
+	btn_perform->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { DesktopIntegrationDialog::perform_desktop_integration(); EndModal(wxID_ANY); });
 	
 	if (can_undo){
 		wxButton *btn_undo = new wxButton(this, wxID_ANY, _L("Undo"));

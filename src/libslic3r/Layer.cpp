@@ -53,22 +53,7 @@ void Layer::make_slices()
         this->lslices = slices;
     }
 
-    // prepare lslices ordered by print order
-    this->lslice_indices_sorted_by_print_order.clear();
-    this->lslice_indices_sorted_by_print_order.reserve(lslices.size());
-    // prepare ordering points
-    Points ordering_points;
-    ordering_points.reserve( this->lslices.size());
-    for (const ExPolygon &ex :  this->lslices)
-        ordering_points.push_back(ex.contour.first_point());
-    
-    // sort slices
-    std::vector<Points::size_type> order = chain_points(ordering_points);
-
-    // populate slices vector
-    for (size_t i : order) {
-        this->lslice_indices_sorted_by_print_order.emplace_back(i);
-    }
+    this->lslice_indices_sorted_by_print_order = chain_expolygons(this->lslices);
 }
 
 // used by Layer::build_up_down_graph()
@@ -105,7 +90,7 @@ static void connect_layer_slices(
     const coord_t                                    offset_below,
     const coord_t                                    offset_above
 #ifndef NDEBUG
-    , const coord_t                                    offset_end
+    , const coord_t                                  offset_end
 #endif // NDEBUG
     )
 {
@@ -127,9 +112,7 @@ static void connect_layer_slices(
         {
 #ifndef NDEBUG
             auto assert_intersection_valid = [this](int i, int j) {
-                assert(i != j);
-                if (i > j)
-                    std::swap(i, j);
+                assert(i < j);
                 assert(i >= m_offset_below);
                 assert(i < m_offset_above);
                 assert(j >= m_offset_above);
@@ -140,35 +123,47 @@ static void connect_layer_slices(
             if (polynode.Contour.size() >= 3) {
                 // If there is an intersection point, it should indicate which contours (one from layer below, the other from layer above) intersect.
                 // Otherwise the contour is fully inside another contour.
-                int32_t i = 0, j = 0;
+                int32_t i = -1, j = -1;
                 for (int icontour = 0; icontour <= polynode.ChildCount(); ++ icontour) {
-                    const bool                first   = icontour == 0;
-                    const ClipperLib_Z::Path &contour = first ? polynode.Contour : polynode.Childs[icontour - 1]->Contour;
+                    const ClipperLib_Z::Path &contour = icontour == 0 ? polynode.Contour : polynode.Childs[icontour - 1]->Contour;
                     if (contour.size() >= 3) {
-                        if (first) {
-                            i = contour.front().z();
-                            j = i;
-                            if (i < 0) {
-                                std::tie(i, j) = m_intersections[-i - 1];
-                                assert(assert_intersection_valid(i, j));
-                                goto end;
-                            }
-                        }
-                        for (const ClipperLib_Z::IntPoint& pt : contour) {
+                        for (const ClipperLib_Z::IntPoint &pt : contour) {
                             j = pt.z();
                             if (j < 0) {
-                                std::tie(i, j) = m_intersections[-j - 1];
+                                const auto &intersection = m_intersections[-j - 1];
+                                assert(intersection.first <= intersection.second);
+                                if (intersection.second < m_offset_above) {
+                                    // Ignore intersection of polygons on the 1st layer.
+                                    assert(intersection.first >= m_offset_below);
+                                    j = i;
+                                } else if (intersection.first >= m_offset_above) {
+                                    // Ignore intersection of polygons on the 2nd layer
+                                    assert(intersection.second < m_offset_end);
+                                    j = i;
+                                } else {
+                                    std::tie(i, j) = m_intersections[-j - 1];
+                                    assert(assert_intersection_valid(i, j));
+                                    goto end;
+                                }
+                            } else if (i == -1) {
+                                // First source contour of this expolygon was found.
+                                i = j;
+                            } else if (i != j) {
+                                // Second source contour of this expolygon was found.
+                                if (i > j)
+                                    std::swap(i, j);
                                 assert(assert_intersection_valid(i, j));
                                 goto end;
                             }
-                            else if (i != j)
-                                goto end;
                         }
                     }
                 }
             end:
                 bool found = false;
-                if (i == j) {
+                if (i == -1) {
+                    // This should not happen. It may only happen if the source contours had just self intersections or intersections with contours at the same layer.
+                    assert(false);
+                } else if (i == j) {
                     // The contour is completely inside another contour.
                     Point pt(polynode.Contour.front().x(), polynode.Contour.front().y());
                     if (i < m_offset_above) {
@@ -202,8 +197,6 @@ static void connect_layer_slices(
                     }
                 } else {
                     assert(assert_intersection_valid(i, j));
-                    if (i > j)
-                        std::swap(i, j);
                     i -= m_offset_below;
                     j -= m_offset_above;
                     assert(i >= 0 && i < m_below.lslices_ex.size());
@@ -578,7 +571,7 @@ void Layer::sort_perimeters_into_islands(
         // Take a sample deep inside its island if available. Infills are usually quite far from the island boundary.
         for (uint32_t iexpoly : fill_expolygons_ranges[islice])
             if (const ExPolygon &expoly = fill_expolygons[iexpoly]; ! expoly.empty()) {
-                sample     = expoly.contour.points.front();
+                sample     = expoly.contour.points[expoly.contour.points.size() / 2];
                 sample_set = true;
                 break;
             }
@@ -589,12 +582,12 @@ void Layer::sort_perimeters_into_islands(
                 if (ee.is_collection()) {
                     for (const ExtrusionEntity *ee2 : dynamic_cast<const ExtrusionEntityCollection&>(ee).entities)
                         if (! ee2->role().is_external()) {
-                            sample     = ee2->first_point();
+                            sample     = ee2->middle_point();
                             sample_set = true;
                             goto loop_end;
                         }
                 } else if (! ee.role().is_external()) {
-                    sample = ee.first_point();
+                    sample = ee.middle_point();
                     sample_set = true;
                     break;
                 }
@@ -603,12 +596,12 @@ void Layer::sort_perimeters_into_islands(
             if (! sample_set) {
                 if (! extrusions.second.empty()) {
                     // If there is no inner perimeter, take a sample of some gap fill extrusion.
-                    sample     = this_layer_region.thin_fills().entities[*extrusions.second.begin()]->first_point();
+                    sample     = this_layer_region.thin_fills().entities[*extrusions.second.begin()]->middle_point();
                     sample_set = true;
                 }
                 if (! sample_set && ! extrusions.first.empty()) {
                     // As a last resort, take a sample of some external perimeter.
-                    sample     = this_layer_region.perimeters().entities[*extrusions.first.begin()]->first_point();
+                    sample     = this_layer_region.perimeters().entities[*extrusions.first.begin()]->middle_point();
                     sample_set = true;
                 }
             }
@@ -835,6 +828,15 @@ void Layer::sort_perimeters_into_islands(
                     d2min = d2;
                     lslice_idx_min = lslice_idx;
                 }
+            if (lslice_idx_min == -1) {
+                // This should not happen, but Arachne seems to produce a perimeter point far outside its source contour.
+                // As a last resort, find the closest source contours to the sample point.
+                for (int lslice_idx = int(lslices_ex.size()) - 1; lslice_idx >= 0; -- lslice_idx)
+                    if (double d2 = (lslices[lslice_idx].point_projection(it_source_slice->second) - it_source_slice->second).cast<double>().squaredNorm(); d2 < d2min) {
+                        d2min = d2;
+                        lslice_idx_min = lslice_idx;
+                    }
+            }
             assert(lslice_idx_min != -1);
             insert_into_island(lslice_idx_min, it_source_slice->first);
         }

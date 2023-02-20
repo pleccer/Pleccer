@@ -83,6 +83,11 @@ struct ExtrusionRole : public ExtrusionRoleModifiers
     bool is_solid_infill() const { return this->is_infill() && this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::Solid); }
     bool is_external() const { return this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::External); }
     bool is_bridge() const { return this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::Bridge); }
+
+    bool is_support() const { return this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::Support); }
+    bool is_support_base() const { return this->is_support() && ! this->is_external(); }
+    bool is_support_interface() const { return this->is_support() && this->is_external(); }
+    bool is_mixed() const { return this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::Mixed); }
 };
 
 // Special flags describing loop

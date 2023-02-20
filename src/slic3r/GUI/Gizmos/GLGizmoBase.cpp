@@ -199,15 +199,22 @@ void GLGizmoBase::render_grabbers(const BoundingBoxf3& box) const
 
 void GLGizmoBase::render_grabbers(float size) const
 {
+    render_grabbers(0, m_grabbers.size() - 1, size, false);
+}
+
+void GLGizmoBase::render_grabbers(size_t first, size_t last, float size, bool force_hover) const
+{
     GLShaderProgram* shader = wxGetApp().get_shader("gouraud_light");
     if (shader == nullptr)
         return;
     shader->start_using();
     shader->set_uniform("emission_factor", 0.1f);
-    for (int i = 0; i < (int)m_grabbers.size(); ++i) {
+    glsafe(::glDisable(GL_CULL_FACE));
+    for (size_t i = first; i <= last; ++i) {
         if (m_grabbers[i].enabled)
-            m_grabbers[i].render(m_hover_id == i, size);
+            m_grabbers[i].render(force_hover ? true : m_hover_id == (int)i, size);
     }
+    glsafe(::glEnable(GL_CULL_FACE));
     shader->stop_using();
 }
 

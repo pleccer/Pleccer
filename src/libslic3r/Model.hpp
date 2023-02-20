@@ -316,7 +316,7 @@ enum class ModelVolumeType : int {
     SUPPORT_ENFORCER,
 };
 
-enum class ModelObjectCutAttribute : int { KeepUpper, KeepLower, FlipUpper, FlipLower, PlaceOnCutUpper, PlaceOnCutLower, CreateDowels };
+enum class ModelObjectCutAttribute : int { KeepUpper, KeepLower, KeepAsParts, FlipUpper, FlipLower, PlaceOnCutUpper, PlaceOnCutLower, CreateDowels, InvalidateCutInfo };
 using ModelObjectCutAttributes = enum_bitmask<ModelObjectCutAttribute>;
 ENABLE_ENUM_BITMASK_OPERATORS(ModelObjectCutAttribute);
 

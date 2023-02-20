@@ -172,16 +172,20 @@ FileArchiveDialog::FileArchiveDialog(wxWindow* parent_window, mz_zip_archive* ar
         wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMAXIMIZE_BOX)
     , m_selected_paths (selected_paths)
 {
+#ifdef _WIN32
+    wxGetApp().UpdateDarkUI(this);
+#else
+    SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
+#endif
+
     int em = em_unit();
 
     wxBoxSizer* topSizer = new wxBoxSizer(wxVERTICAL);
 
-
-    m_avc = new ArchiveViewCtrl(this, wxSize(60 * em, 30 * em));
-    m_avc->AppendToggleColumn(L"\u2714", 0, wxDATAVIEW_CELL_ACTIVATABLE, 6 * em);
+    m_avc = new ArchiveViewCtrl(this, wxSize(45 * em, 30 * em));
+    wxDataViewColumn*  toggle_column = m_avc->AppendToggleColumn(L"\u2714", 0, wxDATAVIEW_CELL_ACTIVATABLE, 6 * em);
     m_avc->AppendTextColumn("filename", 1);
     
-
     std::vector<std::shared_ptr<ArchiveViewNode>> stack;
 
     std::function<void(std::vector<std::shared_ptr<ArchiveViewNode> >&, size_t)> reduce_stack = [] (std::vector<std::shared_ptr<ArchiveViewNode>>& stack, size_t size) {
@@ -233,40 +237,51 @@ FileArchiveDialog::FileArchiveDialog(wxWindow* parent_window, mz_zip_archive* ar
     }
     // sorting files will help adjust_stack function to not create multiple same folders
     std::sort(filtered_entries.begin(), filtered_entries.end(), [](const boost::filesystem::path& p1, const boost::filesystem::path& p2){ return p1.string() > p2.string(); });
+    size_t entry_count = 0;
+    size_t depth = 1;
     for (const boost::filesystem::path& path : filtered_entries)
     {
         std::shared_ptr<ArchiveViewNode> parent(nullptr);
 
-        adjust_stack(path, stack);
+        depth = std::max(depth, adjust_stack(path, stack));
         if (!stack.empty())
             parent = stack.back();
         if (std::regex_match(path.extension().string(), pattern_drop)) { // this leaves out non-compatible files 
             m_avc->get_model()->AddFile(parent, GUI::format_wxstr(path.filename().string()), false)->set_fullpath(/*std::move(path)*/path); // filename string to wstring?
+            entry_count++;
         }
     }
+    if (entry_count == 1)
+        on_all_button();
+
+    toggle_column->SetWidth((4 + depth) * em);
+
     wxBoxSizer* btn_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    wxButton* btn_all = new wxButton(this, wxID_ANY, "All");
+    wxButton* btn_all = new wxButton(this, wxID_ANY, _L("All"));
     btn_all->Bind(wxEVT_BUTTON, [this](wxCommandEvent& evt) { on_all_button(); });
-    btn_sizer->Add(btn_all, 0, wxLeft);
+    btn_sizer->Add(btn_all, 0);
 
-    wxButton* btn_none = new wxButton(this, wxID_ANY, "None");
+    wxButton* btn_none = new wxButton(this, wxID_ANY, _L("None"));
     btn_none->Bind(wxEVT_BUTTON, [this](wxCommandEvent& evt) { on_none_button(); });
-    btn_sizer->Add(btn_none, 0, wxLeft);
+    btn_sizer->Add(btn_none, 0, wxLEFT, em);
 
     btn_sizer->AddStretchSpacer();
-    wxButton* btn_run = new wxButton(this, wxID_OK, "Open");
+    wxButton* btn_run = new wxButton(this, wxID_OK, _L("Open"));
     btn_run->Bind(wxEVT_BUTTON, [this](wxCommandEvent& evt) { on_open_button(); });
-    btn_sizer->Add(btn_run, 0, wxRIGHT);
+    btn_sizer->Add(btn_run, 0, wxRIGHT, em);
 
-    wxButton* cancel_btn = new wxButton(this, wxID_CANCEL, "Cancel");
+    wxButton* cancel_btn = new wxButton(this, wxID_CANCEL, _L("Cancel"));
     cancel_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent& evt) { this->EndModal(wxID_CANCEL); });
-    btn_sizer->Add(cancel_btn, 0, wxRIGHT);
+    btn_sizer->Add(cancel_btn, 0, wxRIGHT, em);
 
     topSizer->Add(m_avc, 1, wxEXPAND | wxALL, 10);
     topSizer->Add(btn_sizer, 0, wxEXPAND | wxALL, 10);
-    this->SetMinSize(wxSize(80 * em, 30 * em));
     this->SetSizer(topSizer);
+    SetMinSize(wxSize(40 * em, 30 * em));
+
+    for (const wxString& id : {_L("All"), _L("None"), _L("Open"), _L("Cancel") })
+        wxGetApp().UpdateDarkUI(static_cast<wxButton*>(FindWindowByLabel(id, this)));
 }  
 
 void FileArchiveDialog::on_dpi_changed(const wxRect& suggested_rect)
@@ -277,9 +292,8 @@ void FileArchiveDialog::on_dpi_changed(const wxRect& suggested_rect)
     //for (auto btn : { m_save_btn, m_transfer_btn, m_discard_btn })
     //    if (btn) btn->msw_rescale();
 
-    const wxSize& size = wxSize(70 * em, 30 * em);
-    SetMinSize(size);
-
+    const wxSize& size = wxSize(45 * em, 40 * em);
+    SetSize(size);
     //m_tree->Rescale(em);
 
     Fit();

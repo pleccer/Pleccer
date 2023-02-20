@@ -461,23 +461,24 @@ std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::
             }
             active_speed_modifier = size_t(-1);
         } else if (boost::starts_with(sline, m_toolchange_prefix)) {
-            unsigned int new_extruder;
+            unsigned int new_extruder = 0;
             auto res = std::from_chars(sline.data() + m_toolchange_prefix.size(), sline.data() + sline.size(), new_extruder);
-            // Only change extruder in case the number is meaningful. User could provide an out-of-range index through custom gcodes - those shall be ignored.
-            if (new_extruder < map_extruder_to_per_extruder_adjustment.size()) {
-                if (new_extruder != current_extruder) {
-                    // Switch the tool.
-                    line.type = CoolingLine::TYPE_SET_TOOL;
-                    current_extruder = new_extruder;
-                    adjustment         = &per_extruder_adjustments[map_extruder_to_per_extruder_adjustment[current_extruder]];
+            if (res.ec != std::errc::invalid_argument) {
+                // Only change extruder in case the number is meaningful. User could provide an out-of-range index through custom gcodes - those shall be ignored.
+                if (new_extruder < map_extruder_to_per_extruder_adjustment.size()) {
+                    if (new_extruder != current_extruder) {
+                        // Switch the tool.
+                        line.type = CoolingLine::TYPE_SET_TOOL;
+                        current_extruder = new_extruder;
+                        adjustment         = &per_extruder_adjustments[map_extruder_to_per_extruder_adjustment[current_extruder]];
+                    }
+                }
+                else {
+                    // Only log the error in case of MM printer. Single extruder printers likely ignore any T anyway.
+                    if (map_extruder_to_per_extruder_adjustment.size() > 1)
+                        BOOST_LOG_TRIVIAL(error) << "CoolingBuffer encountered an invalid toolchange, maybe from a custom gcode: " << sline;
                 }
             }
-            else {
-                // Only log the error in case of MM printer. Single extruder printers likely ignore any T anyway.
-                if (map_extruder_to_per_extruder_adjustment.size() > 1)
-                    BOOST_LOG_TRIVIAL(error) << "CoolingBuffer encountered an invalid toolchange, maybe from a custom gcode: " << sline;
-            }
-
         } else if (boost::starts_with(sline, ";_BRIDGE_FAN_START")) {
             line.type = CoolingLine::TYPE_BRIDGE_FAN_START;
         } else if (boost::starts_with(sline, ";_BRIDGE_FAN_END")) {
@@ -785,9 +786,9 @@ std::string CoolingBuffer::apply_layer_cooldown(
         if (line_start > pos)
             new_gcode.append(pos, line_start - pos);
         if (line->type & CoolingLine::TYPE_SET_TOOL) {
-            unsigned int new_extruder;
+            unsigned int new_extruder = 0;
             auto res = std::from_chars(line_start + m_toolchange_prefix.size(), line_end, new_extruder);
-            if (new_extruder != m_current_extruder) {
+            if (res.ec != std::errc::invalid_argument && new_extruder != m_current_extruder) {
                 m_current_extruder = new_extruder;
                 change_extruder_set_fan();
             }

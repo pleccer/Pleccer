@@ -10,12 +10,10 @@
 #include <boost/filesystem.hpp>
 #include <boost/log/trivial.hpp>
 
-#include <wx/sizer.h>
 #include <wx/panel.h>
 #include <wx/button.h>
 #include <wx/choice.h>
 #include <wx/spinctrl.h>
-#include <wx/textctrl.h>
 #include <wx/listbox.h>
 #include <wx/checklst.h>
 #include <wx/radiobut.h>
@@ -418,44 +416,10 @@ struct PageUpdate: ConfigWizardPage
     PageUpdate(ConfigWizard *parent);
 };
 
-namespace DownloaderUtils {
-    wxString get_downloads_path();
-
-class Worker : public wxBoxSizer
-{
-    wxWindow*   m_parent {nullptr};
-    wxTextCtrl* m_input_path {nullptr};
-    bool        downloader_checked {false};
-#ifdef __linux__
-    bool        perform_registration_linux { false };
-#endif // __linux__
-
-    void deregister();
-
-public:
-    Worker(wxWindow* parent);
-    ~Worker(){}
-
-    void allow(bool allow_)     { downloader_checked = allow_; }
-    bool is_checked() const     { return downloader_checked; }
-    wxString path_name() const  { return m_input_path ? m_input_path->GetValue() : wxString(); }
-
-    void set_path_name(wxString name);
-    void set_path_name(const std::string& name);
-
-    bool on_finish();
-    bool perform_register(const std::string& path_override = {});
-#ifdef __linux__
-    bool get_perform_registration_linux() { return perform_registration_linux; }
-#endif // __linux__
-};
-
-}
-
 
 struct PageDownloader : ConfigWizardPage
 {
-    DownloaderUtils::Worker* downloader{ nullptr };
+    DownloaderUtils::Worker* m_downloader { nullptr };
 
     PageDownloader(ConfigWizard* parent);
 

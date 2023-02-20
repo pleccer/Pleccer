@@ -24,6 +24,9 @@ struct SlopeDetection
 };
 
 uniform vec4 uniform_color;
+uniform bool use_color_clip_plane;
+uniform vec4 uniform_color_clip_plane_1;
+uniform vec4 uniform_color_clip_plane_2;
 uniform SlopeDetection slope;
 
 #ifdef ENABLE_ENVIRONMENT_MAP
@@ -34,6 +37,7 @@ uniform SlopeDetection slope;
 uniform PrintVolumeDetection print_volume;
 
 in vec3 clipping_planes_dots;
+in float color_clip_plane_dot;
 
 // x = diffuse, y = specular;
 in vec2 intensity;
@@ -48,12 +52,18 @@ void main()
 {
     if (any(lessThan(clipping_planes_dots, ZERO)))
         discard;
-    vec3  color = uniform_color.rgb;
-    float alpha = uniform_color.a;
+
+    vec4 color;
+	if (use_color_clip_plane) {
+		color.rgb = (color_clip_plane_dot < 0.0) ? uniform_color_clip_plane_1.rgb : uniform_color_clip_plane_2.rgb;
+		color.a = uniform_color.a;
+    }
+    else
+	    color = uniform_color;
 
     if (slope.actived && world_normal_z < slope.normal_z - EPSILON) {
-        color = vec3(0.7, 0.7, 1.0);
-        alpha = 1.0;
+        color.rgb = vec3(0.7, 0.7, 1.0);
+        color.a = 1.0;
     }
 	
     // if the fragment is outside the print volume -> use darker color
@@ -69,13 +79,13 @@ void main()
 		float delta_radius = print_volume.xy_data.z - distance(world_pos.xy, print_volume.xy_data.xy);
 		pv_check_min = vec3(delta_radius, 0.0, world_pos.z - print_volume.z_data.x);
 		pv_check_max = vec3(0.0, 0.0, world_pos.z - print_volume.z_data.y);
-	}	
-	color = (any(lessThan(pv_check_min, ZERO)) || any(greaterThan(pv_check_max, ZERO))) ? mix(color, ZERO, 0.3333) : color;
+	}
+	color.rgb = (any(lessThan(pv_check_min, ZERO)) || any(greaterThan(pv_check_max, ZERO))) ? mix(color.rgb, ZERO, 0.3333) : color.rgb;
 	
 #ifdef ENABLE_ENVIRONMENT_MAP
     if (use_environment_tex)
-        out_color = vec4(0.45 * texture(environment_tex, normalize(eye_normal).xy * 0.5 + 0.5).xyz + 0.8 * color * intensity.x, alpha);
+        out_color = vec4(0.45 * texture(environment_tex, normalize(eye_normal).xy * 0.5 + 0.5).xyz + 0.8 * color.rgb * intensity.x, color.a);
     else
 #endif
-        out_color = vec4(vec3(intensity.y) + color * intensity.x, alpha);
+        out_color = vec4(vec3(intensity.y) + color.rgb * intensity.x, color.a);
 }

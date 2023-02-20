@@ -3,7 +3,7 @@
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/Plater.hpp"
-
+#include "slic3r/GUI/GUI_ObjectManipulation.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmosCommon.hpp"
 
 #include "libslic3r/Geometry/ConvexHull.hpp"
@@ -38,6 +38,7 @@ bool GLGizmoFlatten::on_mouse(const wxMouseEvent &mouse_event)
                 // Rotate the object so the normal points downward:
                 selection.flattening_rotate(m_planes[m_hover_id].normal);
                 m_parent.do_rotate(L("Gizmo-Place on Face"));
+                wxGetApp().obj_manipul()->set_dirty();
             }
             return true;
         }

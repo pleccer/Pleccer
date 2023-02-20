@@ -310,7 +310,8 @@ struct TreeSupportSettings
 //            interface_preference = interface_map.at(mesh_group_settings.get<std::string>("support_interface_priority"));
 //FIXME this was the default
 //            interface_preference = InterfacePreference::SupportLinesOverwriteInterface;
-        interface_preference = InterfacePreference::SupportAreaOverwritesInterface;
+        //interface_preference = InterfacePreference::SupportAreaOverwritesInterface;
+        interface_preference = InterfacePreference::InterfaceAreaOverwritesSupport;
     }
 
 private:

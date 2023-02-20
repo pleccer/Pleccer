@@ -2372,7 +2372,7 @@ msgstr "Instantáneas de la Configuración"
 
 #: src/slic3r/Utils/PresetUpdater.cpp:777
 msgid ""
-"Configuration Updates causes a lost of preset modification.\n"
+"Configuration Updates causes a loss of preset modification.\n"
 "So, check unsaved changes and save them if necessary."
 msgstr ""
 "La actualización de la configuración hace que se pierda la modificación de "

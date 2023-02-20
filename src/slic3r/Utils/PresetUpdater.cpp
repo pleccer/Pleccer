@@ -213,7 +213,7 @@ void PresetUpdater::priv::set_download_prefs(const AppConfig *app_config)
 {
 	enabled_version_check = app_config->get("notify_release") != "none";
 	version_check_url = app_config->version_check_url();
-	enabled_config_update = app_config->get("preset_update") == "1" && !app_config->legacy_datadir();
+	enabled_config_update = app_config->get_bool("preset_update") && !app_config->legacy_datadir();
 }
 
 // Downloads a file (http get operation). Cancels if the Updater is being destroyed.
@@ -1168,7 +1168,7 @@ void PresetUpdater::slic3r_update_notify()
 
 static bool reload_configs_update_gui()
 {
-	wxString header = _L("Configuration Updates causes a lost of preset modification.\n"
+	wxString header = _L("Configuration Updates causes a loss of preset modification.\n"
 						 "So, check unsaved changes and save them if necessary.");
 	if (!GUI::wxGetApp().check_and_save_current_preset_changes(_L("Updating"), header, false ))
 		return false;

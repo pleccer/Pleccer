@@ -120,7 +120,9 @@ enum class NotificationType
 	// Short meesage to fill space between start and finish of export
 	ExportOngoing,
 	// Progressbar of download from prusaslicer:// url
-	URLDownload
+	URLDownload,
+	// MacOS specific - PS comes forward even when downloader is not allowed
+	URLNotRegistered,
 };
 
 class NotificationManager
@@ -916,6 +918,16 @@ private:
 	{NotificationType::UndoDesktopIntegrationFail, NotificationLevel::WarningNotificationLevel, 10,
 		_u8L("Undo desktop integration failed.") },
 	{NotificationType::ExportOngoing, NotificationLevel::RegularNotificationLevel, 0, _u8L("Exporting.") },
+    {NotificationType::URLNotRegistered
+		, NotificationLevel::RegularNotificationLevel
+		, 10
+		, _u8L("PrusaSlicer recieved a download request from Printables.com, but it's not allowed. You can allow it")
+		, _u8L("here.")
+		,  [](wxEvtHandler* evnthndlr) {
+			wxGetApp().open_preferences("downloader_url_registered", "Other");
+			return true; 
+		} },
+
 			//{NotificationType::NewAppAvailable, NotificationLevel::ImportantNotificationLevel, 20,  _u8L("New version is available."),  _u8L("See Releases page."), [](wxEvtHandler* evnthndlr) {
 			//	wxGetApp().open_browser_with_warning_dialog("https://github.com/prusa3d/PrusaSlicer/releases"); return true; }},
 			//{NotificationType::NewAppAvailable, NotificationLevel::ImportantNotificationLevel, 20,  _u8L("New vesion of PrusaSlicer is available.",  _u8L("Download page.") },

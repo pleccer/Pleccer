@@ -246,7 +246,7 @@ void OG_CustomCtrl::OnMotion(wxMouseEvent& event)
 
     wxString language = wxGetApp().app_config->get("translation_language");
 
-    bool suppress_hyperlinks = get_app_config()->get("suppress_hyperlinks") == "1";
+    const bool suppress_hyperlinks = get_app_config()->get_bool("suppress_hyperlinks");
 
     for (CtrlLine& line : ctrl_lines) {
         line.is_focused = is_point_in_rect(pos, line.rect_label);
@@ -567,7 +567,7 @@ void OG_CustomCtrl::CtrlLine::render(wxDC& dc, wxCoord v_pos)
 
     Field* field = ctrl->opt_group->get_field(og_line.get_options().front().opt_id);
 
-    bool suppress_hyperlinks = get_app_config()->get("suppress_hyperlinks") == "1";
+    const bool suppress_hyperlinks = get_app_config()->get_bool("suppress_hyperlinks");
     if (draw_just_act_buttons) {
         if (field)
             draw_act_bmps(dc, wxPoint(0, v_pos), field->undo_to_sys_bitmap(), field->undo_bitmap(), field->blink());

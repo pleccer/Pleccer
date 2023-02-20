@@ -511,14 +511,14 @@ GLGizmoHollow::get_config_options(const std::vector<std::string>& keys) const
 
     for (const std::string& key : keys) {
         if (object_cfg.has(key))
-            out.emplace_back(object_cfg.option(key), &object_cfg.def()->options.at(key)); // at() needed for const map
+            out.emplace_back(object_cfg.option(key), object_cfg.option_def(key));
         else
             if (print_cfg.has(key))
-                out.emplace_back(print_cfg.option(key), &print_cfg.def()->options.at(key));
+                out.emplace_back(print_cfg.option(key), print_cfg.option_def(key));
             else { // we must get it from defaults
                 if (default_cfg == nullptr)
                     default_cfg.reset(DynamicPrintConfig::new_from_defaults_keys(keys));
-                out.emplace_back(default_cfg->option(key), &default_cfg->def()->options.at(key));
+                out.emplace_back(default_cfg->option(key), default_cfg->option_def(key));
             }
     }
 

@@ -264,10 +264,11 @@ public:
                                                            float                               original_speed)
     {
         size_t                               speed_sections_count = std::min(overlaps.values.size(), speeds.values.size());
+        float speed_base = ext_perimeter_speed > 0 ? ext_perimeter_speed : original_speed;
         std::vector<std::pair<float, float>> speed_sections;
         for (size_t i = 0; i < speed_sections_count; i++) {
             float distance = path.width * (1.0 - (overlaps.get_at(i) / 100.0));
-            float speed    = speeds.get_at(i).percent ? (ext_perimeter_speed * speeds.get_at(i).value / 100.0) : speeds.get_at(i).value;
+            float speed    = speeds.get_at(i).percent ? (speed_base * speeds.get_at(i).value / 100.0) : speeds.get_at(i).value;
             speed_sections.push_back({distance, speed});
         }
         std::sort(speed_sections.begin(), speed_sections.end(),

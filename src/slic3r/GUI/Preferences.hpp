@@ -59,7 +59,7 @@ class PreferencesDialog : public DPIDialog
 	wxColourPickerCtrl*					m_mode_advanced  { nullptr };
 	wxColourPickerCtrl*					m_mode_expert    { nullptr };
 
-	DownloaderUtils::Worker*					downloader{ nullptr };
+	DownloaderUtils::Worker*			downloader { nullptr };
 
 	wxBookCtrlBase*						tabs {nullptr};
 

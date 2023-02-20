@@ -519,6 +519,13 @@ bool GLGizmoFdmSupports::has_backend_supports()
 
 void GLGizmoFdmSupports::auto_generate()
 {
+    std::string err = wxGetApp().plater()->fff_print().validate();
+    if (!err.empty()) {
+        MessageDialog dlg(GUI::wxGetApp().plater(), _L("Automatic painting requires valid print setup. \n") + from_u8(err), _L("Warning"), wxOK);
+        dlg.ShowModal();
+        return;
+    }
+
     ModelObject *mo = m_c->selection_info()->model_object();
     bool not_painted = std::all_of(mo->volumes.begin(), mo->volumes.end(), [](const ModelVolume* vol){
         return vol->type() != ModelVolumeType::MODEL_PART || vol->supported_facets.empty();

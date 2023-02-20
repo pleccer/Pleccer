@@ -1076,6 +1076,15 @@ std::vector<size_t> chain_points(const Points &points, Point *start_near)
 	return out;
 }
 
+std::vector<size_t> chain_expolygons(const ExPolygons &expolygons, Point *start_near)
+{
+    Points ordering_points;
+    ordering_points.reserve(expolygons.size());
+    for (const ExPolygon &ex : expolygons)
+        ordering_points.push_back(ex.contour.first_point());
+    return chain_points(ordering_points);
+}
+
 #ifndef NDEBUG
 	// #define DEBUG_SVG_OUTPUT
 #endif /* NDEBUG */

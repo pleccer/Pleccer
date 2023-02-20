@@ -137,13 +137,30 @@ void FileGet::priv::get_perform()
 		std::string extension = boost::filesystem::extension(dest_path);
 		std::string just_filename = m_filename.substr(0, m_filename.size() - extension.size());
 		std::string final_filename = just_filename;
-
-		size_t version = 0;
-		while (boost::filesystem::exists(m_dest_folder / (final_filename + extension)) || boost::filesystem::exists(m_dest_folder / (final_filename + extension + "." + std::to_string(get_current_pid()) + ".download")))
+        // Find unsed filename 
+		try {
+			size_t version = 0;
+			while (boost::filesystem::exists(m_dest_folder / (final_filename + extension)) || boost::filesystem::exists(m_dest_folder / (final_filename + extension + "." + std::to_string(get_current_pid()) + ".download")))
+			{
+				++version;
+				if (version > 999) {
+					wxCommandEvent* evt = new wxCommandEvent(EVT_DWNLDR_FILE_ERROR);
+					evt->SetString(GUI::format_wxstr(L"Failed to find suitable filename. Last name: %1%." , (m_dest_folder / (final_filename + extension)).string()));
+					evt->SetInt(m_id);
+					m_evt_handler->QueueEvent(evt);
+					return;
+				}
+				final_filename = GUI::format("%1%(%2%)", just_filename, std::to_string(version));
+			}
+		} catch (const boost::filesystem::filesystem_error& e)
 		{
-			++version;
-			final_filename = just_filename + "(" + std::to_string(version) + ")";
+			wxCommandEvent* evt = new wxCommandEvent(EVT_DWNLDR_FILE_ERROR);
+			evt->SetString(e.what());
+			evt->SetInt(m_id);
+			m_evt_handler->QueueEvent(evt);
+			return;
 		}
+		
 		m_filename = final_filename + extension;
 
 		m_tmp_path = m_dest_folder / (m_filename + "." + std::to_string(get_current_pid()) + ".download");
