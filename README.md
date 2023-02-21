@@ -1,4 +1,4 @@
-# IMPORTANT!! This slicer will be released in half February 2023 and the repo will then be updated with the code of the stable version as well as downloadable as release file for Linux, Mac and Windows. Please do not clone atm because it is not uploaded yet.
+# IMPORTANT!! This slicer is in beta version and it is still under a lot of development. A stable version is planned for release in March 2023. Please do not clone atm because it is not uploaded yet.
 
 # Pleccer
 
