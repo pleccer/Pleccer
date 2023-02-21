@@ -56,7 +56,7 @@ public:
     Wipe() : enable(false) {}
     bool has_path() const { return ! this->path.empty(); }
     void reset_path() { this->path.clear(); }
-    std::string wipe(GCode &gcodegen, bool toolchange);
+    std::string wipe(GCode &gcodegen, bool toolchange, bool is_last = false);
 };
 
 class WipeTowerIntegration {
@@ -151,7 +151,9 @@ public:
         m_brim_done(false),
         m_second_layer_things_done(false),
         m_silent_time_estimator_enabled(false),
-        m_last_obj_copy(nullptr, Point(std::numeric_limits<coord_t>::max(), std::numeric_limits<coord_t>::max()))
+        m_last_obj_copy(nullptr, Point(std::numeric_limits<coord_t>::max(), std::numeric_limits<coord_t>::max())),
+	m_toolchange_count(0),
+        m_nominal_z(0.)
         {}
     ~GCode() = default;
 
@@ -279,7 +281,7 @@ private:
     bool            last_pos_defined() const { return m_last_pos_defined; }
     void            set_extruders(const std::vector<unsigned int> &extruder_ids);
     std::string     preamble();
-    std::string     change_layer(coordf_t print_z);
+    std::string     change_layer(coordf_t print_z, bool lazy_raise = false);
     std::string     extrude_entity(const ExtrusionEntity &entity, const std::string_view description, double speed = -1.);
     std::string     extrude_loop(ExtrusionLoop loop, const std::string_view description, double speed = -1.);
     std::string     extrude_multi_path(ExtrusionMultiPath multipath, const std::string_view description, double speed = -1.);
@@ -325,8 +327,9 @@ private:
     std::string     extrude_support(const ExtrusionEntityCollection &support_fills);
 
     std::string     travel_to(const Point &point, ExtrusionRole role, std::string comment);
+    LiftType to_lift_type(ZHopType z_hop_type);
     bool            needs_retraction(const Polyline &travel, ExtrusionRole role = ExtrusionRole::None);
-    std::string     retract(bool toolchange = false);
+    std::string     retract(bool toolchange = false,  bool is_last_retraction = false, LiftType lift_type = LiftType::SpiralLift);
     std::string     unretract() { return m_writer.unlift() + m_writer.unretract(); }
     std::string     set_extruder(unsigned int extruder_id, double print_z);
 
@@ -407,6 +410,10 @@ private:
 
     // Processor
     GCodeProcessor m_processor;
+
+    unsigned int m_toolchange_count;
+    coordf_t m_nominal_z;
+    bool m_need_change_layer_lift_z = false;
 
     std::string _extrude(const ExtrusionPath &path, const std::string_view description, double speed = -1);
     void print_machine_envelope(GCodeOutputStream &file, Print &print);

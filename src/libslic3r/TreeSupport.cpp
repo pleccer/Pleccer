@@ -44,6 +44,8 @@
 #endif
 
 #define TREE_SUPPORT_ORGANIC_NUDGE_NEW 1
+#define SUPPORT_SURFACES_OFFSET_PARAMETERS ClipperLib::jtSquare, 0.
+#define SUPPORT_MATERIAL_MARGIN 1.5
 
 #ifndef TREE_SUPPORT_ORGANIC_NUDGE_NEW
     // Old version using OpenVDB, works but it is extremely slow for complex meshes.
@@ -246,6 +248,7 @@ void tree_supports_show_error(std::string_view message, bool critical)
         [&print_object, &config, &print_config, &enforcers_layers, &blockers_layers, 
          support_auto, support_enforce_layers, support_threshold_auto, tan_threshold, enforcer_overhang_offset, &throw_on_cancel, &out]
         (const tbb::blocked_range<LayerIndex> &range) {
+        float external_perimeter_width = 0;
         for (LayerIndex layer_id = range.begin(); layer_id < range.end(); ++ layer_id) {
             const Layer   &current_layer  = *print_object.get_layer(layer_id);
             const Layer   &lower_layer    = *print_object.get_layer(layer_id - 1);
@@ -261,7 +264,6 @@ void tree_supports_show_error(std::string_view message, bool critical)
                 if (enforced_layer)
                     lower_layer_offset = 0;
                 else if (support_threshold_auto) {
-                    float external_perimeter_width = 0;
                     for (const LayerRegion *layerm : lower_layer.regions())
                         external_perimeter_width += layerm->flow(frExternalPerimeter).scaled_width();
                     external_perimeter_width /= lower_layer.region_count();
@@ -277,9 +279,9 @@ void tree_supports_show_error(std::string_view message, bool critical)
                 }
                 if (! (enforced_layer || blockers_layers.empty() || blockers_layers[layer_id].empty()))
                     overhangs = diff(overhangs, blockers_layers[layer_id], ApplySafetyOffset::Yes);
-                if (config.dont_support_bridges) {
+                if (config.dont_support_bridges ||config.dont_support_pedestal_overhangs) {
                     for (const LayerRegion *layerm : current_layer.regions())
-                        remove_bridges_from_contacts(print_config, lower_layer, *layerm, 
+                        remove_bridges_from_contacts(print_config, config, lower_layer, *layerm, 
                             float(layerm->flow(frExternalPerimeter).scaled_width()), overhangs);
                 }
             }
@@ -313,7 +315,7 @@ void tree_supports_show_error(std::string_view message, bool critical)
                     overhangs = overhangs.empty() ? std::move(enforced_overhangs) : union_(overhangs, enforced_overhangs);
                     //check_self_intersections(overhangs, "generate_overhangs - enforcers");
                 }
-            }   
+            }
             out[layer_id] = std::move(overhangs);
             throw_on_cancel();
         }

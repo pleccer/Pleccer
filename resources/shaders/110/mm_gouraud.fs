@@ -12,7 +12,7 @@ const vec3 LIGHT_TOP_DIR = vec3(-0.4574957, 0.4574957, 0.7624929);
 const vec3 LIGHT_FRONT_DIR = vec3(0.6985074, 0.1397015, 0.6985074);
 #define LIGHT_FRONT_DIFFUSE  (0.3 * INTENSITY_CORRECTION)
 
-#define INTENSITY_AMBIENT    0.3
+#define INTENSITY_AMBIENT    0.6
 
 const vec3  ZERO    = vec3(0.0, 0.0, 0.0);
 const float EPSILON = 0.0001;

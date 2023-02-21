@@ -1217,7 +1217,7 @@ bool GUI_App::on_init_inner()
 
         // create splash screen with updated bmp
         scrn = new SplashScreen(bmp.IsOk() ? bmp : get_bmp_bundle("PrusaSlicer", 400)->GetPreferredBitmapSizeAtScale(1.0), 
-                                wxSPLASH_CENTRE_ON_SCREEN | wxSPLASH_TIMEOUT, 4000, splashscreen_pos);
+                                wxSPLASH_CENTRE_ON_SCREEN | wxSPLASH_TIMEOUT | wxSTAY_ON_TOP, 3500, splashscreen_pos);
 
         if (!default_splashscreen_pos)
             // revert "restore_win_position" value if application wasn't crashed

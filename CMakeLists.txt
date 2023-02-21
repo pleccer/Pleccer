@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(PrusaSlicer)
+project(Pleccer)
 
 include("version.inc")
 include(GNUInstallDirs)
@@ -23,9 +23,9 @@ else()
         endif()
 endif()
 
-option(SLIC3R_STATIC 			"Compile PrusaSlicer with static libraries (Boost, TBB, glew)" ${SLIC3R_STATIC_INITIAL})
-option(SLIC3R_GUI    			"Compile PrusaSlicer with GUI components (OpenGL, wxWidgets)" 1)
-option(SLIC3R_FHS               "Assume PrusaSlicer is to be installed in a FHS directory structure" 0)
+option(SLIC3R_STATIC 			"Compile Pleccer with static libraries (Boost, TBB, glew)" ${SLIC3R_STATIC_INITIAL})
+option(SLIC3R_GUI    			"Compile Pleccer with GUI components (OpenGL, wxWidgets)" 1)
+option(SLIC3R_FHS               "Assume Pleccer is to be installed in a FHS directory structure" 0)
 option(SLIC3R_WX_STABLE         "Build against wxWidgets stable (3.0) as oppsed to dev (3.1) on Linux" 0)
 option(SLIC3R_PCH               "Use precompiled headers" 1)
 option(SLIC3R_MSVC_COMPILE_PARALLEL "Compile on Visual Studio in parallel" 1)
@@ -123,7 +123,7 @@ if (MINGW)
 endif ()
 
 if (NOT MSVC)
-    # ARMs (Raspberry PI) use an unsigned char by default. Let's make it consistent for PrusaSlicer on all platforms.
+    # ARMs (Raspberry PI) use an unsigned char by default. Let's make it consistent for Pleccer on all platforms.
     add_compile_options(-fsigned-char)
 endif ()
 
@@ -283,7 +283,7 @@ if (SLIC3R_ASAN)
 endif ()
 
 if (SLIC3R_UBSAN)
-    # Stacktrace for every report is enabled by default. It can be disabled by running PrusaSlicer with "UBSAN_OPTIONS=print_stacktrace=0".
+    # Stacktrace for every report is enabled by default. It can be disabled by running Pleccer with "UBSAN_OPTIONS=print_stacktrace=0".
 
     # Define macro SLIC3R_UBSAN to allow detection in the source code if this sanitizer is enabled.
     add_compile_definitions(SLIC3R_UBSAN)
@@ -326,7 +326,7 @@ if(WIN32)
     if(MSVC)
         # BOOST_ALL_NO_LIB: Avoid the automatic linking of Boost libraries on Windows. Rather rely on explicit linking.
         add_definitions(-DBOOST_ALL_NO_LIB -DBOOST_USE_WINAPI_VERSION=0x601 -DBOOST_SYSTEM_USE_UTF8 )
-        # Force the source code encoding to UTF-8. See PrusaSlicer GH pull request #5583
+        # Force the source code encoding to UTF-8. See Pleccer GH pull request #5583
         add_compile_options("$<$<C_COMPILER_ID:MSVC>:/utf-8>")
         add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
     endif(MSVC)
@@ -480,7 +480,7 @@ set(L10N_DIR "${SLIC3R_RESOURCES_DIR}/localization")
 add_custom_target(gettext_make_pot
     COMMAND xgettext --keyword=L --keyword=_L --keyword=_u8L --keyword=L_CONTEXT:1,2c --keyword=_L_PLURAL:1,2 --add-comments=TRN --from-code=UTF-8 --debug --boost
         -f "${L10N_DIR}/list.txt"
-        -o "${L10N_DIR}/PrusaSlicer.pot"
+        -o "${L10N_DIR}/Pleccer.pot"
     COMMAND hintsToPot ${SLIC3R_RESOURCES_DIR} ${L10N_DIR}
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Generate pot file from strings in the source tree"
@@ -490,7 +490,7 @@ add_custom_target(gettext_merge_community_po_with_pot
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Merge community po with new generated pot file"
 )
-file(GLOB L10N_PO_FILES "${L10N_DIR}/*/PrusaSlicer*.po")
+file(GLOB L10N_PO_FILES "${L10N_DIR}/*/Pleccer*.po")
 # list of names of directories, which are licalized by PS internally
 list(APPEND PS_L10N_DIRS "cs" "de" "es" "fr" "it" "ja" "pl")
 foreach(po_file ${L10N_PO_FILES})
@@ -501,7 +501,7 @@ foreach(po_file ${L10N_PO_FILES})
     if(found_dir_id LESS 0)
         add_custom_command(
             TARGET gettext_merge_community_po_with_pot PRE_BUILD
-            COMMAND msgmerge -N -o ${po_file} ${po_file} "${L10N_DIR}/PrusaSlicer.pot"
+            COMMAND msgmerge -N -o ${po_file} ${po_file} "${L10N_DIR}/Pleccer.pot"
             # delete obsolete lines from resulting PO to avoid conflicts after a merging of it with wxWidgets.po
             COMMAND msgattrib --no-obsolete -o ${po_file} ${po_file}
             DEPENDS ${po_file}
@@ -511,14 +511,14 @@ endforeach()
 
 add_custom_target(gettext_concat_wx_po_with_po
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-    COMMENT "Concatenate and merge wxWidgets localization po with PrusaSlicer po file"
+    COMMENT "Concatenate and merge wxWidgets localization po with Pleccer po file"
 )
-file(GLOB L10N_PO_FILES "${L10N_DIR}/*/PrusaSlicer*.po")
+file(GLOB L10N_PO_FILES "${L10N_DIR}/*/Pleccer*.po")
 foreach(po_file ${L10N_PO_FILES})
     GET_FILENAME_COMPONENT(po_dir "${po_file}" DIRECTORY)
     GET_FILENAME_COMPONENT(po_dir_name "${po_dir}" NAME)
     SET(wx_po_file "${L10N_DIR}/wx_locale/${po_dir_name}.po")
-    #SET(po_new_file "${po_dir}/PrusaSlicer_.po")
+    #SET(po_new_file "${po_dir}/Pleccer_.po")
     add_custom_command(
         TARGET gettext_concat_wx_po_with_po PRE_BUILD
         COMMAND msgcat --use-first -o ${po_file} ${po_file} ${wx_po_file}
@@ -532,10 +532,10 @@ add_custom_target(gettext_po_to_mo
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Generate localization mo files (binary) from po files (texts)"
 )
-file(GLOB L10N_PO_FILES "${L10N_DIR}/*/PrusaSlicer*.po")
+file(GLOB L10N_PO_FILES "${L10N_DIR}/*/Pleccer*.po")
 foreach(po_file ${L10N_PO_FILES})
     GET_FILENAME_COMPONENT(po_dir "${po_file}" DIRECTORY)
-    SET(mo_file "${po_dir}/PrusaSlicer.mo")
+    SET(mo_file "${po_dir}/Pleccer.mo")
     add_custom_command(
         TARGET gettext_po_to_mo PRE_BUILD
         COMMAND msgfmt ARGS --check-format -o ${mo_file} ${po_file}
@@ -562,7 +562,7 @@ else ()
 endif ()
 
 set(TOP_LEVEL_PROJECT_DIR ${PROJECT_SOURCE_DIR})
-function(prusaslicer_copy_dlls target)
+function(Pleccer_copy_dlls target)
     if ("${CMAKE_SIZEOF_VOID_P}" STREQUAL "8")
         set(_bits 64)
     elseif ("${CMAKE_SIZEOF_VOID_P}" STREQUAL "4")
@@ -594,9 +594,9 @@ function(prusaslicer_copy_dlls target)
 endfunction()
 
 
-# libslic3r, PrusaSlicer GUI and the PrusaSlicer executable.
+# libslic3r, Pleccer GUI and the Pleccer executable.
 add_subdirectory(src)
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT PrusaSlicer_app_console)
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Pleccer_app_console)
 
 add_dependencies(gettext_make_pot hintsToPot)
 
@@ -621,24 +621,24 @@ if (WIN32)
     install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/resources")
 elseif (SLIC3R_FHS)
     # CMAKE_INSTALL_FULL_DATAROOTDIR: read-only architecture-independent data root (share)
-    set(SLIC3R_FHS_RESOURCES "${CMAKE_INSTALL_FULL_DATAROOTDIR}/PrusaSlicer")
+    set(SLIC3R_FHS_RESOURCES "${CMAKE_INSTALL_FULL_DATAROOTDIR}/Pleccer")
     install(DIRECTORY ${SLIC3R_RESOURCES_DIR}/ DESTINATION ${SLIC3R_FHS_RESOURCES}
         PATTERN "*/udev" EXCLUDE
     )
-    install(FILES src/platform/unix/PrusaSlicer.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
-    install(FILES src/platform/unix/PrusaGcodeviewer.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+    install(FILES src/platform/unix/Pleccer.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+    install(FILES src/platform/unix/PleccerGcodeviewer.desktop DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
     foreach(SIZE 32 128 192)
-        install(FILES ${SLIC3R_RESOURCES_DIR}/icons/PrusaSlicer_${SIZE}px.png
-            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${SIZE}x${SIZE}/apps RENAME PrusaSlicer.png
+        install(FILES ${SLIC3R_RESOURCES_DIR}/icons/Pleccer_${SIZE}px.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${SIZE}x${SIZE}/apps RENAME Pleccer.png
         )
-        install(FILES ${SLIC3R_RESOURCES_DIR}/icons/PrusaSlicer-gcodeviewer_${SIZE}px.png
-            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${SIZE}x${SIZE}/apps RENAME PrusaSlicer-gcodeviewer.png
+        install(FILES ${SLIC3R_RESOURCES_DIR}/icons/Pleccer-gcodeviewer_${SIZE}px.png
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${SIZE}x${SIZE}/apps RENAME Pleccer-gcodeviewer.png
         )
     endforeach()
     install(DIRECTORY ${SLIC3R_RESOURCES_DIR}/udev/ DESTINATION lib/udev/rules.d)
 else ()
-    install(FILES src/platform/unix/PrusaSlicer.desktop DESTINATION ${CMAKE_INSTALL_PREFIX}/resources/applications)
-    install(FILES src/platform/unix/PrusaGcodeviewer.desktop DESTINATION ${CMAKE_INSTALL_PREFIX}/resources/applications)
+    install(FILES src/platform/unix/Pleccer.desktop DESTINATION ${CMAKE_INSTALL_PREFIX}/resources/applications)
+    install(FILES src/platform/unix/PleccerGcodeviewer.desktop DESTINATION ${CMAKE_INSTALL_PREFIX}/resources/applications)
     install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/resources")
 endif ()
 

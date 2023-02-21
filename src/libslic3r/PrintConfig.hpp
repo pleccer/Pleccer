@@ -32,7 +32,7 @@ namespace Slic3r {
 
 enum GCodeFlavor : unsigned char {
     gcfRepRapSprinter, gcfRepRapFirmware, gcfRepetier, gcfTeacup, gcfMakerWare, gcfMarlinLegacy, gcfMarlinFirmware, gcfSailfish, gcfMach3, gcfMachinekit,
-    gcfSmoothie, gcfNoExtrusion,
+    gcfKlipper, gcfSmoothie, gcfNoExtrusion,
 };
 
 enum class MachineLimitsUsage {
@@ -50,6 +50,17 @@ enum AuthorizationType {
     atKeyPassword, atUserPassword
 };
 
+enum ZHopType {
+    zhtAuto = 0,
+    zhtNormal,
+    zhtSlope,
+    zhtSpiral,
+    zhtCount
+};
+
+enum OverhangSetting {
+ osInactive, osOrganic1, osOrganic2, osOrganic3, osClassic1, osClassic2, osClassic3
+};
 enum class FuzzySkinType {
     None,
     External,
@@ -59,8 +70,8 @@ enum class FuzzySkinType {
 enum InfillPattern : int {
     ipRectilinear, ipMonotonic, ipMonotonicLines, ipAlignedRectilinear, ipGrid, ipTriangles, ipStars, ipCubic, ipLine, ipConcentric, ipHoneycomb, ip3DHoneycomb,
     ipGyroid, ipHilbertCurve, ipArchimedeanChords, ipOctagramSpiral, ipAdaptiveCubic, ipSupportCubic, ipSupportBase,
-    ipLightning,
-    ipCount,
+    ipLightning, ipArc,
+    ipCount
 };
 
 enum class IroningType {
@@ -487,6 +498,12 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               brim_separation))
     ((ConfigOptionEnum<BrimType>,      brim_type))
     ((ConfigOptionFloat,               brim_width))
+    //((ConfigOptionBool,                clip_multipart_objects))
+    ((ConfigOptionEnum<OverhangSetting>, overhang_primary_setting))
+    ((ConfigOptionEnum<OverhangSetting>, overhang_secondary_setting))
+    ((ConfigOptionEnum<OverhangSetting>, overhang_hole_setting))
+    ((ConfigOptionBool,         ignore_overhang_auto_setting))
+    ((ConfigOptionFloat,                overhang_margin))
     ((ConfigOptionBool,                dont_support_bridges))
     ((ConfigOptionFloat,               elefant_foot_compensation))
     ((ConfigOptionFloatOrPercent,      extrusion_width))
@@ -520,6 +537,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                support_material_auto))
     // Direction of the support pattern (in XY plane).`
     ((ConfigOptionFloat,               support_material_angle))
+    ((ConfigOptionBool,                dont_support_pedestal_overhangs))
     ((ConfigOptionBool,                support_material_buildplate_only))
     ((ConfigOptionFloat,               support_material_contact_distance))
     ((ConfigOptionFloat,               support_material_bottom_contact_distance))
@@ -563,12 +581,19 @@ PRINT_CONFIG_CLASS_DEFINE(
     PrintRegionConfig,
 
     ((ConfigOptionFloat,                bridge_angle))
+    ((ConfigOptionFloat,                bds_ratio_length))
+    ((ConfigOptionFloat,                bds_ratio_nr))
+    ((ConfigOptionFloat,                bds_median_length))
+    ((ConfigOptionFloat,                bds_max_length))
+    ((ConfigOptionFloat,                arc_radius))
+    ((ConfigOptionFloat,                arc_infill_raylen))
     ((ConfigOptionInt,                  bottom_solid_layers))
     ((ConfigOptionFloat,                bottom_solid_min_thickness))
     ((ConfigOptionFloat,                bridge_flow_ratio))
     ((ConfigOptionFloat,                bridge_speed))
     ((ConfigOptionBool,                 ensure_vertical_shell_thickness))
     ((ConfigOptionEnum<InfillPattern>,  top_fill_pattern))
+    ((ConfigOptionEnum<InfillPattern>,  bridge_fill_pattern))
     ((ConfigOptionEnum<InfillPattern>,  bottom_fill_pattern))
     ((ConfigOptionFloatOrPercent,       external_perimeter_extrusion_width))
     ((ConfigOptionFloatOrPercent,       external_perimeter_speed))
@@ -656,6 +681,7 @@ PRINT_CONFIG_CLASS_DEFINE(
 PRINT_CONFIG_CLASS_DEFINE(
     GCodeConfig,
 
+    ((ConfigOptionEnum<ZHopType>,      z_lift_type))
     ((ConfigOptionString,              before_layer_gcode))
     ((ConfigOptionString,              between_objects_gcode))
     ((ConfigOptionFloats,              deretract_speed))
@@ -773,6 +799,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionInts,               full_fan_speed_layer))
     ((ConfigOptionFloat,              infill_acceleration))
     ((ConfigOptionBool,               infill_first))
+    ((ConfigOptionBool,               overhang_infill_first))
     ((ConfigOptionInts,               max_fan_speed))
     ((ConfigOptionFloats,             max_layer_height))
     ((ConfigOptionInts,               min_fan_speed))

@@ -1264,6 +1264,7 @@ namespace SupportMaterialInternal {
 
 void remove_bridges_from_contacts(
     const PrintConfig   &print_config, 
+    const PrintObjectConfig   &object_config,
     const Layer         &lower_layer,
     const LayerRegion   &layerm,
     float                fw, 
@@ -1302,7 +1303,7 @@ void remove_bridges_from_contacts(
         // may not expand them to the edge of their respective islands.
         const float w = float(0.5 * std::max(perimeter_bridge_flow.scaled_width(), perimeter_bridge_flow.scaled_spacing())) + scaled<float>(0.001);
         for (Polyline &polyline : overhang_perimeters)
-            if (polyline.is_straight()) {
+            if (true){//polyline.is_straight()) {
                 // This is a bridge 
                 polyline.extend_start(fw);
                 polyline.extend_end(fw);
@@ -1313,25 +1314,28 @@ void remove_bridges_from_contacts(
                     for (int j = 0; j < 2; ++ j)
                         if (! supported[j] && lower_layer.lslices_ex[i].bbox.contains(pts[j]) && lower_layer.lslices[i].contains(pts[j]))
                             supported[j] = true;
-                if (supported[0] && supported[1])
+                if (true)//supported[0] && supported[1])
                     // Offset a polyline into a thick line.
                     polygons_append(bridges, offset(polyline, w));
             }
         bridges = union_(bridges);
     }
-    // remove the entire bridges and only support the unsupported edges
-    //FIXME the brided regions are already collected as layerm.bridged. Use it?
-    for (const Surface &surface : layerm.fill_surfaces())
-        if (surface.surface_type == stBottomBridge && surface.bridge_angle >= 0.0)
+    bool has_ped = false;
+        // remove the entire bridges and only support the unsupported edges
+        //FIXME the brided regions are already collected as layerm.bridged. Use it?
+        for (const Surface &surface : layerm.fill_surfaces())
+            if (surface.surface_type == stBottomBridge){// && surface.bridge_angle >= 0.0)
+                if((object_config.dont_support_pedestal_overhangs && !surface.pedestal.empty())) has_ped = true;//polygons_append(pedestals, surface.expolygon);
             polygons_append(bridges, surface.expolygon);
+        }
     //FIXME add the gap filled areas. Extrude the gaps with a bridge flow?
     // Remove the unsupported ends of the bridges from the bridged areas.
     //FIXME add supports at regular intervals to support long bridges!
-    bridges = diff(bridges,
-            // Offset unsupported edges into polygons.
-            offset(layerm.unsupported_bridge_edges(), scale_(SUPPORT_MATERIAL_MARGIN), SUPPORT_SURFACES_OFFSET_PARAMETERS));
+    if(!has_ped) bridges = diff(bridges,
+                // Offset unsupported edges into polygons.
+                offset(layerm.unsupported_bridge_edges(), float(object_config.overhang_margin.value)*float(layerm.region().config().perimeters.value)/*perimeter_bridge_flow.scaled_width()0.005*scale_(SUPPORT_MATERIAL_MARGIN)*/, SUPPORT_SURFACES_OFFSET_PARAMETERS));
     // Remove bridged areas from the supported areas.
-    contact_polygons = diff(contact_polygons, bridges, ApplySafetyOffset::Yes);
+    if(has_ped||object_config.dont_support_bridges) contact_polygons = diff(contact_polygons, bridges, ApplySafetyOffset::Yes);
 
     #ifdef SLIC3R_DEBUG
         static int iRun = 0;
@@ -1557,7 +1561,7 @@ static inline std::tuple<Polygons, Polygons, Polygons, float> detect_overhangs(
 
             if (object_config.dont_support_bridges)
                 //FIXME Expensive, potentially not precise enough. Misses gap fill extrusions, which bridge.
-                remove_bridges_from_contacts(print_config, lower_layer, *layerm, fw, diff_polygons);
+                remove_bridges_from_contacts(print_config, object_config, lower_layer, *layerm, fw, diff_polygons);
 
             if (diff_polygons.empty())
                 continue;

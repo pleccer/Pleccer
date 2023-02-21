@@ -400,9 +400,35 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent) :
                     new_val = 0;
                 }
                 new_conf.set_key_value("brim_width", new ConfigOptionFloat(new_val));
-            }
-            else {
-                assert(opt_key == "support");
+            }else if(opt_key == "support_material_buildplate_only"){ //else if(opt_key == "fill_pattern"){
+                tab_print->update_dirty();
+            tab_print->reload_config();
+            tab_print->update();
+                new_conf.set_key_value("support_material_buildplate_only", new ConfigOptionBool(boost::any_cast<bool>(value)));
+                tab_print->load_config(new_conf); 
+                tab_print->update_dirty();
+            }else if(opt_key == "wipe_tower"){
+		tab_print->update_dirty();
+                tab_print->reload_config();
+                tab_print->update();
+                new_conf.set_key_value("wipe_tower", new ConfigOptionBool(boost::any_cast<bool>(value)));
+                tab_print->load_config(new_conf); 
+                tab_print->update_dirty();
+           }else if(opt_key == "support"){
+                const wxString& selection = boost::any_cast<wxString>(value);
+                if(selection == _("None")) new_conf.set_key_value("support_material", new ConfigOptionBool(false));
+                else new_conf.set_key_value("support_material", new ConfigOptionBool(true));
+		new_conf.set_key_value("overhang_primary_setting", new ConfigOptionEnum<SupportMaterialStyle>(static_cast<SupportMaterialStyle>(selection.compare("Organic")?smsOrganic:smsGrid)));
+                new_conf.set_key_value("overhang_primary_setting", new ConfigOptionEnum<OverhangSetting>(static_cast<OverhangSetting>(
+                        selection == _("Organic Low - big corners")?osOrganic1:
+                        selection == _("Organic Med - all corners")?osOrganic2:
+                        selection == _("Organic High - all sides")?osOrganic3:
+                        selection == _("Classic Low - big sides")?osClassic1:
+                        selection == _("Classic Med - all sides")?osClassic2:
+                        selection == _("Classic High - thick")?osClassic3:osInactive
+                )));
+            }/*
+             else{   assert(opt_key == "support");
                 const wxString& selection = boost::any_cast<wxString>(value);
                 PrinterTechnology printer_technology = wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology();
 
@@ -422,7 +448,7 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent) :
                     new_conf.set_key_value("support_material_buildplate_only", new ConfigOptionBool(false));
                     new_conf.set_key_value("support_material_auto", new ConfigOptionBool(false));
                 }
-            }
+            }*/
             tab_print->load_config(new_conf);
         }
     };
@@ -431,18 +457,31 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent) :
     Line line = Line { "", "" };
 
     ConfigOptionDef support_def;
-    support_def.label = L("Supports");
+    support_def.label = L("Support");
     support_def.type = coStrings;
-    support_def.tooltip = L("Select what kind of support do you need");
+    support_def.gui_type = ConfigOptionDef::GUIType::select_open;
+    support_def.tooltip = L("Select what kind of support you need");
     support_def.set_enum_labels(ConfigOptionDef::GUIType::select_open, {
         L("None"),
-        L("Support on build plate only"),
-        L("For support enforcers only"),
-        L("Everywhere")
-    });
-    support_def.set_default_value(new ConfigOptionStrings{ "None" });
+        L("System set"),
+        L("Organic Low - big corners"),
+        L("Organic Med - all corners"),
+        L("Organic High - all sides"),
+        L("Classic Low - big sides"),
+        L("Classic Med - all sides"),
+        L("Classic High - thick")});
+    support_def.set_default_value(new ConfigOptionStrings{ "Organic Med - all corners" });
     Option option = Option(support_def, "support");
-    option.opt.full_width = true;
+    option.opt.width = 18;
+    line.append_option(option);
+
+    option = m_og->get_option("support_material_buildplate_only");
+    option.opt.label = L("Only on buildplate");
+    option.opt.type = coBool;
+    option.opt.tooltip = L("This flag enables supports on buildplate only.");
+    option.opt.gui_type = ConfigOptionDef::GUIType::undefined;
+    option.opt.set_default_value(new ConfigOptionBool(true));
+    option.opt.sidetext = "";
     line.append_option(option);
 
     /* Not a best solution, but
@@ -477,6 +516,15 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent) :
     def.gui_type = ConfigOptionDef::GUIType::undefined;
     def.set_default_value(new ConfigOptionBool{ m_brim_width > 0.0 ? true : false });
     option = Option(def, "brim");
+    option.opt.sidetext = "";
+    line.append_option(option);
+
+    option = m_og->get_option("wipe_tower");
+    option.opt.label = L("Use a wipe tower");
+    option.opt.type = coBool;
+    option.opt.tooltip = L("This flag enables using a wipe tower.");
+    option.opt.gui_type = ConfigOptionDef::GUIType::undefined;
+    option.opt.set_default_value(new ConfigOptionBool(false));
     option.opt.sidetext = "";
     line.append_option(option);
 
@@ -4283,6 +4331,7 @@ void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
             this->update_fff_scene();
         else
             this->update_sla_scene();
+    this->select_view_3D("Preview");
     }
 }
 

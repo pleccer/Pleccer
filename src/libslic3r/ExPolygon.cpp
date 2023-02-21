@@ -80,6 +80,13 @@ bool ExPolygon::contains(const Polyline &polyline) const
 {
     return diff_pl(polyline, *this).empty();
 }
+bool ExPolygon::contains_h(const Point &point) const
+{
+    for (const Polygon &hole : this->holes)
+        if (hole.contains(point))
+            return true;
+    return false;
+}
 
 bool ExPolygon::contains(const Polylines &polylines) const
 {

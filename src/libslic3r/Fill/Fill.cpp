@@ -146,8 +146,9 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
 		                fill_type_monotonic(region_config.top_fill_pattern) ? ipMonotonic : ipRectilinear;
 		        } else if (params.density <= 0)
 		            continue;
-
-		        params.extrusion_role =
+			if (is_bridge)
+                        	params.pattern = region_config.bridge_fill_pattern.value;
+			params.extrusion_role =
 		            is_bridge ?
 		                ExtrusionRole::BridgeInfill :
 		                (surface.is_solid() ?
@@ -284,13 +285,13 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
 	        if (internal_solid_fill == nullptr) {
 	        	// Produce another solid fill.
 		        params.extruder 	 = layerm.region().extruder(frSolidInfill);
-	            params.pattern 		 = fill_type_monotonic(layerm.region().config().top_fill_pattern) ? ipMonotonic : ipRectilinear;
+	            params.pattern 		 = ipArc;//fill_type_monotonic(layerm.region().config().top_fill_pattern) ? ipMonotonic : ipRectilinear;
 	            params.density 		 = 100.f;
 		        params.extrusion_role = ExtrusionRole::InternalInfill;
 		        params.angle 		= float(Geometry::deg2rad(layerm.region().config().fill_angle.value));
 		        // calculate the actual flow we'll be using for this infill
 				params.flow = layerm.flow(frSolidInfill);
-		        params.spacing = params.flow.spacing();	        
+		        params.spacing = params.flow.spacing();
 				surface_fills.emplace_back(params);
 				surface_fills.back().surface.surface_type = stInternalSolid;
 				surface_fills.back().surface.thickness = layer.height;
@@ -299,6 +300,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
 	        	append(extensions, std::move(internal_solid_fill->expolygons));
 	        	internal_solid_fill->expolygons = union_ex(extensions);
 	        }
+		 internal_solid_fill->params.pattern = layerm.region().config().bridge_fill_pattern.value;
 		}
     }
 
@@ -442,6 +444,9 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
 #endif /* SLIC3R_DEBUG_SLICE_PROCESSING */
 
     for (SurfaceFill &surface_fill : surface_fills) {
+	if(surface_fill.params.bridge)
+		surface_fill.params.pattern = this->regions().front()->region().config().bridge_fill_pattern.value;
+
         // Create the filler object.
         std::unique_ptr<Fill> f = std::unique_ptr<Fill>(Fill::new_from_type(surface_fill.params.pattern));
         f->set_bounding_box(bbox);
@@ -492,6 +497,7 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
         params.resolution        = resolution;
         params.use_arachne       = perimeter_generator == PerimeterGeneratorType::Arachne && surface_fill.params.pattern == ipConcentric;
         params.layer_height      = layerm.layer()->height;
+	params.config = &layerm.region().config();
 
         for (ExPolygon &expoly : surface_fill.expolygons) {
 			// Spacing is modified by the filler to indicate adjustments. Reset it for each expolygon.

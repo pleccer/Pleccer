@@ -316,7 +316,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                 // also, supply the original expolygon instead of the grown one, because in case
                 // of very thin (but still working) anchors, the grown expolygon would go beyond them
                 double custom_angle = Geometry::deg2rad(this->region().config().bridge_angle.value);
-                if (custom_angle > 0.0) {
+                /*if (custom_angle > 0.0) {
                     bridges[idx_last].bridge_angle = custom_angle;
                 } else {
                     auto [bridging_dir, unsupported_dist] = detect_bridging_direction(to_polygons(initial), to_polygons(lower_layer->lslices));
@@ -333,27 +333,33 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                     //     svg.draw(initial, "cyan");
                     //     svg.draw(to_lines(lower_layer->lslices), "green", stroke_width);
                     // #endif
-                }
-
-                /*
-                BridgeDetector bd(initial, lower_layer->lslices, this->bridging_flow(frInfill).scaled_width());
-                #ifdef SLIC3R_DEBUG
-                printf("Processing bridge at layer %zu:\n", this->layer()->id());
-                #endif
-				double custom_angle = Geometry::deg2rad(this->region().config().bridge_angle.value);
-				if (bd.detect_angle(custom_angle)) {
+                }*/
+		BridgeDetector bd(
+                        initial,
+                        lower_layer->lslices,
+                        this->flow(frInfill).scaled_width()
+                    );
+                    #ifdef SLIC3R_DEBUG
+                    printf("Processing bridge at layer %zu:\n", this->layer()->id());
+                    #endif
+		if (bd.detect_angle(custom_angle, &this->region().config())) {
                     bridges[idx_last].bridge_angle = bd.angle;
-                    if (this->layer()->object()->has_support()) {
-//                        polygons_append(this->bridged, bd.coverage());
+		    if (this->layer()->object()->has_support()) {
+                        //polygons_append(this->bridged, bd.coverage());
                         append(m_unsupported_bridge_edges, bd.unsupported_edges());
                     }
-				} else if (custom_angle > 0) {
-					// Bridge was not detected (likely it is only supported at one side). Still it is a surface filled in
-					// using a bridging flow, therefore it makes sense to respect the custom bridging direction.
-					bridges[idx_last].bridge_angle = custom_angle;
-				}
-                */
-                // without safety offset, artifacts are generated (GH #2494)
+                                } else if (custom_angle > 0) {
+                                        // Bridge was not detected (likely it is only supported at one side). Stil>
+                                        // using a bridging flow, therefore it makes sense to respect the custom b>
+                                        bridges[idx_last].bridge_angle = custom_angle;
+                                }
+                if(!bd._pedestal.empty()) bridges[idx_last].pedestal = (Polyline)bd._pedestal;
+		if(bd.has_overhang_holes){
+			//bridges[idx_last].holes = (Polylines)bd._holes;
+              		this->has_overhang_holes = true;
+		}
+		if(bd.is_bridge) this->is_bridge = true;
+		// without safety offset, artifacts are generated (GH #2494)
                 surfaces_append(bottom, union_safety_offset_ex(grown), bridges[idx_last]);
             }
 

@@ -1044,7 +1044,7 @@ void chain_and_reorder_extrusion_entities(std::vector<ExtrusionEntity*> &entitie
 std::vector<std::pair<size_t, bool>> chain_extrusion_paths(std::vector<ExtrusionPath> &extrusion_paths, const Point *start_near)
 {
 	auto segment_end_point = [&extrusion_paths](size_t idx, bool first_point) -> const Point& { return first_point ? extrusion_paths[idx].first_point() : extrusion_paths[idx].last_point(); };
-	return chain_segments_greedy<Point, decltype(segment_end_point)>(segment_end_point, extrusion_paths.size(), start_near);
+	return chain_segments_greedy2<Point, decltype(segment_end_point)>(segment_end_point, extrusion_paths.size(), start_near);
 }
 
 void reorder_extrusion_paths(std::vector<ExtrusionPath> &extrusion_paths, const std::vector<std::pair<size_t, bool>> &chain)
@@ -1068,7 +1068,7 @@ void chain_and_reorder_extrusion_paths(std::vector<ExtrusionPath> &extrusion_pat
 std::vector<size_t> chain_points(const Points &points, Point *start_near)
 {
 	auto segment_end_point = [&points](size_t idx, bool /* first_point */) -> const Point& { return points[idx]; };
-	std::vector<std::pair<size_t, bool>> ordered = chain_segments_greedy<Point, decltype(segment_end_point)>(segment_end_point, points.size(), start_near);
+	std::vector<std::pair<size_t, bool>> ordered = chain_segments_greedy2<Point, decltype(segment_end_point)>(segment_end_point, points.size(), start_near);
 	std::vector<size_t> out;
 	out.reserve(ordered.size());
 	for (auto &segment_and_reversal : ordered)
@@ -1968,7 +1968,7 @@ Polylines chain_polylines(Polylines &&polylines, const Point *start_near)
 template<class T> static inline T chain_path_items(const Points &points, const T &items)
 {
 	auto segment_end_point = [&points](size_t idx, bool /* first_point */) -> const Point& { return points[idx]; };
-	std::vector<std::pair<size_t, bool>> ordered = chain_segments_greedy<Point, decltype(segment_end_point)>(segment_end_point, points.size(), nullptr);
+	std::vector<std::pair<size_t, bool>> ordered = chain_segments_greedy2<Point, decltype(segment_end_point)>(segment_end_point, points.size(), nullptr);
 	T out;
 	out.reserve(items.size());
 	for (auto &segment_and_reversal : ordered)
@@ -1995,7 +1995,7 @@ std::vector<const PrintInstance*> chain_print_object_instances(const Print &prin
         }
     }
 	auto segment_end_point = [&object_reference_points](size_t idx, bool /* first_point */) -> const Point& { return object_reference_points[idx]; };
-	std::vector<std::pair<size_t, bool>> ordered = chain_segments_greedy<Point, decltype(segment_end_point)>(segment_end_point, instances.size(), nullptr);
+	std::vector<std::pair<size_t, bool>> ordered = chain_segments_greedy2<Point, decltype(segment_end_point)>(segment_end_point, instances.size(), nullptr);
     std::vector<const PrintInstance*> out;
 	out.reserve(instances.size());
 	for (auto &segment_and_reversal : ordered) {

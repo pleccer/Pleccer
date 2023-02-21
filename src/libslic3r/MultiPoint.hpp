@@ -36,6 +36,7 @@ public:
     const Point& front() const { return this->points.front(); }
     const Point& back() const { return this->points.back(); }
     const Point& first_point() const { return this->front(); }
+    virtual Lines lines() const = 0;
     size_t size() const { return points.size(); }
     bool   empty() const { return points.empty(); }
     bool   is_valid() const { return this->points.size() >= 2; }
@@ -63,6 +64,17 @@ public:
     }
     const Point* closest_point(const Point &point) const { return this->points.empty() ? nullptr : &this->points[this->closest_point_index(point)]; }
     BoundingBox bounding_box() const;
+    // The distance of polygon to point is defined as:
+    //  the minimum distance of all points to that point
+    double distance_to(const Point& point) const {
+        const Point* cl = closest_point(point);
+        return (*cl - point).cast<double>().norm();
+    }
+    double distance_from_edges(const Point& point) const {
+        const Point* cl1 = &this->points[0];//closest_point(point);
+	const Point* cl2 = &this->points[this->points.size()-1];
+        return std::min((*cl1 - point).cast<double>().norm(),(*cl2 - point).cast<double>().norm());
+    }
     // Return true if there are exact duplicates.
     bool has_duplicate_points() const;
     // Remove exact duplicates, return true if any duplicate has been removed.

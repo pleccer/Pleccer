@@ -1507,6 +1507,14 @@ void TabPrint::build()
         optgroup->append_single_option_line("raft_contact_distance", category_path + "raft-layers");
         optgroup->append_single_option_line("raft_expansion");
 
+	optgroup = page->new_optgroup(L("Overhangs"));
+        optgroup->append_single_option_line("overhang_primary_setting");
+        optgroup->append_single_option_line("overhang_secondary_setting");
+        optgroup->append_single_option_line("overhang_hole_setting");
+        optgroup->append_single_option_line("overhang_margin");
+        optgroup->append_single_option_line("dont_support_pedestal_overhangs");
+        optgroup->append_single_option_line("overhang_infill_first");
+
         optgroup = page->new_optgroup(L("Options for support material and raft"));
         optgroup->append_single_option_line("support_material_style", category_path + "style");
         optgroup->append_single_option_line("support_material_contact_distance", category_path + "contact-z-distance");
@@ -1626,6 +1634,14 @@ void TabPrint::build()
         optgroup->append_single_option_line("solid_infill_extrusion_width");
         optgroup->append_single_option_line("top_infill_extrusion_width");
         optgroup->append_single_option_line("support_material_extrusion_width");
+        
+	optgroup = page->new_optgroup(L("Bridge detector scoring"));
+        optgroup->append_single_option_line("bds_ratio_length");
+        optgroup->append_single_option_line("bds_ratio_nr");
+        optgroup->append_single_option_line("bds_median_length");
+        optgroup->append_single_option_line("bds_max_length");
+        optgroup->append_single_option_line("arc_radius");
+        optgroup->append_single_option_line("arc_infill_raylen");
 
         optgroup = page->new_optgroup(L("Overlap"));
         optgroup->append_single_option_line("infill_overlap");
@@ -1881,6 +1897,7 @@ void TabFilament::add_filament_overrides_page()
 
     for (const std::string opt_key : {  "filament_retract_length",
                                         "filament_retract_lift",
+					"z_lift_type",
                                         "filament_retract_lift_above",
                                         "filament_retract_lift_below",
                                         "filament_retract_speed",
@@ -1907,6 +1924,7 @@ void TabFilament::update_filament_overrides_page()
 
     std::vector<std::string> opt_keys = {   "filament_retract_length",
                                             "filament_retract_lift",
+					    "z_lift_type",
                                             "filament_retract_lift_above",
                                             "filament_retract_lift_below",
                                             "filament_retract_speed",
@@ -2676,7 +2694,7 @@ PageShp TabPrinter::build_kinematics_page()
 
 const std::vector<std::string> extruder_options = {
     "min_layer_height", "max_layer_height", "extruder_offset",
-    "retract_length", "retract_lift", "retract_lift_above", "retract_lift_below",
+    "retract_length", "z_lift_type", "retract_lift", "retract_lift_above", "retract_lift_below",
     "retract_speed", "deretract_speed", "retract_restart_extra", "retract_before_travel",
     "retract_layer_change", "wipe", "retract_before_wipe",
     "retract_length_toolchange", "retract_restart_extra_toolchange",
@@ -2823,6 +2841,7 @@ void TabPrinter::build_extruder_pages(size_t n_before_extruders)
         optgroup = page->new_optgroup(L("Retraction"));
         optgroup->append_single_option_line("retract_length", "", extruder_idx);
         optgroup->append_single_option_line("retract_lift", "", extruder_idx);
+        optgroup->append_single_option_line("z_lift_type", "", extruder_idx);
         line = { L("Only lift Z"), "" };
         line.append_option(optgroup->get_option("retract_lift_above", extruder_idx));
         line.append_option(optgroup->get_option("retract_lift_below", extruder_idx));

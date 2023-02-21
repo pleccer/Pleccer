@@ -1,0 +1,45 @@
+name: C/C++ Release candidate ubuntu
+
+on:
+  push:
+    branches:
+      - rc
+
+jobs:
+  build:
+
+    runs-on: ubuntu-18.04
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: 'rc'
+    - name: update submodule profiles
+      working-directory: ./resources/profiles
+      run: git submodule update --init
+    - name: change date in version
+      run: sed -i "s/+UNKNOWN//" version.inc
+    - name: update clock
+      run: sudo hwclock -s
+    - name: update apt
+      run: sudo apt update
+    - name: install gtk2 glew
+      run: sudo apt install libgtk2.0-dev libglew-dev libudev-dev libdbus-1-dev
+    - name: build deps & slicer
+      run: ./BuildLinux.sh -dgs
+    - name: make .pot
+      working-directory: ./build
+      run: make gettext_make_pot
+    - name: build tar & appimage
+      working-directory: ./build
+      run: src/BuildLinuxImage.sh -i
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: rc_linux_gtk2.tar
+        path: build/${{ github.event.repository.name }}.tar
+    - name: Upload appimage
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: rc-${{ github.event.repository.name }}-gtk2.AppImage
+        path: build/${{ github.event.repository.name }}_ubu64.AppImage

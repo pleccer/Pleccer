@@ -11,6 +11,7 @@
 #include "../libslic3r.h"
 
 #include "FillBase.hpp"
+#include "FillArc.hpp"
 #include "FillConcentric.hpp"
 #include "FillHoneycomb.hpp"
 #include "Fill3DHoneycomb.hpp"
@@ -30,6 +31,7 @@ namespace Slic3r {
 Fill* Fill::new_from_type(const InfillPattern type)
 {
     switch (type) {
+    case ipArc:			return new FillArc();
     case ipConcentric:          return new FillConcentric();
     case ipHoneycomb:           return new FillHoneycomb();
     case ip3DHoneycomb:         return new Fill3DHoneycomb();
@@ -86,7 +88,7 @@ Polylines Fill::fill_surface(const Surface *surface, const FillParams &params)
     // Create the infills for each of the regions.
     Polylines polylines_out;
     for (ExPolygon &expoly : expp)
-        _fill_surface_single(params, surface->thickness_layers, _infill_direction(surface), std::move(expoly), polylines_out);
+        _fill_surface_single(params, surface->thickness_layers, _infill_direction(surface), _infill_pedestal(surface), std::move(expoly), polylines_out);
     return polylines_out;
 }
 
@@ -97,7 +99,7 @@ ThickPolylines Fill::fill_surface_arachne(const Surface *surface, const FillPara
     // Create the infills for each of the regions.
     ThickPolylines thick_polylines_out;
     for (ExPolygon &expoly : expp)
-        _fill_surface_single(params, surface->thickness_layers, _infill_direction(surface), std::move(expoly), thick_polylines_out);
+        _fill_surface_single(params, surface->thickness_layers, _infill_direction(surface), _infill_pedestal(surface), std::move(expoly), thick_polylines_out);
     return thick_polylines_out;
 }
 
@@ -168,6 +170,11 @@ std::pair<float, Point> Fill::_infill_direction(const Surface *surface) const
 
     out_angle += float(M_PI/2.);
     return std::pair<float, Point>(out_angle, out_shift);
+}
+
+Polyline Fill::_infill_pedestal(const Surface *surface) const
+{
+    return (Polyline)surface->pedestal;
 }
 
 // A single T joint of an infill line to a closed contour or one of its holes.

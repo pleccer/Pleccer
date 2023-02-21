@@ -11,6 +11,12 @@
 
 namespace Slic3r {
 
+enum class LiftType {
+    NormalLift,
+    LazyLift,
+    SpiralLift
+};
+
 class GCodeWriter {
 public:
     GCodeConfig config;
@@ -19,9 +25,11 @@ public:
     GCodeWriter() : 
         multiple_extruders(false), m_extrusion_axis("E"), m_extruder(nullptr),
         m_single_extruder_multi_material(false),
+	m_last_jerk(0), m_max_jerk(0),
         m_last_acceleration(0), m_max_acceleration(0),
         m_last_bed_temperature(0), m_last_bed_temperature_reached(true), 
-        m_lifted(0)
+        m_lifted(0),
+	m_to_lift_type(LiftType::NormalLift)
         {}
     Extruder*            extruder()             { return m_extruder; }
     const Extruder*      extruder()     const   { return m_extruder; }
@@ -44,6 +52,8 @@ public:
     std::string set_temperature(unsigned int temperature, bool wait = false, int tool = -1) const;
     std::string set_bed_temperature(unsigned int temperature, bool wait = false);
     std::string set_acceleration(unsigned int acceleration);
+    std::string set_jerk_xy(unsigned int jerk);
+    std::string set_pressure_advance(double pa) const;
     std::string reset_e(bool force = false);
     std::string update_progress(unsigned int num, unsigned int tot, bool allow_100 = false) const;
     // return false if this extruder was already selected
@@ -65,7 +75,7 @@ public:
     std::string retract(bool before_wipe = false);
     std::string retract_for_toolchange(bool before_wipe = false);
     std::string unretract();
-    std::string lift();
+    std::string lift(LiftType lift_type = LiftType::NormalLift);
     std::string unlift();
     Vec3d       get_position() const { return m_pos; }
 
@@ -74,6 +84,10 @@ public:
     // To be called by the main thread. It always emits the G-code, it does not remember the previous state.
     // Keeping the state is left to the CoolingBuffer, which runs asynchronously on another thread.
     std::string set_fan(unsigned int speed) const;
+    void set_current_position_clear(bool clear) { m_is_current_pos_clear = clear; };
+    bool is_current_position_clear() const { return m_is_current_pos_clear; };
+    //Radian threshold of slope for lazy lift and spiral lift;
+    static const double slope_threshold;
 
 private:
 	// Extruders are sorted by their ID, so that binary search is possible.
@@ -85,11 +99,22 @@ private:
     // Limit for setting the acceleration, to respect the machine limits set for the Marlin firmware.
     // If set to zero, the limit is not in action.
     unsigned int    m_max_acceleration;
+    unsigned int    m_max_jerk;
+    unsigned int    m_last_jerk;
     unsigned int    m_last_bed_temperature;
     bool            m_last_bed_temperature_reached;
     double          m_lifted;
+    double          m_to_lift;
+    LiftType        m_to_lift_type;
     Vec3d           m_pos = Vec3d::Zero();
-
+    //this flag is used to indicate whether the m_pos is real.
+    //An example that of the first move, the m_pos is zero, but the real position of extruder doesn't
+    //Pos must be clear after the first xyz travel move
+    bool            m_is_current_pos_clear = false;
+    //BBS: x, y offset for gcode generated
+    double          m_x_offset{ 0 };
+    double          m_y_offset{ 0 };
+    std::string _spiral_travel_to_z(double z, const Vec2d &ij_offset, const std::string &comment);
     std::string _travel_to_z(double z, const std::string &comment);
     std::string _retract(double length, double restart_extra, const std::string &comment);
 };
@@ -157,6 +182,11 @@ public:
         this->emit_axis('F', speed, XYZF_EXPORT_DIGITS);
     }
 
+    void emit_ij(const Vec2d &point) {
+        this->emit_axis('I', point.x(), XYZF_EXPORT_DIGITS);
+        this->emit_axis('J', point.y(), XYZF_EXPORT_DIGITS);
+    }
+
     void emit_string(const std::string &s) {
         strncpy(ptr_err.ptr, s.c_str(), s.size());
         ptr_err.ptr += s.size();
@@ -194,6 +224,18 @@ public:
     GCodeG1Formatter& operator=(const GCodeG1Formatter&) = delete;
 };
 
+class GCodeG2G3Formatter : public GCodeFormatter {
+public:
+    GCodeG2G3Formatter(bool is_ccw) {
+        this->buf[0] = 'G';
+        this->buf[1] = is_ccw ? '3' : '2';
+        this->buf_end = buf + buflen;
+        this->ptr_err.ptr = this->buf + 2;
+    }
+
+    GCodeG2G3Formatter(const GCodeG2G3Formatter&) = delete;
+    GCodeG2G3Formatter& operator=(const GCodeG2G3Formatter&) = delete;
+};
 } /* namespace Slic3r */
 
 #endif /* slic3r_GCodeWriter_hpp_ */

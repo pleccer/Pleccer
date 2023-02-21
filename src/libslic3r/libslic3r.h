@@ -63,7 +63,7 @@ static constexpr double LOOP_CLIPPING_LENGTH_OVER_NOZZLE_DIAMETER = 0.15;
 static constexpr double INSET_OVERLAP_TOLERANCE = 0.4;
 // 3mm ring around the top / bottom / bridging areas.
 //FIXME This is quite a lot.
-static constexpr double EXTERNAL_INFILL_MARGIN = 3.;
+static constexpr double EXTERNAL_INFILL_MARGIN = 0.95;
 //FIXME Better to use an inline function with an explicit return type.
 //inline coord_t scale_(coordf_t v) { return coord_t(floor(v / SCALING_FACTOR + 0.5f)); }
 #define scale_(val) ((val) / SCALING_FACTOR)

@@ -441,6 +441,17 @@ void PrintObject::generate_support_material()
 {
     if (this->set_started(posSupportMaterial)) {
         this->clear_support_layers();
+	bool objectHasHoledOverhangs = false;
+        for (auto *layer : m_layers){
+                for (auto *region : layer->m_regions) {
+                        if(region->has_overhang_holes){
+                                objectHasHoledOverhangs = true;//setting.value = osOrganic3;
+                                break;
+                        }
+                }
+                if(objectHasHoledOverhangs) break;
+        }
+        if(objectHasHoledOverhangs) m_config.overhang_primary_setting.value = m_config.overhang_hole_setting.value;
         if ((this->has_support() && m_layers.size() > 1) || (this->has_raft() && ! m_layers.empty())) {
             m_print->set_status(70, L("Generating support material"));    
             this->_generate_support_material();
@@ -588,7 +599,13 @@ bool PrintObject::invalidate_state_by_config_options(
         } else if (
                opt_key == "perimeters"
             || opt_key == "extra_perimeters"
-            || opt_key == "extra_perimeters_on_overhangs"
+	    || opt_key == "arc_infill_raylen"
+            || opt_key == "arc_radius"
+	    || opt_key == "bds_ratio_length"
+	    || opt_key == "bds_ratio_nr"
+	    || opt_key == "bds_median_length"
+	    || opt_key == "bds_max_length"
+	    || opt_key == "extra_perimeters_on_overhangs"
             || opt_key == "first_layer_extrusion_width"
             || opt_key == "perimeter_extrusion_width"
             || opt_key == "infill_overlap"
@@ -624,7 +641,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "slicing_mode") {
             steps.emplace_back(posSlice);
 		} else if (
-               opt_key == "elefant_foot_compensation"
+            opt_key == "elefant_foot_compensation"
             || opt_key == "support_material_contact_distance" 
             || opt_key == "xy_size_compensation") {
             steps.emplace_back(posSlice);
@@ -665,6 +682,13 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "support_tree_branch_diameter_angle"
             || opt_key == "support_tree_top_rate"
             || opt_key == "support_tree_tip_diameter"
+	    || opt_key == "overhang_margin"
+            || opt_key == "overhang_margin_organic"
+   	    || opt_key == "overhang_primary_setting"
+	    || opt_key == "overhang_secondary_setting"
+	    || opt_key == "overhang_hole_setting"
+	    || opt_key == "dont_support_pedestal_overhangs"
+	    || opt_key == "support_fallback"
             || opt_key == "raft_expansion"
             || opt_key == "raft_first_layer_density"
             || opt_key == "raft_first_layer_expansion"
@@ -2224,14 +2248,46 @@ void PrintObject::combine_infill()
     }
 } // void PrintObject::combine_infill()
 
-void PrintObject::_generate_support_material()
+void PrintObject::_generate_support_material(bool useSecondarySetting)
 {
+    const OverhangSetting setting = useSecondarySetting?m_config.overhang_secondary_setting:m_config.overhang_primary_setting;
+
+    if(setting != osInactive){
+	if(setting == osOrganic1 || setting == osOrganic2 || setting == osOrganic3)
+		m_config.support_material_style.value = smsOrganic;
+	else
+		m_config.support_material_style.value = smsGrid;
+	if(setting == osOrganic1)
+		m_config.overhang_margin.value = 0;
+	else if(setting == osOrganic2)
+                m_config.overhang_margin.value = 3.35;
+	else if(setting == osOrganic3)
+                m_config.overhang_margin.value = 50;
+	else if(setting == osClassic1)
+                m_config.overhang_margin.value = 0;
+	else if(setting == osClassic2)
+                m_config.overhang_margin.value = 70;
+	else if(setting == osClassic3)
+                m_config.overhang_margin.value = 150;
+    }
+    bool hasSupports = false;
     if (m_config.support_material_style == smsTree || m_config.support_material_style == smsOrganic) {
-        fff_tree_support_generate(*this, std::function<void()>([this](){ this->throw_if_canceled(); }));
+	fff_tree_support_generate(*this, std::function<void()>([this](){ this->throw_if_canceled(); }));
+	if(!useSecondarySetting && m_config.overhang_secondary_setting != osInactive){
+		for (Layer *l : m_support_layers)
+        		if(l->has_extrusions()) hasSupports = true;
+		if(!hasSupports) this->_generate_support_material(true);
+	}
     } else {
         PrintObjectSupportMaterial support_material(this, m_slicing_params);
         support_material.generate(*this);
+	if(!useSecondarySetting && m_config.overhang_secondary_setting != osInactive){
+                for (Layer *l : m_support_layers)
+                        if(l->has_extrusions()) hasSupports = true;
+		if(!hasSupports) this->_generate_support_material(true);
+	}
     }
+
 }
 
 static void project_triangles_to_slabs(SpanOfConstPtrs<Layer> layers, const indexed_triangle_set &custom_facets, const Transform3f &tr, bool seam, std::vector<Polygons> &out)

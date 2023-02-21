@@ -432,11 +432,16 @@ static std::vector<std::string> s_Preset_print_options {
     "layer_height", "first_layer_height", "perimeters", "spiral_vase", "slice_closing_radius", "slicing_mode",
     "top_solid_layers", "top_solid_min_thickness", "bottom_solid_layers", "bottom_solid_min_thickness",
     "extra_perimeters", "extra_perimeters_on_overhangs", "ensure_vertical_shell_thickness", "avoid_crossing_curled_overhangs", "avoid_crossing_perimeters", "thin_walls", "overhangs",
-    "seam_position","staggered_inner_seams", "external_perimeters_first", "fill_density", "fill_pattern", "top_fill_pattern", "bottom_fill_pattern",
-    "infill_every_layers", "infill_only_where_needed", "solid_infill_every_layers", "fill_angle", "bridge_angle",
-    "solid_infill_below_area", "only_retract_when_crossing_perimeters", "infill_first",
-    "ironing", "ironing_type", "ironing_flowrate", "ironing_speed", "ironing_spacing",
-    "max_print_speed", "max_volumetric_speed", "avoid_crossing_perimeters_max_detour",
+    "seam_position","staggered_inner_seams", "external_perimeters_first", "fill_density", "fill_pattern","bridge_fill_pattern", "top_fill_pattern", "bottom_fill_pattern",
+    "infill_every_layers", "infill_only_where_needed", "solid_infill_every_layers", "fill_angle", "bridge_angle","overhang_margin",
+    "solid_infill_below_area", "only_retract_when_crossing_perimeters", "infill_first","overhang_infill_first",
+    "ironing", "ironing_type", "ironing_flowrate", "ironing_speed", "ironing_spacing","dont_support_pedestal_overhangs",
+    "max_print_speed", "max_volumetric_speed", "avoid_crossing_perimeters_max_detour","bds_ratio_length",
+            "bds_ratio_nr",
+            "bds_median_length",
+            "bds_max_length",
+        "arc_infill_raylen",
+        "arc_radius",
     "fuzzy_skin", "fuzzy_skin_thickness", "fuzzy_skin_point_dist",
     "max_volumetric_extrusion_rate_slope_positive", "max_volumetric_extrusion_rate_slope_negative",
     "perimeter_speed", "small_perimeter_speed", "external_perimeter_speed", "infill_speed", "solid_infill_speed",
@@ -451,7 +456,7 @@ static std::vector<std::string> s_Preset_print_options {
     "support_material_synchronize_layers", "support_material_angle", "support_material_interface_layers", "support_material_bottom_interface_layers",
     "support_material_interface_pattern", "support_material_interface_spacing", "support_material_interface_contact_loops", 
     "support_material_contact_distance", "support_material_bottom_contact_distance",
-    "support_material_buildplate_only", 
+    "support_material_buildplate_only", "overhang_primary_setting","overhang_secondary_setting","overhang_hole_setting", 
     "support_tree_angle", "support_tree_angle_slow", "support_tree_branch_diameter", "support_tree_branch_diameter_angle", "support_tree_top_rate", "support_tree_tip_diameter",
     "dont_support_bridges", "thick_bridges", "notes", "complete_objects", "extruder_clearance_radius",
     "extruder_clearance_height", "gcode_comments", "gcode_label_objects", "output_filename_format", "post_process", "gcode_substitutions", "perimeter_extruder",
@@ -473,7 +478,7 @@ static std::vector<std::string> s_Preset_filament_options {
     "filament_cooling_initial_speed", "filament_cooling_final_speed", "filament_ramming_parameters", "filament_minimal_purge_on_wipe_tower",
     "temperature", "idle_temperature", "first_layer_temperature", "bed_temperature", "first_layer_bed_temperature", "fan_always_on", "cooling", "min_fan_speed",
     "max_fan_speed", "bridge_fan_speed", "disable_fan_first_layers", "full_fan_speed_layer", "fan_below_layer_time", "slowdown_below_layer_time", "min_print_speed",
-    "start_filament_gcode", "end_filament_gcode",
+    "start_filament_gcode", "end_filament_gcode","z_lift_type",
     // Retract overrides
     "filament_retract_length", "filament_retract_lift", "filament_retract_lift_above", "filament_retract_lift_below", "filament_retract_speed", "filament_deretract_speed", "filament_retract_restart_extra", "filament_retract_before_travel",
     "filament_retract_layer_change", "filament_wipe", "filament_retract_before_wipe",
@@ -490,7 +495,7 @@ static std::vector<std::string> s_Preset_machine_limits_options {
 };
 
 static std::vector<std::string> s_Preset_printer_options {
-    "printer_technology",
+    "printer_technology","z_lift_type",
     "bed_shape", "bed_custom_texture", "bed_custom_model", "z_offset", "gcode_flavor", "use_relative_e_distances",
     "use_firmware_retraction", "use_volumetric_e", "variable_layer_height",
     //FIXME the print host keys are left here just for conversion from the Printer preset to Physical Printer preset.

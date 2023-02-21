@@ -50,6 +50,7 @@ static const t_config_enum_values s_keys_map_GCodeFlavor {
     { "reprapfirmware", gcfRepRapFirmware },
     { "repetier",       gcfRepetier },
     { "teacup",         gcfTeacup },
+    { "klipper",      gcfKlipper },
     { "makerware",      gcfMakerWare },
     { "marlin",         gcfMarlinLegacy },
     { "marlin2",        gcfMarlinFirmware },
@@ -67,6 +68,17 @@ static const t_config_enum_values s_keys_map_MachineLimitsUsage {
     { "ignore",             int(MachineLimitsUsage::Ignore) }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(MachineLimitsUsage)
+
+static const t_config_enum_values s_keys_map_OverhangSetting {
+    { "disabled",   osInactive },
+    { "organic-1",   osOrganic1 },
+    { "organic-2",   osOrganic2 },
+    { "organic-3",   osOrganic3 },
+    { "classic-1",   osClassic1 },
+    { "classic-2",   osClassic2 },
+    { "classic-3",   osClassic3 }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(OverhangSetting)
 
 static const t_config_enum_values s_keys_map_PrintHostType {
     { "prusalink",      htPrusaLink },
@@ -94,6 +106,7 @@ static const t_config_enum_values s_keys_map_FuzzySkinType {
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(FuzzySkinType)
 
 static const t_config_enum_values s_keys_map_InfillPattern {
+    { "arc",                ipArc },
     { "rectilinear",        ipRectilinear },
     { "monotonic",          ipMonotonic },
     { "monotoniclines",     ipMonotonicLines },
@@ -122,6 +135,14 @@ static const t_config_enum_values s_keys_map_IroningType {
     { "solid",          int(IroningType::AllSolid) }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(IroningType)
+
+static const t_config_enum_values s_keys_map_ZHopType = {
+    { "Auto Lift",          zhtAuto },
+    { "Normal Lift",        zhtNormal },
+    { "Slope Lift",         zhtSlope },
+    { "Spiral Lift",        zhtSpiral }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(ZHopType)
 
 static const t_config_enum_values s_keys_map_SlicingMode {
     { "regular",        int(SlicingMode::Regular) },
@@ -500,6 +521,154 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0.));
 
+    def = this->add("bridge_fill_pattern", coEnum);
+    def->label = L("Bridge fill pattern");
+    def->category = L("Infill");
+    def->tooltip = L("Fill pattern for bridge infill. This only affects the bottom external visible layer, and not its adjacent solid shells.");
+    def->cli = "bridge-fill-pattern";
+    def->set_enum<InfillPattern>({
+        { "arc",        L("Arc") },
+        { "rectilinear",        L("Rectilinear") },
+        { "monotonic",          L("Monotonic") },
+        { "monotoniclines",     L("Monotonic Lines") },
+        { "alignedrectilinear", L("Aligned Rectilinear") },
+        { "concentric",         L("Concentric") },
+        { "hilbertcurve",       L("Hilbert Curve") },
+        { "archimedeanchords",  L("Archimedean Chords") },
+        { "octagramspiral",     L("Octagram Spiral") }
+    });
+
+    def->set_default_value(new ConfigOptionEnum<InfillPattern>(ipArc));
+
+    def = this->add("bds_ratio_length", coFloat);
+    def->category = L("Advanced");
+    def->label = L("Scoring on total length of anchored lines in overhang");
+    def->tooltip = L("Given in percentage of total");
+    def->sidetext = L("%");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(7060.));
+
+    def = this->add("bds_ratio_nr", coFloat);
+    def->category = L("Advanced");
+    def->tooltip = L("Given in percentage of total");
+    def->label = L("Scoring on total number of anchored lines in overhang");
+    def->sidetext = L("%");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.));
+
+    def = this->add("bds_median_length", coFloat);
+    def->category = L("Advanced");
+    def->tooltip = L("Given in percentage of total");
+    def->label = L("Scoring on median length of anchored lines in overhang");
+    def->sidetext = L("%");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(400.));
+
+    def = this->add("bds_max_length", coFloat);
+    def->category = L("Advanced");
+    def->tooltip = L("Given in percentage of total");
+    def->label = L("Scoring on max length of anchored lines in overhang");
+    def->sidetext = L("%");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(-101.));
+
+    def = this->add("arc_radius", coFloat);
+    def->category = L("Advanced");
+    def->tooltip = L("");
+    def->label = L("Radius of the outer arc");
+    def->min = 0;
+    def->sidetext = L("");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(1.55));
+
+    def = this->add("arc_infill_raylen", coFloat);
+    def->category = L("Advanced");
+    def->tooltip = L("");
+    def->label = L("Length of the ray used for edge intersection");
+    def->min = 0;
+    def->sidetext = L("");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(12.));
+
+    def = this->add("dont_support_pedestal_overhangs", coBool);
+    def->label = L("Don't support overhangs that use pedestal spiral infill");
+    def->tooltip = L("Overhangs with a pedestal underneath can often be printed without any support.");
+    def->category = L("Support material");
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionBool(true));
+
+    def = this->add("overhang_margin", coFloat);
+    def->label = L("Overhang margin");
+    def->category = L("Support material");
+    def->tooltip = L("Given as % of a single perimeter width and taken from outside in," 
+            "50% is halfway on most outer perimeter.");
+    def->sidetext = L("%");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.));
+
+    def = this->add("ignore_overhang_auto_setting", coBool);
+    def->label = L("Ignore auto overhang setting");
+    def->category = L("Support material");
+    def->tooltip = L("");
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("overhang_primary_setting", coEnum);
+    def->label = L("Main overhang setting");
+    def->tooltip = L("Custom values are ignored when using these presets.");
+    //def->mode = comExpert;
+    def->category = L("Support material");
+    def->set_enum<OverhangSetting>({
+        { "disabled",         L("Disabled") },
+        { "organic-1",       L("Organic Low - big corners") },
+    { "organic-2",       L("Organic Med - all corners") },
+    { "organic-3",       L("Organic High - all sides") },
+    { "classic-1",       L("Classic Low - big sides") },
+    { "classic-2",       L("Classic Med - all sides") },
+    { "classic-3",       L("Classic High - thick") }
+    });
+    def->set_default_value(new ConfigOptionEnum<OverhangSetting>(osOrganic1));
+
+    def = this->add("overhang_secondary_setting", coEnum);
+    def->label = L("Fallback overhang setting");
+    def->tooltip = L("Is used when the main preset doesn't give an object any support.");
+    //def->mode = comExpert;
+    def->category = L("Support material");
+    def->set_enum<OverhangSetting>({
+        { "disabled",         L("Disabled") },
+        { "organic-1",       L("Organic Low - big corners") },
+        { "organic-2",       L("Organic Med - all corners") },
+        { "organic-3",       L("Organic High - all sides") },
+        { "classic-1",       L("Classic Low - big sides") },
+        { "classic-2",       L("Classic Med - all sides") },
+        { "classic-3",       L("Classic High - thick") }
+    });
+    def->set_default_value(new ConfigOptionEnum<OverhangSetting>(osClassic2));
+
+    def = this->add("overhang_hole_setting", coEnum);
+    def->label = L("Holed overhang setting");
+    def->tooltip = L("When there are holes in overhangs it can be better to support the holes, as they weaken arc infill.");
+    //def->mode = comExpert;
+    def->category = L("Support material");
+    def->set_enum<OverhangSetting>({
+        { "disabled",         L("Disabled") },
+        { "organic-1",       L("Organic Low - big corners") },
+        { "organic-2",       L("Organic Med - all corners") },
+        { "organic-3",       L("Organic High - all sides") },
+        { "classic-1",       L("Classic Low - big sides") },
+        { "classic-2",       L("Classic Med - all sides") },
+        { "classic-3",       L("Classic High - thick") }
+    });
+    def->set_default_value(new ConfigOptionEnum<OverhangSetting>(osOrganic2));
+
+    def = this->add("dont_support_pedestal_overhangs", coBool);
+    def->label = L("Don't support overhangs that use pedestal spiral infill");
+    def->tooltip = L("Overhangs with a pedestal underneath can often be printed without any support.");
+    def->category = L("Support material");
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("bridge_fan_speed", coInts);
     def->label = L("Bridges fan speed");
     def->tooltip = L("This fan speed is enforced during all bridges and overhangs.");
@@ -529,14 +698,14 @@ void PrintConfigDef::init_fff_params()
     def->aliases = { "bridge_feed_rate" };
     def->min = 0;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(60));
+    def->set_default_value(new ConfigOptionFloat(15));
 
     def             = this->add("enable_dynamic_overhang_speeds", coBool);
     def->label      = L("Enable dynamic overhang speeds");
     def->category   = L("Speed");
     def->tooltip    = L("This setting enables dynamic speed control on overhangs.");
     def->mode       = comAdvanced;
-    def->set_default_value(new ConfigOptionBool(false));
+    def->set_default_value(new ConfigOptionBool(true));
 
     def             = this->add("overhang_overlap_levels", coPercents);
     def->full_label = L("Overhang overlap levels");
@@ -1019,7 +1188,7 @@ void PrintConfigDef::init_fff_params()
     def->sidetext = L("mm³");
     def->min = 0;
     def->mode = comExpert;
-    def->set_default_value(new ConfigOptionFloats { 15. });
+    def->set_default_value(new ConfigOptionFloats { 8. });
 
     def = this->add("filament_cooling_final_speed", coFloats);
     def->label = L("Speed of the last cooling move");
@@ -1498,6 +1667,12 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("This option will switch the print order of perimeters and infill, making the latter first.");
     def->mode = comExpert;
     def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("overhang_infill_first", coBool);
+    def->label = L("Overhang infill before perimeters");
+    def->tooltip = L("This option will print the overhang infill first, avoiding mid-air perimeter printing.");
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionBool(true));
 
     def = this->add("infill_only_where_needed", coBool);
     def->label = L("Only infill where needed");
@@ -2176,6 +2351,19 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert;
     def->set_default_value(new ConfigOptionFloats { 10. });
 
+    def = this->add("z_lift_type", coEnum);
+    def->label = L("Z Lift Type");
+    def->tooltip = L("Spiral lift reduces stringing.");
+    def->set_enum<ZHopType>({
+        { "Auto Lift",      "Auto" },
+        { "Normal Lift",      "Normal" },
+        { "Slope Lift",      "Slope" },
+        { "Spiral Lift",      "Spiral" }
+    });
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum{ ZHopType::zhtSpiral });
+
+
     def = this->add("retract_lift", coFloats);
     def->label = L("Lift Z");
     def->tooltip = L("If you set this to a positive value, Z is quickly raised every time a retraction "
@@ -2530,7 +2718,7 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Generate support material");
     def->category = L("Support material");
     def->tooltip = L("Enable support material generation.");
-    def->set_default_value(new ConfigOptionBool(false));
+    def->set_default_value(new ConfigOptionBool(true));
 
     def = this->add("support_material_auto", coBool);
     def->label = L("Auto generated supports");
@@ -2568,7 +2756,7 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Support material");
     def->tooltip = L("Only create support if it lies on a build plate. Don't create support on a print.");
     def->mode = comSimple;
-    def->set_default_value(new ConfigOptionBool(false));
+    def->set_default_value(new ConfigOptionBool(true));
 
     def = this->add("support_material_contact_distance", coFloat);
     def->label = L("Top contact Z distance");
@@ -2665,7 +2853,7 @@ void PrintConfigDef::init_fff_params()
         { "3", L("3 (heavy)") }
     });
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionInt(3));
+    def->set_default_value(new ConfigOptionInt(0));
 
     def = this->add("support_material_bottom_interface_layers", coInt);
     def->label = L("Bottom interface layers");
@@ -2794,7 +2982,7 @@ void PrintConfigDef::init_fff_params()
     def->min = 0;
     def->max = 90;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionInt(0));
+    def->set_default_value(new ConfigOptionInt(15));
 
     def = this->add("support_material_with_sheath", coBool);
     def->label = L("With sheath around the support");
@@ -2813,7 +3001,7 @@ void PrintConfigDef::init_fff_params()
     def->min = 0;
     def->max = 85;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(40));
+    def->set_default_value(new ConfigOptionFloat(55));
 
     def = this->add("support_tree_angle_slow", coFloat);
     def->label = L("Preferred Branch Angle");
@@ -2824,7 +3012,7 @@ void PrintConfigDef::init_fff_params()
     def->min = 10;
     def->max = 85;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(25));
+    def->set_default_value(new ConfigOptionFloat(35));
 
     def = this->add("support_tree_tip_diameter", coFloat);
     def->label = L("Tip Diameter");
@@ -2843,7 +3031,7 @@ void PrintConfigDef::init_fff_params()
     def->sidetext = L("mm");
     def->min = 0;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(2));
+    def->set_default_value(new ConfigOptionFloat(1.5));
 
     def = this->add("support_tree_branch_diameter_angle", coFloat);
     def->label = L("Branch Diameter Angle");
@@ -2855,7 +3043,7 @@ void PrintConfigDef::init_fff_params()
     def->min = 0;
     def->max = 15;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(5));
+    def->set_default_value(new ConfigOptionFloat(1));
 
     def = this->add("support_tree_top_rate", coPercent);
     def->label = L("Branch Density");
@@ -2867,7 +3055,7 @@ void PrintConfigDef::init_fff_params()
     def->min = 5;
     def->max_literal = 35;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionPercent(30));
+    def->set_default_value(new ConfigOptionPercent(5));
 
     def = this->add("temperature", coInts);
     def->label = L("Other layers");
