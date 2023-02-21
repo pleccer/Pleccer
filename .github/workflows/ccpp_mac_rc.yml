@@ -13,7 +13,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        ref: 'rc'
+        ref: 'master'
     - name: build deps & slicer
       run: ./BuildMacOS.sh -i
     - name: Codesign executable conf

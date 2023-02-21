@@ -15,7 +15,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        ref: 'rc'
+        ref: 'master'
     - name: update submodule profiles
       working-directory: ./resources/profiles
       run: git submodule update --init
