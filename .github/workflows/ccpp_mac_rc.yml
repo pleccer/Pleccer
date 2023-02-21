@@ -3,7 +3,7 @@ name: C/C++ Release candidate macos
 on:
   push:
     branches:
-      - rc
+      - master
 
 jobs:
   build:
