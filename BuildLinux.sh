@@ -191,7 +191,7 @@ then
         
         # make Slic3r
         echo "[8/9] Building Slic3r..."
-        make -j$NCORES PrusaSlicer
+        make -j$NCORES Pleccer
 
         # make .mo
         make gettext_po_to_mo
