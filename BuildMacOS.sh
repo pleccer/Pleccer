@@ -167,7 +167,7 @@ echo "done"
 echo -n "[8/9] Building Slic3r..."
 {
     # make Slic3r
-    make -j$NCORES Pleccer
+    make -j$NCORES PrusaSlicer
 
     # make .mo
     make gettext_po_to_mo
