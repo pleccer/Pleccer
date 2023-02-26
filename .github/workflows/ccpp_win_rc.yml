@@ -46,7 +46,7 @@ jobs:
 
       - name: Build studio
         working-directory: ${{ github.workspace }}
-        run: .\build_win.bat -d=..\deps\build\PrusaSlicer-deps -c=Release -s=app
+        run: .\build_win.bat -d=.\deps\build\PrusaSlicer-deps -c=Release -s=app
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
