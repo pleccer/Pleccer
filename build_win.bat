@@ -134,19 +134,6 @@ IF "%PS_DESTDIR%" EQU "" (
     GOTO :HELP
 )
 CALL :CANONICALIZE_PATH PS_DESTDIR "%PS_START_DIR%"
-IF "%PS_DESTDIR%" NEQ "%PS_DESTDIR_CACHED%" (
-    (echo "all deps all-dirty deps-dirty")| findstr /I /C:"%PS_STEPS%">nul || (
-        IF EXIST "%PS_DESTDIR%" (
-            @ECHO WARNING: DESTDIR does not match cache: 1>&2
-            @ECHO WARNING:  new: %PS_DESTDIR% 1>&2
-            @ECHO WARNING:  old: %PS_DESTDIR_CACHED% 1>&2
-            SET PS_ASK_TO_CONTINUE=1
-        ) ELSE (
-            @ECHO ERROR: Invalid parameter: DESTDIR=%PS_DESTDIR% 1>&2
-            GOTO :HELP
-        )
-    )
-)
 SET PS_DESTDIR_DEFAULT_MSG=
 CALL :PARSE_OPTION_VALUE "console custom ide none viewer window" PS_RUN
 IF "%PS_RUN%" EQU "" GOTO :HELP
