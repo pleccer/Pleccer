@@ -20,11 +20,11 @@ jobs:
       - run: mkdir ${{ github.workspace }}/deps/build
       - name: download deps
         shell: powershell
-        run: '(new-object System.Net.WebClient).DownloadFile("https://my.hidrive.com/api/sharelink/download?id=tjHIGXtm", "$env:temp\PrusaSlicer_deps.zip")'
+        run: '(new-object System.Net.WebClient).DownloadFile("https://plec.it/wp-content/uploads/PrusaSlicer-deps.zip", "$env:temp\PrusaSlicer-deps.zip")'
       - name: extract deps
         working-directory: ${{ github.workspace }}/deps/build
         shell: cmd
-        run: '"C:/Program Files/7-Zip/7z.exe" x %temp%\PrusaSlicer_deps.zip'
+        run: '"C:/Program Files/7-Zip/7z.exe" x %temp%\PrusaSlicer-deps.zip'
 
       - run: dir "${{ github.workspace }}\deps\build\"
       # - name: build deps
@@ -33,7 +33,7 @@ jobs:
       #   env:
       #     cache-name: ${{ runner.os }}-cache-PrusaSlicer-deps
       #   with:
-      #     path: ${{ github.workspace }}/deps/build/PrusaSlicer-deps
+      #     path: ${{ github.workspace }}/deps/build/PrusaSlicer_deps
       #     key: ${{ runner.os }}-build-${{ env.cache-name }}
 
       # - if: ${{ steps.cache_deps.outputs.cache-hit != 'true' }}
@@ -42,7 +42,7 @@ jobs:
       #   continue-on-error: true
       #   run: .\build_release.bat deps
    
-      # - run:  Get-ChildItem ${{ github.workspace }}/deps/build/ -Exclude PrusaSlicer-deps | Remove-Item -Recurse -Force
+      # - run:  Get-ChildItem ${{ github.workspace }}/deps/build/ -Exclude PrusaSlicer_deps | Remove-Item -Recurse -Force
 
       - name: Build studio
         working-directory: ${{ github.workspace }}
