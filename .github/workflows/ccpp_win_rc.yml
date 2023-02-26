@@ -20,7 +20,7 @@ jobs:
       - run: mkdir ${{ github.workspace }}/deps/build
       - name: download deps
         shell: powershell
-        run: '(new-object System.Net.WebClient).DownloadFile("https://plec.commmunity/wp-content/uploads/PrusaSlicer-deps.zip", "$env:temp\PrusaSlicer-deps.zip")'
+        run: '(new-object System.Net.WebClient).DownloadFile("https://plec.community/wp-content/uploads/PrusaSlicer-deps.zip", "$env:temp\PrusaSlicer-deps.zip")'
       - name: extract deps
         working-directory: ${{ github.workspace }}/deps/build
         shell: cmd
