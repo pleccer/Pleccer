@@ -51,5 +51,5 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: Pleccer_Win64_nightly
-          path: ${{ github.workspace }}/build/Pleccer
+          name: Pleccer_Win64_rc
+          path: ${{ github.workspace }}/build/src/Release
