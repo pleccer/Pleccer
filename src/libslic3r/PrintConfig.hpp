@@ -498,6 +498,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               brim_separation))
     ((ConfigOptionEnum<BrimType>,      brim_type))
     ((ConfigOptionFloat,               brim_width))
+    ((ConfigOptionFloat,               overhang_overlap))
     //((ConfigOptionBool,                clip_multipart_objects))
     ((ConfigOptionEnum<OverhangSetting>, overhang_primary_setting))
     ((ConfigOptionEnum<OverhangSetting>, overhang_secondary_setting))

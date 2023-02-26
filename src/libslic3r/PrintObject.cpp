@@ -1113,7 +1113,7 @@ void PrintObject::process_external_surfaces()
 		}
 	    BOOST_LOG_TRIVIAL(debug) << "Collecting surfaces covered with extrusions in parallel - start";
 	    surfaces_covered.resize(m_layers.size() - 1, Polygons());
-    	auto unsupported_width = - float(scale_(0.3 * EXTERNAL_INFILL_MARGIN));
+    	auto unsupported_width = - float(scale_(0.3*EXTERNAL_INFILL_MARGIN));//m_config.overhang_overlap.value));// EXTERNAL_INFILL_MARGIN));
 	    tbb::parallel_for(
 	        tbb::blocked_range<size_t>(0, m_layers.size() - 1),
 	        [this, &surfaces_covered, &layer_expansions_and_voids, unsupported_width](const tbb::blocked_range<size_t>& range) {

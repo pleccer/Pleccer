@@ -607,6 +607,15 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0.));
 
+    def = this->add("overhang_overlap", coFloat);
+    def->label = L("Overhang infill overlap");
+    def->category = L("Support material");
+    def->tooltip = L("Usually best left untouched.");
+    def->sidetext = L("mm");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.9));
+
     def = this->add("ignore_overhang_auto_setting", coBool);
     def->label = L("Ignore auto overhang setting");
     def->category = L("Support material");

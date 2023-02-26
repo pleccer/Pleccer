@@ -437,7 +437,7 @@ static std::vector<std::string> s_Preset_print_options {
     "solid_infill_below_area", "only_retract_when_crossing_perimeters", "infill_first","overhang_infill_first",
     "ironing", "ironing_type", "ironing_flowrate", "ironing_speed", "ironing_spacing","dont_support_pedestal_overhangs",
     "max_print_speed", "max_volumetric_speed", "avoid_crossing_perimeters_max_detour","bds_ratio_length",
-            "bds_ratio_nr",
+            "bds_ratio_nr","overhang_overlap",
             "bds_median_length",
             "bds_max_length",
         "arc_infill_raylen",

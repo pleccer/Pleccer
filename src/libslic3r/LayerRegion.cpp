@@ -146,7 +146,7 @@ void LayerRegion::make_perimeters(
 void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Polygons *lower_layer_covered)
 {
     const bool      has_infill = this->region().config().fill_density.value > 0.;
-    const float		margin 	   = float(scale_(EXTERNAL_INFILL_MARGIN));
+    const float		margin 	   = float(scale_(EXTERNAL_INFILL_MARGIN));//this->layer()->object()->config().overhang_overlap.value));//EXTERNAL_INFILL_MARGIN));
 
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
     export_region_fill_surfaces_to_svg_debug("3_process_external_surfaces-initial");
@@ -249,7 +249,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                         break;
                     }
                 // Grown by 3mm.
-                Polygons polys = offset(bridges[i].expolygon, margin, EXTERNAL_SURFACES_OFFSET_PARAMETERS);
+                Polygons polys = offset(bridges[i].expolygon, float(scale_(this->layer()->object()->config().overhang_overlap.value)), EXTERNAL_SURFACES_OFFSET_PARAMETERS);
                 if (idx_island == -1) {
 				    BOOST_LOG_TRIVIAL(trace) << "Bridge did not fall into the source region!";
                 } else {

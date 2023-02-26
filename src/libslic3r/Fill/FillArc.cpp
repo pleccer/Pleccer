@@ -54,10 +54,10 @@ void FillArc::_fill_surface_single(
     double angle = direction.first-.5*M_PI;
     if(pedestal.empty()){
         intersect_line.points.emplace_back((center_x),(center_y));
-        intersect_line.points.emplace_back(((double)(bbox.size().x()*double(params.config->arc_infill_raylen.value)*std::cos(1*angle)))
-                                ,((double)(bbox.size().y()*double(params.config->arc_infill_raylen.value)*std::sin(1*angle))));
-        intersect_line.points.emplace_back(((double)(bbox.size().x()*(double(params.config->arc_infill_raylen.value)+.1)*std::cos(1*angle)))
-                                ,((double)(bbox.size().y()*(double(params.config->arc_infill_raylen.value)+.1)*std::sin(1*angle))));
+        intersect_line.points.emplace_back(((double)(center_x + bbox.size().x()*double(params.config->arc_infill_raylen.value)*std::cos(1*angle)))
+                                ,((double)(center_y + bbox.size().y()*double(params.config->arc_infill_raylen.value)*std::sin(1*angle))));
+        intersect_line.points.emplace_back(((double)(center_x + bbox.size().x()*(double(params.config->arc_infill_raylen.value)+.1)*std::cos(1*angle)))
+                                ,((double)(center_y + bbox.size().y()*(double(params.config->arc_infill_raylen.value)+.1)*std::sin(1*angle))));
         intersect_line.points.emplace_back((center_x),(center_y));
         intersect_lines = intersection_pl(intersect_line,expolygon);
 

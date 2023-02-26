@@ -1512,6 +1512,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("overhang_secondary_setting");
         optgroup->append_single_option_line("overhang_hole_setting");
         optgroup->append_single_option_line("overhang_margin");
+	optgroup->append_single_option_line("overhang_overlap");
         optgroup->append_single_option_line("dont_support_pedestal_overhangs");
         optgroup->append_single_option_line("overhang_infill_first");
 

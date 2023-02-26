@@ -35,13 +35,12 @@ BridgeDetector::BridgeDetector(
 void BridgeDetector::initialize()
 {
     // 5 degrees stepping
-    this->resolution = PI/(36.0*2.); 
+    this->resolution = PI/(36.0*5.); 
     // output angle not known
     this->angle = -1.;
 
     // Outset our bridge by an arbitrary amout; we'll use this outer margin for detecting anchors.
     Polygons grown = offset(this->expolygons, float(this->spacing*.8));
-    
     // Detect possible anchoring edges of this bridging region.
     // Detect what edges lie on lower slices by turning bridge contour and holes
     // into polylines and then clipping them with each lower slice's contour.
@@ -324,7 +323,7 @@ bool BridgeDetector::detect_angle(double bridge_direction_override, const PrintR
                 }
             }
             if (c.total_length_anchored == 0. || c.nb_lines_anchored == 0) {
-                candidates[i_angle].angle += 1.5*PI;
+                //candidates[i_angle].angle += 1.5*PI;
                 continue;
             } else {
                 have_coverage = true;
