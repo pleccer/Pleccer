@@ -20,13 +20,13 @@ jobs:
       - run: mkdir ${{ github.workspace }}/deps/build
       - name: download deps
         shell: powershell
-        run: '(new-object System.Net.WebClient).DownloadFile("https://plec.community/wp-content/uploads/PrusaSlicer-deps.zip", "$env:temp\PrusaSlicer-deps.zip")'
+        run: '(new-object System.Net.WebClient).DownloadFile("https://my.hidrive.com/api/sharelink/download?id=tjHIGXtm", "$env:temp\PrusaSlicer_deps.zip")'
       - name: extract deps
         working-directory: ${{ github.workspace }}/deps/build
         shell: cmd
-        run: '"C:/Program Files/7-Zip/7z.exe" x %temp%\PrusaSlicer-deps.zip'
+        run: '"C:/Program Files/7-Zip/7z.exe" x %temp%\PrusaSlicer_deps.zip'
 
-      - run: dir "${{ github.workspace }}\deps\build\PrusaSlicer-deps"
+      - run: dir "${{ github.workspace }}\deps\build\"
       # - name: build deps
       #   id: cache_deps
       #   uses: actions/cache@v3
