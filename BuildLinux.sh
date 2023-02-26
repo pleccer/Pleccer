@@ -201,7 +201,10 @@ then
 fi
 
 # Give proper permissions to script
+cp $ROOT/BuildLinuxImage.sh $ROOT/build/src/
 chmod 755 $ROOT/build/src/BuildLinuxImage.sh
+cp $ROOT/build_appimage.sh $ROOT/build/
+chmod 755 $ROOT/build/build_appimage.sh
 
 echo "[9/9] Generating Linux app..."
     pushd build

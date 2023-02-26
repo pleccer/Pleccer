@@ -1,0 +1,30 @@
+#!/bin/sh
+APPIMAGETOOLURL="https://github.com/AppImage/AppImageKit/releases/latest/download/appimagetool-x86_64.AppImage"
+
+
+APP_IMAGE="Pleccer_ubu64.AppImage"
+
+wget ${APPIMAGETOOLURL} -O ../appimagetool.AppImage
+chmod +x ../appimagetool.AppImage
+
+sed -i -e 's#/usr#././#g' bin/pleccer
+mv pleccer AppRun
+chmod +x AppRun
+
+cp resources/icons/PrusaSlicer_192px.png Pleccer.png
+mkdir -p usr/share/icons/hicolor/192x192/apps
+cp resources/icons/PrusaSlicer_192px.png usr/share/icons/hicolor/192x192/apps/Pleccer.png
+cat <<EOF > Pleccer.desktop
+[Desktop Entry]
+Name=Pleccer
+Exec=AppRun %F
+Icon=Pleccer
+Type=Application
+Categories=Utility;
+MimeType=model/stl;application/vnd.ms-3mfdocument;application/prs.wavefront-obj;application/x-amf;
+EOF
+
+
+../appimagetool.AppImage .
+mv Pleccer-x86_64.AppImage ${APP_IMAGE}
+chmod +x ${APP_IMAGE}
