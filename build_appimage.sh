@@ -7,8 +7,8 @@ APP_IMAGE="Pleccer_ubu64.AppImage"
 wget ${APPIMAGETOOLURL} -O ../appimagetool.AppImage
 chmod +x ../appimagetool.AppImage
 
-sed -i -e 's#/usr#././#g' bin/pleccer
-mv pleccer AppRun
+sed -i -e 's#/usr#././#g' bin/prusa-slicer
+mv prusa-slicer AppRun
 chmod +x AppRun
 
 cp resources/icons/PrusaSlicer_192px.png Pleccer.png

@@ -40,7 +40,7 @@ echo -n "[9/9] Generating Linux app..."
     find package/resources/localization -name "*.po" -type f -delete
 
     # create bin
-    echo -e '#!/bin/bash\nDIR=$(readlink -f "$0" | xargs dirname)\nexport LD_LIBRARY_PATH="$DIR/bin"\nexec "$DIR/bin/pleccer" "$@"' >pleccer
+    echo -e '#!/bin/bash\nDIR=$(readlink -f "$0" | xargs dirname)\nexport LD_LIBRARY_PATH="$DIR/bin"\nexec "$DIR/bin/prusa-slicer" "$@"' >prusa-slicer
     chmod ug+x prusa-slicer
     cp -f prusa-slicer package/prusa-slicer
     pushd package
