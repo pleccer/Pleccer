@@ -1,4 +1,4 @@
-set(_wx_git_tag v3.1.4-patched)
+set(_wx_git_tag v3.2.2.1)
 
 set(_wx_toolkit "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -15,8 +15,8 @@ if (UNIX AND NOT APPLE) # wxWidgets will not use char as the underlying type for
 endif()
 
 prusaslicer_add_cmake_project(wxWidgets
-    URL https://github.com/prusa3d/wxWidgets/archive/489f6118256853cf5b299d595868641938566cdb.zip
-    URL_HASH SHA256=5b22d465377cedd8044bba69bea958b248953fd3628c1de4913a84d4e6f6175b
+    GIT_REPOSITORY "https://github.com/wxWidgets/wxWidgets"
+    GIT_TAG tm_cross_compile #${_wx_git_tag}
     DEPENDS ${PNG_PKG} ${ZLIB_PKG} ${EXPAT_PKG} dep_TIFF dep_JPEG dep_NanoSVG
     CMAKE_ARGS
         -DwxBUILD_PRECOMP=ON
