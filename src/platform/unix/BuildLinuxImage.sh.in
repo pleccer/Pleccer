@@ -41,7 +41,18 @@ echo -n "[9/9] Generating Linux app..."
     find package/resources/localization -name "*.po" -type f -delete
 
     # create bin
-    echo '#!/bin/bash;DIR=$(readlink -f "$0" | xargs dirname);export LD_LIBRARY_PATH="$DIR/bin";exec "$DIR/bin/@SLIC3R_APP_CMD@" "$@"' >@SLIC3R_APP_CMD@
+    #echo '#!/bin/bash;DIR=$(readlink -f "$0" | xargs dirname);export LD_LIBRARY_PATH="$DIR/bin";exec "$DIR/bin/@SLIC3R_APP_CMD@" "$@"' >@SLIC3R_APP_CMD@
+    cat << EOF >@SLIC3R_APP_CMD@
+    #!/bin/bash
+    DIR=\$(readlink -f "\$0" | xargs dirname)
+    export LD_LIBRARY_PATH="\$DIR/bin"
+
+    # FIXME: PrusaSlicer segfault workarounds
+    # 1) PrusaSlicer will segfault on systems where locale info is not as expected (i.e. Holo-ISO arch-based distro)
+    export LC_ALL=C
+
+    exec "$DIR/bin/@SLIC3R_APP_CMD@" "$@"
+    EOF
     chmod ug+x @SLIC3R_APP_CMD@
     cp -rf @SLIC3R_APP_CMD@ package/@SLIC3R_APP_CMD@
     pushd package
