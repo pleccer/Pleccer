@@ -38,7 +38,7 @@ jobs:
       uses: actions/upload-artifact@v1.0.0
       with:
         name: rc_macos.app
-        path: build/pack/Pleccer/PrusaSlicer.app
+        path: build/pack/PrusaSlicer/PrusaSlicer.app
 #    - name: run codesign on dmg
 #      run: |
 #        /usr/bin/codesign --force -s "Developer ID Application: Remi Durand (LDTLFRHP3G)" ./build/Pleccer.dmg -v
