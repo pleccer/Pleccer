@@ -28,25 +28,25 @@ echo -n "[9/9] Generating MacOS app..."
         rm -rf pack/*
     fi
     mkdir pack
-    mkdir pack/@SLIC3R_APP_KEY@
-    mkdir pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app
-    mkdir pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents
-    mkdir pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/_CodeSignature
-    mkdir pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/Frameworks
-    mkdir pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/MacOS
+    mkdir pack/PrusaSlicer
+    mkdir pack/PrusaSlicer/PrusaSlicer.app
+    mkdir pack/PrusaSlicer/PrusaSlicer.app/Contents
+    mkdir pack/PrusaSlicer/PrusaSlicer.app/Contents/_CodeSignature
+    mkdir pack/PrusaSlicer/PrusaSlicer.app/Contents/Frameworks
+    mkdir pack/PrusaSlicer/PrusaSlicer.app/Contents/MacOS
 
     # copy Resources
-    cp -Rf ../resources pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/Resources
-    cp pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/Resources/icons/@SLIC3R_APP_KEY@.icns pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/resources/@SLIC3R_APP_KEY@.icns
-    cp src/Info.date.plist pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/Info.plist
+    cp -Rf ../resources pack/PrusaSlicer/PrusaSlicer.app/Contents/Resources
+    cp pack/PrusaSlicer/PrusaSlicer.app/Contents/Resources/icons/PrusaSlicer.icns pack/PrusaSlicer/PrusaSlicer.app/Contents/resources/PrusaSlicer.icns
+    cp src/Info.date.plist pack/PrusaSlicer/PrusaSlicer.app/Contents/Info.plist
     echo -n -e 'APPL????\x0a' > PkgInfo
-    cp PkgInfo pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/PkgInfo
+    cp PkgInfo pack/PrusaSlicer/PrusaSlicer.app/Contents/PkgInfo
     # remove unneeded po from resources
-    find pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/Resources/localization -name "*.po" -type f -delete
+    find pack/PrusaSlicer/PrusaSlicer.app/Contents/Resources/localization -name "*.po" -type f -delete
 
     # copy bin and do not let it lower case
-    cp -f src/@SLIC3R_APP_CMD@ pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/MacOS/@SLIC3R_APP_KEY@
-    chmod u+x pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/MacOS/@SLIC3R_APP_KEY@
+    cp -f src/PrusaSlicer pack/PrusaSlicer/PrusaSlicer.app/Contents/MacOS/PrusaSlicer
+    chmod u+x pack/PrusaSlicer/PrusaSlicer.app/Contents/MacOS/PrusaSlicer
 } &> $ROOT/Build.log # Capture all command output
 echo "done"
 
@@ -54,11 +54,11 @@ if [[ -n "$BUILD_IMAGE" ]]
 then
 echo -n "Creating DMG Image for distribution..."
 {
-    tar -cvf @SLIC3R_APP_KEY@.tar pack/@SLIC3R_APP_KEY@
+    tar -cvf PrusaSlicer.tar pack/PrusaSlicer
 
     # create dmg
-    hdiutil create -ov -fs HFS+ -volname "@SLIC3R_APP_KEY@" -srcfolder "pack/@SLIC3R_APP_KEY@" temp.dmg
-    hdiutil convert temp.dmg -format UDZO -o @SLIC3R_APP_KEY@.dmg
+    hdiutil create -ov -fs HFS+ -volname "PrusaSlicer" -srcfolder "pack/PrusaSlicer" temp.dmg
+    hdiutil convert temp.dmg -format UDZO -o PrusaSlicer.dmg
     popd
 } &> $ROOT/Build.log # Capture all command output
 echo "done"
