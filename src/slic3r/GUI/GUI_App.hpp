@@ -292,10 +292,10 @@ public:
     // Add "Rememeber my choice" checkbox to question dialog, when it is forced or a "suppress_hyperlinks" option has empty value
     bool            open_browser_with_warning_dialog(const wxString& url, wxWindow* parent = nullptr, bool force_remember_choice = true, int flags = 0);
 #ifdef __APPLE__
-    virtual void            OSXStoreOpenFiles(const wxArrayString &files) override;
+    void            OSXStoreOpenFiles(const wxArrayString &files);
     // wxWidgets override to get an event on open files.
-    virtual void            MacOpenFiles(const wxArrayString &fileNames) override;
-    virtual void            MacOpenURL(const wxString& url) override;
+    void            MacOpenFiles(const wxArrayString &fileNames) override;
+    void            MacOpenURL(const wxString& url) override;
 #endif /* __APPLE */
 
     Sidebar&             sidebar();
