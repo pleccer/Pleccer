@@ -20,9 +20,9 @@ jobs:
       uses: actions/upload-artifact@v1.0.0
       with:
         name: rc_arm_macos.tar
-        path: build/Pleccer.tar
+        path: build/PrusaSlicer.tar
     - name: Upload artifact
       uses: actions/upload-artifact@v1.0.0
       with:
         name: rc_macos.dmg
-        path: build/Pleccer.dmg
+        path: build/PrusaSlicer.dmg
