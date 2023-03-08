@@ -42,7 +42,8 @@ echo -n "[9/9] Generating Linux app..."
 
     # create bin
     #echo '#!/bin/bash;DIR=$(readlink -f "$0" | xargs dirname);export LD_LIBRARY_PATH="$DIR/bin";exec "$DIR/bin/@SLIC3R_APP_CMD@" "$@"' >@SLIC3R_APP_CMD@
-    cat << EOF >@SLIC3R_APP_CMD@
+    cat << EOF > PrusaSlicer
+    #@SLIC3R_APP_CMD@
     #!/bin/bash
     DIR=\$(readlink -f "\$0" | xargs dirname)
     export LD_LIBRARY_PATH="\$DIR/bin"
