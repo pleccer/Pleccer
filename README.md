@@ -9,23 +9,6 @@
 
 Pleccer incorporates features to make it easier to make a colored 3d model and slice it for a multicolor mixing or non-mixing 3D printer. It is part of the PLEC (purgeless extruding colorer) project; which develops the needs to upgrade your/any printer to a mixing color 3D printer optimized for avoiding waste. You can find out more about PLEC on the [community site](https://plec.community).
 
-
-## Support Pleccer development
-
-Pleccer is fully developed by unpaid individuals and tries to do so fully open-source, that means a lot of work to make the code clean and readable and all totally unpaid. Please consider supporting Pleccer and making a donation on the community website: [plec.community](https://plec.community/#support).
-
-We are making a lot of new features possible, which will make Pleccer work totally waste-free and make durable printing a reality.
-Some features that we are working on:
-
-- Infill on a seperate extruder; use your wrongly bought or special-type filament only on the infill of your print
-- No purge tower; instead using wipe-into-support and wipe-into-infill, plus it will give info on extra volume needed for purging and option to load another model for wipe-into-object.
-- Support-free printing; or to be fair: optimized for the least support amount. Pleccer already supports 'arc overhangs' which avoid needing support on most overhangs, we will in the future support 'from-object-corner' support that grows from an outside facing corner of the object a support so you use only a small bridge toward the 'island' as support
-- More features for making mixing extruding color printing optimal
-
-If you are really interested in waste-free 3d printing have a look at the cool project that is recycling your filament: [recyclingfabrik.com](https://recyclingfabrik.com)
-
-FYI: PLEC donates 85% of it's income to the SFS global solutions fund: [SFS.earth](https://sfs.earth)
-
 ## What are Pleccer's special features?
 
 * Mixing color g-code generation based on calibrated data and the color you pick
