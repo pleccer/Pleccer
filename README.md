@@ -1,4 +1,4 @@
-# IMPORTANT!! This slicer is in beta version and it is still under a lot of development. A stable version is planned for release in March 2023.
+# IMPORTANT!! This slicer is in beta version and it is still under a lot of development. A stable version is planned for release in April 2023.
 
 # Pleccer
 
