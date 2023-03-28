@@ -124,7 +124,7 @@ elseif (APPLE)
         set(DEP_OSX_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}")
         message("OS X Deployment Target: ${DEP_OSX_TARGET}")
     else ()
-        # Attempt to infer the SDK version from the CMAKE_OSX_SYSROOT,
+        # Attempt to infer the SDK version from the CMAKE_OSX_SYSROOT,
         # this is done because wxWidgets need the min version explicitly set
         string(REGEX MATCH "[0-9]+[.][0-9]+[.]sdk$" DEP_OSX_TARGET "${CMAKE_OSX_SYSROOT}")
         string(REGEX MATCH "^[0-9]+[.][0-9]+" DEP_OSX_TARGET "${DEP_OSX_TARGET}")

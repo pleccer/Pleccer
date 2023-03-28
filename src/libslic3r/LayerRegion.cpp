@@ -359,7 +359,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
               		this->has_overhang_holes = true;
 		}
 		if(bd.is_bridge) this->is_bridge = true;
-		// without safety offset, artifacts are generated (GH #2494)
+                // without safety offset, artifacts are generated (GH #2494)
                 surfaces_append(bottom, union_safety_offset_ex(grown), bridges[idx_last]);
             }
 
