@@ -27,9 +27,6 @@ jobs:
       run: sudo apt install libgtk2.0-dev libglew-dev libudev-dev libdbus-1-dev
     - name: build deps & slicer
       run: ./BuildLinux.sh -dgs
-    - name: make .pot
-      working-directory: ./build
-      run: make gettext_make_pot
     - name: build tar & appimage
       working-directory: ./build
       run: src/BuildLinuxImage.sh -i
