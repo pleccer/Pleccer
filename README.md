@@ -51,9 +51,9 @@ Other major features are:
 
 ## How to compile
 Following platforms are currently supported to compile:
-- Windows 64-bit, [Compile Guide](https://github.com/pleccer/Pleccer/wiki/Windows-Compile-Guide)
-- Mac 64-bit, [Compile Guide](https://github.com/pleccer/Pleccer/wiki/Mac-Compile-Guide)
-- Linux 64-bit, [Compile Guide](https://github.com/pleccer/Pleccer/wiki/Linux-Compile-Guide)
+- Windows 64-bit, [Compile Guide](https://github.com/pleccer/Pleccer/blob/master/doc/How%20to%20build%20-%20Windows.md)
+- Mac 64-bit, [Compile Guide](https://github.com/pleccer/Pleccer/blob/master/doc/How%20to%20build%20-%20Mac%20OS.md)
+- Linux 64-bit, [Compile Guide](https://github.com/pleccer/Pleccer/blob/master/doc/How%20to%20build%20-%20Linux%20et%20al.md)
 
 ## Report issue
 You can add an issue to the [github tracker](https://github.com/pleccer/Pleccer/issues) if **it isn't already present.**
