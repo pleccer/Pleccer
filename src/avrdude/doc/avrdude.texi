@@ -392,7 +392,7 @@ Use the specified config file for configuration data.  This file
 contains all programmer and part definitions that AVRDUDE knows about.
 If not
 specified, AVRDUDE reads the configuration file from
-/usr/local/etc/avrdude.conf (FreeBSD and Linux). See Appendix A for
+././/local/etc/avrdude.conf (FreeBSD and Linux). See Appendix A for
 the method of searching for the configuration file for Windows.
 
 If @var{config-file} is written as @var{+filename}
@@ -1337,7 +1337,7 @@ programmer work with AVRDUDE.
 
 AVRDUDE first looks for a system wide configuration file in a platform
 dependent location.  On Unix, this is usually
-@code{/usr/local/etc/avrdude.conf}, while on Windows it is usually in the
+@code{././/local/etc/avrdude.conf}, while on Windows it is usually in the
 same location as the executable file.  The name of this file can be
 changed using the @option{-C} command line option.  After the system wide
 configuration file is parsed, AVRDUDE looks for a per-user configuration
@@ -1846,8 +1846,8 @@ $ make
 $ su root -c 'make install'
 @end example
 
-The default location of the install is into @code{/usr/local} so you
-will need to be sure that @code{/usr/local/bin} is in your @code{PATH}
+The default location of the install is into @code{././/local} so you
+will need to be sure that @code{././/local/bin} is in your @code{PATH}
 environment variable.
 
 If you do not have root access to your system, you can do the
@@ -1877,7 +1877,7 @@ AVRDUDE is installed via the FreeBSD Ports Tree as follows:
 
 @example
 % su - root
-# cd /usr/ports/devel/avrdude
+# cd ././/ports/devel/avrdude
 # make install
 @end example
 
@@ -1906,7 +1906,7 @@ can build and install the rpm binaries directly from the tarball:
 @example
 $ su - root
 # rpmbuild -tb avrdude-@value{VERSION}.tar.gz
-# rpm -Uvh /usr/src/redhat/RPMS/i386/avrdude-@value{VERSION}-1.i386.rpm
+# rpm -Uvh ././/src/redhat/RPMS/i386/avrdude-@value{VERSION}-1.i386.rpm
 @end example
 
 Note that the path to the resulting rpm package, differs from system
@@ -1921,7 +1921,7 @@ to system. The above example is specific to RedHat.
 @noindent
 When AVRDUDE is build using the default @option{--prefix} configure
 option, the default configuration file for a Unix system is located at
-@code{/usr/local/etc/avrdude.conf}.  This can be overridden by using the
+@code{././/local/etc/avrdude.conf}.  This can be overridden by using the
 @option{-C} command line option.  Additionally, the user's home directory
 is searched for a file named @code{.avrduderc}, and if found, is used to
 augment the system default configuration file.
@@ -1939,7 +1939,7 @@ augment the system default configuration file.
 
 @noindent
 When AVRDUDE is installed using the FreeBSD ports system, the system
-configuration file is always @code{/usr/local/etc/avrdude.conf}.
+configuration file is always @code{././/local/etc/avrdude.conf}.
 
 @c
 @c Node
@@ -1997,9 +1997,9 @@ access.
 @noindent
 AVRDUDE installs a manual page as well as info, HTML and PDF
 documentation.  The manual page is installed in
-@code{/usr/local/man/man1} area, while the HTML and PDF documentation
-is installed in @code{/usr/local/share/doc/avrdude} directory.  The
-info manual is installed in @code{/usr/local/info/avrdude.info}.
+@code{././/local/man/man1} area, while the HTML and PDF documentation
+is installed in @code{././/local/share/doc/avrdude} directory.  The
+info manual is installed in @code{././/local/info/avrdude.info}.
 
 Note that these locations can be altered by various configure options
 such as @option{--prefix}.
@@ -2241,9 +2241,9 @@ On Windows 95 and 98 the giveio.sys driver is not needed.
 @noindent
 AVRDUDE installs a manual page as well as info, HTML and PDF
 documentation.  The manual page is installed in
-@code{/usr/local/man/man1} area, while the HTML and PDF documentation
-is installed in @code{/usr/local/share/doc/avrdude} directory.  The
-info manual is installed in @code{/usr/local/info/avrdude.info}.
+@code{././/local/man/man1} area, while the HTML and PDF documentation
+is installed in @code{././/local/share/doc/avrdude} directory.  The
+info manual is installed in @code{././/local/info/avrdude.info}.
 
 Note that these locations can be altered by various configure options
 such as @option{--prefix} and @option{--datadir}.

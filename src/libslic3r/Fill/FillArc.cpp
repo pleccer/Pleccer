@@ -15,25 +15,28 @@ void FillArc::_fill_surface_single(
     ExPolygon                        expolygon,
     Polylines                       &polylines_out)
 {
-    // no rotation is supported for this infill pattern
     BoundingBox bbox = expolygon.contour.bounding_box();
-    
-    /*if (params.density > 0.9999f && !params.dont_adjust) {
-        //it's == this->_adjust_solid_spacing(bounding_box.size()(0), _line_spacing_for_density(params.density)) because of the init_spacing()
-        distance = scale_(this->get_spacing());
+    /*
+    struct ArcLoop{
+	int startloop;
+	Points arcpoints;
     }
-    
-    
+    std::vector<ArcLoop> arcLoops;
 
-    //if (params.density > 0.9999f && !params.dont_adjust) {
-        //cf init_spacing
-    //} else {
-        // extend bounding box so that our pattern will be aligned with other layers
-        // Transform the reference point to the rotated coordinate system.100
-        bbox.merge(align_to_grid(
-            bbox.min,
-            Point(this->_line_spacing, this->_line_spacing),
-            direction.second.rotated(-direction.first)));
+    // calculate if the arrc radius has gotten below threshold
+    inline bool hasSmallRadius(Line line){
+	return line.length()/M_PI/(0.5*line.first_point.distance(line.last_point)) < double(params.config->arc_min_radius.value);
+    }
+
+    // store the arc starting point
+    inline void storeArcStartPoint(int arcnum, Point startpoint){
+	// store them to the main
+    }
+
+    inline int  offsetArcs(int loopnum){
+	// edit the latest arc with a new arc startpoint
+
+	// offset until next arcloop's startloop is reached
     }*/
     coord_t min_spacing = scale_(this->spacing);
     coord_t distance = coord_t(min_spacing / params.density);

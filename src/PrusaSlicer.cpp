@@ -746,7 +746,7 @@ bool CLI::setup(int argc, char **argv)
     boost::filesystem::path path_resources = path_to_binary.parent_path() / "resources";
 #elif defined SLIC3R_FHS
     // The application is packaged according to the Linux Filesystem Hierarchy Standard
-    // Resources are set to the 'Architecture-independent (shared) data', typically /usr/share or /usr/local/share
+    // Resources are set to the 'Architecture-independent (shared) data', typically ././/share or ././/local/share
     boost::filesystem::path path_resources = SLIC3R_FHS_RESOURCES;
 #else
     // The application is packed in the .tar.bz archive (or in AppImage) as 'bin/slic3r',

@@ -404,7 +404,7 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent) :
                 tab_print->update_dirty();
             tab_print->reload_config();
             tab_print->update();
-                new_conf.set_key_value("support_material_buildplate_only", new ConfigOptionBool(boost::any_cast<bool>(value)));
+                new_conf.set_key_value("support_material", new ConfigOptionBool(boost::any_cast<bool>(value)));
                 tab_print->load_config(new_conf); 
                 tab_print->update_dirty();
             }else if(opt_key == "wipe_tower"){
@@ -417,7 +417,11 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent) :
            }else if(opt_key == "support"){
                 const wxString& selection = boost::any_cast<wxString>(value);
                 if(selection == _("None")) new_conf.set_key_value("support_material", new ConfigOptionBool(false));
-                else new_conf.set_key_value("support_material", new ConfigOptionBool(true));
+		else new_conf.set_key_value("support_material", new ConfigOptionBool(true));
+		if(selection == _("Paint-on only")){
+			new_conf.set_key_value("support_material_auto", new ConfigOptionBool(false));
+			new_conf.set_key_value("overhang_primary_setting", new ConfigOptionEnum<OverhangSetting>(static_cast<OverhangSetting>(osInactive)));
+		}else{
 		new_conf.set_key_value("overhang_primary_setting", new ConfigOptionEnum<SupportMaterialStyle>(static_cast<SupportMaterialStyle>(selection.compare("Organic")?smsOrganic:smsGrid)));
                 new_conf.set_key_value("overhang_primary_setting", new ConfigOptionEnum<OverhangSetting>(static_cast<OverhangSetting>(
                         selection == _("Organic Low - big corners")?osOrganic1:
@@ -427,8 +431,9 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent) :
                         selection == _("Classic Med - all sides")?osClassic2:
                         selection == _("Classic High - thick")?osClassic3:osInactive
                 )));
-            }/*
-             else{   assert(opt_key == "support");
+		}
+            }
+             /*else if(opt_key == "support_type"){
                 const wxString& selection = boost::any_cast<wxString>(value);
                 PrinterTechnology printer_technology = wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology();
 
@@ -457,26 +462,41 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent) :
     Line line = Line { "", "" };
 
     ConfigOptionDef support_def;
-    support_def.label = L("Support");
+    support_def.label = L("Overhang");
     support_def.type = coStrings;
     support_def.gui_type = ConfigOptionDef::GUIType::select_open;
     support_def.tooltip = L("Select what kind of support you need");
     support_def.set_enum_labels(ConfigOptionDef::GUIType::select_open, {
         L("None"),
-        L("System set"),
         L("Organic Low - big corners"),
         L("Organic Med - all corners"),
         L("Organic High - all sides"),
         L("Classic Low - big sides"),
         L("Classic Med - all sides"),
-        L("Classic High - thick")});
+        L("Classic High - thick"),
+	L("Paint-on only"),
+	L("System set")});
     support_def.set_default_value(new ConfigOptionStrings{ "Organic Med - all corners" });
     Option option = Option(support_def, "support");
     option.opt.width = 18;
     line.append_option(option);
 
-    option = m_og->get_option("support_material_buildplate_only");
-    option.opt.label = L("Only on buildplate");
+/*    ConfigOptionDef support_type;
+    support_type.label = L("Support");
+    support_type.type = coStrings;
+    support_type.tooltip = L("Select what kind of support do you need");
+    support_type.set_enum_labels(ConfigOptionDef::GUIType::select_open, {
+        L("None"),
+        L("Support on build plate only"),
+        L("For support enforcers only"),
+        L("Everywhere")
+    });
+    support_type.set_default_value(new ConfigOptionStrings{ "None" });
+    option = Option(support_type, "support_type");
+    option.opt.width = 12;
+    line.append_option(option);
+    */option = m_og->get_option("support_material_buildplate_only");
+    option.opt.label = L("On BP");
     option.opt.type = coBool;
     option.opt.tooltip = L("This flag enables supports on buildplate only.");
     option.opt.gui_type = ConfigOptionDef::GUIType::undefined;
@@ -520,7 +540,7 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent) :
     line.append_option(option);
 
     option = m_og->get_option("wipe_tower");
-    option.opt.label = L("Use a wipe tower");
+    option.opt.label = L("Wipe tower");
     option.opt.type = coBool;
     option.opt.tooltip = L("This flag enables using a wipe tower.");
     option.opt.gui_type = ConfigOptionDef::GUIType::undefined;

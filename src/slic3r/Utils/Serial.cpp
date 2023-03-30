@@ -316,7 +316,7 @@ void Serial::set_baud_rate(unsigned baud_rate)
 #elif __linux__
 
 		/* The following definitions are kindly borrowed from:
-			/usr/include/asm-generic/termbits.h
+			././/include/asm-generic/termbits.h
 			Unfortunately we cannot just include that one because
 			it would redefine the "struct termios" already defined
 			the <termios.h> already included by Boost.ASIO. */

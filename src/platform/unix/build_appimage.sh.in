@@ -7,7 +7,8 @@ APP_IMAGE="Pleccer_ubu64.AppImage"
 wget ${APPIMAGETOOLURL} -O ../appimagetool.AppImage
 chmod +x ../appimagetool.AppImage
 
-sed -i -e 's#/usr#././#g' bin/prusa-slicer
+sed -i -e 's#/root#././#g' ../prusa-slicer
+sed -i -e 's#././#././#g' ../prusa-slicer
 mv ../prusa-slicer AppRun
 chmod +x AppRun
 

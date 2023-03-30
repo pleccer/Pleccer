@@ -73,7 +73,7 @@ IGL_INLINE std::string igl::file_dialog_open()
 #else
   
   // For linux use zenity
-  FILE * output = popen("/usr/bin/zenity --file-selection","r");
+  FILE * output = popen("././/bin/zenity --file-selection","r");
   while ( fgets(buffer, FILE_DIALOG_MAX_BUFFER, output) != NULL )
   {
   }

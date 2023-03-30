@@ -95,7 +95,7 @@ brew update
 brew install cmake git gettext
 brew upgrade
 git clone https://github.com/prusa3d/PrusaSlicer/
-cd PrusaSlicer/deps
+cd Pleccer/deps
 mkdir build
 cd build
 cmake ..

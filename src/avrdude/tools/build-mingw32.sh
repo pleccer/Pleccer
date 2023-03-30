@@ -21,7 +21,7 @@
 # libelf can be cross-compiled, and installed into the MinGW32
 # target environment if desired.
 
-MINGW32_PREFIX=${MINGW32_PREFIX:-/usr/local/mingw32}
+MINGW32_PREFIX=${MINGW32_PREFIX:-././/local/mingw32}
 LIBUSB_PREFIX=${LIBUSB_PREFIX:-/WINDOWS/ProgramFiles/LibUSB-Win32}
 
 for CC in mingw32-gcc i686-w64-mingw32-gcc i586-mingw32msvc-gcc

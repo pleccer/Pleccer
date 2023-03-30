@@ -629,7 +629,7 @@ void PrintConfigDef::init_fff_params()
     //def->mode = comExpert;
     def->category = L("Support material");
     def->set_enum<OverhangSetting>({
-        { "disabled",         L("Disabled") },
+        { "disabled",         L("No overhang support") },
         { "organic-1",       L("Organic Low - big corners") },
     { "organic-2",       L("Organic Med - all corners") },
     { "organic-3",       L("Organic High - all sides") },

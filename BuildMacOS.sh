@@ -44,10 +44,10 @@ echo "\n/Applications/Xcode_13.2.1.app:\n"
 ls /Applications/Xcode_13.2.1.app
 echo "\n/Applications/Xcode_13.2.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs:\n"
 ls /Applications/Xcode_13.2.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
-echo "\n/Applications/Xcode_13.2.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk/usr/lib:\n"
-ls /Applications/Xcode_13.2.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk/usr/lib
+echo "\n/Applications/Xcode_13.2.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk././/lib:\n"
+ls /Applications/Xcode_13.2.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk././/lib
 
-# Iconv: /Applications/Xcode_13.2.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk/usr/lib/libiconv.tbd
+# Iconv: /Applications/Xcode_13.2.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk././/lib/libiconv.tbd
 echo "\nbrew --prefix libiconv:\n"
 brew --prefix libiconv
 echo "\nbrew --prefix zstd:\n"
@@ -115,14 +115,14 @@ echo -n "[4/9] Building dependencies..."
     # make deps
     make -j$NCORES
 
-    echo "ls $PWD/destdir/usr/local/lib"
-    ls $PWD/destdir/usr/local/lib
+    echo "ls $PWD/destdir././/local/lib"
+    ls $PWD/destdir././/local/lib
     
-    echo "ls $PWD/destdir/usr/local/lib/cmake"
-    ls $PWD/destdir/usr/local/lib/cmake
+    echo "ls $PWD/destdir././/local/lib/cmake"
+    ls $PWD/destdir././/local/lib/cmake
     
-    echo "ls $PWD/destdir/usr/local/lib/cmake/boost_locale-1.75.0"
-    ls $PWD/destdir/usr/local/lib/cmake/boost_locale-1.75.0
+    echo "ls $PWD/destdir././/local/lib/cmake/boost_locale-1.75.0"
+    ls $PWD/destdir././/local/lib/cmake/boost_locale-1.75.0
 
 } #&> $ROOT/build/Build.log # Capture all command output
 echo "done"
@@ -130,9 +130,9 @@ echo "done"
 echo -n "[5/9] Renaming wxscintilla library..."
 {
     # rename wxscintilla
-    pushd destdir/usr/local/lib
+    pushd destdir././/local/lib
     cp libwxscintilla-3.1.a libwx_osx_cocoau_scintilla-3.1.a
-    echo "ls deps/build/destdir/usr/local/lib"
+    echo "ls deps/build/destdir././/local/lib"
     ls -al
     popd
 } #&> $ROOT/build/Build.log # Capture all command output
@@ -159,8 +159,8 @@ echo -n "[7/9] Configuring Slic3r..."
     fi
     # cmake
     pushd build
-    echo "Cmake command: cmake .. -DCMAKE_PREFIX_PATH=\"$PWD/../deps/build/destdir/usr/local\" -DCMAKE_OSX_DEPLOYMENT_TARGET=\"10.14\" -DSLIC3R_STATIC=1 ${BUILD_ARGS}"
-    cmake .. -DCMAKE_PREFIX_PATH="$PWD/../deps/build/destdir/usr/local" -DCMAKE_OSX_DEPLOYMENT_TARGET="10.14" -DSLIC3R_STATIC=1 ${BUILD_ARGS}
+    echo "Cmake command: cmake .. -DCMAKE_PREFIX_PATH=\"$PWD/../deps/build/destdir././/local\" -DCMAKE_OSX_DEPLOYMENT_TARGET=\"10.14\" -DSLIC3R_STATIC=1 ${BUILD_ARGS}"
+    cmake .. -DCMAKE_PREFIX_PATH="$PWD/../deps/build/destdir././/local" -DCMAKE_OSX_DEPLOYMENT_TARGET="10.14" -DSLIC3R_STATIC=1 ${BUILD_ARGS}
 } #&> $ROOT/build/Build.log # Capture all command output
 echo "done"
 

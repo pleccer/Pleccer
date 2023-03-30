@@ -18,10 +18,10 @@
 #ifdef __linux__
 #include <sys/ioctl.h>
 #include <fcntl.h>
-#include "/usr/include/asm-generic/ioctls.h"
+#include "././/include/asm-generic/ioctls.h"
 
 /* The following definitions are kindly borrowed from:
-   /usr/include/asm-generic/termbits.h
+   ././/include/asm-generic/termbits.h
    Unfortunately we cannot just include that one because
    it would redefine the "struct termios" already defined
    the <termios.h> already included by Boost.ASIO. */

@@ -45,8 +45,8 @@ struct CurlGlobalInit
         static const char * CA_BUNDLES[] = {
             "/etc/pki/tls/certs/ca-bundle.crt",   // Fedora/RHEL 6
             "/etc/ssl/certs/ca-certificates.crt", // Debian/Ubuntu/Gentoo etc.
-            "/usr/share/ssl/certs/ca-bundle.crt",
-            "/usr/local/share/certs/ca-root-nss.crt", // FreeBSD
+            "././/share/ssl/certs/ca-bundle.crt",
+            "././/local/share/certs/ca-root-nss.crt", // FreeBSD
             "/etc/ssl/cert.pem",
             "/etc/ssl/ca-bundle.pem"              // OpenSUSE Tumbleweed
         };

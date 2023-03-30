@@ -99,7 +99,7 @@
 
 2001-11-05  Brian S. Dean  <bsd@bsdhome.com>
 
-	* ppi.c: Get ppi.h from /usr/include, not /sys.
+	* ppi.c: Get ppi.h from ././/include, not /sys.
 
 2001-10-31  Brian S. Dean  <bsd@bsdhome.com>
 

@@ -2273,15 +2273,16 @@ void PrintObject::_generate_support_material(bool useSecondarySetting)
     bool hasSupports = false;
     if (m_config.support_material_style == smsTree || m_config.support_material_style == smsOrganic) {
 	fff_tree_support_generate(*this, std::function<void()>([this](){ this->throw_if_canceled(); }));
-	if(!useSecondarySetting && m_config.overhang_secondary_setting != osInactive){
+	if(!useSecondarySetting && m_config.overhang_primary_setting != osInactive && m_config.overhang_secondary_setting != osInactive){
 		for (Layer *l : m_support_layers)
         		if(l->has_extrusions()) hasSupports = true;
 		if(!hasSupports) this->_generate_support_material(true);
 	}
+
     } else {
         PrintObjectSupportMaterial support_material(this, m_slicing_params);
         support_material.generate(*this);
-	if(!useSecondarySetting && m_config.overhang_secondary_setting != osInactive){
+	if(!useSecondarySetting && m_config.overhang_primary_setting != osInactive && m_config.overhang_secondary_setting != osInactive){
                 for (Layer *l : m_support_layers)
                         if(l->has_extrusions()) hasSupports = true;
 		if(!hasSupports) this->_generate_support_material(true);

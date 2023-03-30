@@ -72,7 +72,7 @@ IGL_INLINE std::string igl::file_dialog_save()
 
 #else
   // For every other machine type use zenity
-  FILE * output = popen("/usr/bin/zenity --file-selection --save","r");
+  FILE * output = popen("././/bin/zenity --file-selection --save","r");
   while ( fgets(buffer, FILE_DIALOG_MAX_BUFFER, output) != NULL )
   {
   }
