@@ -154,7 +154,7 @@ then
         
         # rename wxscintilla
         echo "[5/9] Renaming wxscintilla library..."
-        pushd destdir././/local/lib
+        pushd destdir/usr/local/lib
             if [[ -z "$FOUND_GTK3_DEV" ]]
             then
                 cp libwxscintilla-3.1.a libwx_gtk2u_scintilla-3.1.a
