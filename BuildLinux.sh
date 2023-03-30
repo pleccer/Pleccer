@@ -186,7 +186,7 @@ then
     
     # cmake
     pushd build
-        cmake .. -DCMAKE_PREFIX_PATH="$PWD/../deps/build/destdir././/local" -DSLIC3R_STATIC=1 ${BUILD_ARGS}
+        cmake .. -DCMAKE_PREFIX_PATH="$PWD/../deps/build/destdir/usr/local" -DSLIC3R_STATIC=1 ${BUILD_ARGS}
         echo "done"
         
         # make Slic3r
