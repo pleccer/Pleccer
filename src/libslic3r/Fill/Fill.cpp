@@ -133,7 +133,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
 	        else {
 		        const PrintRegionConfig &region_config = layerm.region().config();
 		        FlowRole extrusion_role = surface.is_top() ? frTopSolidInfill : (surface.is_solid() ? frSolidInfill : frInfill);
-		        bool     is_bridge 	    = layer.id() > 0 && surface.is_bridge();
+		        bool  is_bridge 	    = layer.id() > 0 && surface.is_bridge();
 		        params.extruder 	 = layerm.region().extruder(extrusion_role);
 		        params.pattern 		 = region_config.fill_pattern.value;
 		        params.density       = float(region_config.fill_density);
@@ -277,17 +277,18 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
 			else if (region_some_infill != -1)
 				region_id = region_some_infill;
 			const LayerRegion& layerm = *layer.regions()[region_id];
-		bool is_bridge = false;
+		bool is_no_bridge = true;
 	        for (SurfaceFill &surface_fill : surface_fills)
 	        	if (surface_fill.surface.surface_type == stInternalSolid && std::abs(layer.height - surface_fill.params.flow.height()) < EPSILON) {
-				if(surface_fill.surface.is_bridge()) is_bridge = true;
+				if(surface_fill.surface.is_bridge()) is_no_bridge = false;
 	        		internal_solid_fill = &surface_fill;
 	        		break;
 	        	}
 	        if (internal_solid_fill == nullptr) {
 	        	// Produce another solid fill.
 		        params.extruder 	 = layerm.region().extruder(frSolidInfill);
-	            params.pattern 		 = fill_type_monotonic(layerm.region().config().top_fill_pattern) ? ipMonotonic : ipRectilinear;
+	            params.pattern 		 = is_no_bridge?fill_type_monotonic(layerm.region().config().top_fill_pattern) ? ipMonotonic : ipRectilinear:
+						  layerm.region().config().bridge_fill_pattern.value;
 	            params.density 		 = 100.f;
 		        params.extrusion_role = ExtrusionRole::InternalInfill;
 		        params.angle 		= float(Geometry::deg2rad(layerm.region().config().fill_angle.value));
