@@ -1,3 +1,9 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas, Filip Sykala @Jony01, Lukáš Matěna @lukasmatena
+///|/ Copyright (c) SuperSlicer 2023 Remi Durand @supermerill
+///|/ Copyright (c) Slic3r 2013 - 2016 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_ExtrusionEntityCollection_hpp_
 #define slic3r_ExtrusionEntityCollection_hpp_
 
@@ -7,6 +13,7 @@
 
 namespace Slic3r {
 
+#if 0
 // Remove those items from extrusion_entities, that do not match role.
 // Do nothing if role is mixed.
 // Removed elements are NOT being deleted.
@@ -21,6 +28,7 @@ inline ExtrusionEntitiesPtr filter_by_extrusion_role(const ExtrusionEntitiesPtr 
 	filter_by_extrusion_role_in_place(out, role);
 	return out;
 }
+#endif
 
 class ExtrusionEntityCollection : public ExtrusionEntity
 {
@@ -96,9 +104,6 @@ public:
     }
     void replace(size_t i, const ExtrusionEntity &entity);
     void remove(size_t i);
-    static ExtrusionEntityCollection chained_path_from(const ExtrusionEntitiesPtr &extrusion_entities, const Point &start_near, ExtrusionRole role = ExtrusionRole::Mixed);
-    ExtrusionEntityCollection chained_path_from(const Point &start_near, ExtrusionRole role = ExtrusionRole::Mixed) const
-    	{ return this->no_sort ? *this : chained_path_from(this->entities, start_near, role); }
     void reverse() override;
     const Point& first_point() const override { return this->entities.front()->first_point(); }
     const Point& last_point() const override { return this->entities.back()->last_point(); }

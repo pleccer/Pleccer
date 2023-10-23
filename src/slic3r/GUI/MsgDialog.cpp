@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966, David Kocík @kocikdav, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "MsgDialog.hpp"
 
 #include <wx/settings.h>
@@ -23,6 +27,8 @@
 #include "slic3r/GUI/MainFrame.hpp"
 #include "GUI_App.hpp"
 
+#include "Widgets/CheckBox.hpp"
+
 namespace Slic3r {
 namespace GUI {
 
@@ -32,6 +38,9 @@ MsgDialog::MsgDialog(wxWindow *parent, const wxString &title, const wxString &he
 	, content_sizer(new wxBoxSizer(wxVERTICAL))
 	, btn_sizer(new wxBoxSizer(wxHORIZONTAL))
 {
+#ifdef __APPLE__
+    this->SetBackgroundColour(wxGetApp().get_window_default_clr());
+#endif
 	boldfont.SetWeight(wxFONTWEIGHT_BOLD);
 
     this->SetFont(wxGetApp().normal_font());
@@ -76,6 +85,7 @@ void MsgDialog::SetButtonLabel(wxWindowID btn_id, const wxString& label, bool se
 wxButton* MsgDialog::add_button(wxWindowID btn_id, bool set_focus /*= false*/, const wxString& label/* = wxString()*/)
 {
     wxButton* btn = new wxButton(this, btn_id, label);
+    wxGetApp().SetWindowVariantForButton(btn);
     if (set_focus) {
         btn->SetFocus();
         // For non-MSW platforms SetFocus is not enought to use it as default, when the dialog is closed by ENTER
@@ -136,25 +146,11 @@ static void add_msg_content(wxWindow* parent, wxBoxSizer* content_sizer, wxStrin
         msg_lines++;
     }
 
-    wxFont      font = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
+    wxFont      font = wxGetApp().normal_font();//wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
     wxFont      monospace = wxGetApp().code_font();
     wxColour    text_clr = wxGetApp().get_label_clr_default();
-    wxColour    bgr_clr = parent->GetBackgroundColour();
-
-#ifdef __APPLE__
-    // On macOS 10.13 and older the background color returned by wxWidgets
-    // is wrong, which leads to https://github.com/prusa3d/PrusaSlicer/issues/7603
-    // and https://github.com/prusa3d/PrusaSlicer/issues/3775. wxSYS_COLOUR_WINDOW
-    // may not match the window background exactly, but it seems to never end up
-    // as black on black.
-    
-    if (wxPlatformInfo::Get().GetOSMajorVersion() == 10
-     && wxPlatformInfo::Get().GetOSMinorVersion() < 14)
-        bgr_clr = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW);
-#endif
-
     auto        text_clr_str = encode_color(ColorRGB(text_clr.Red(), text_clr.Green(), text_clr.Blue()));
-    auto        bgr_clr_str = encode_color(ColorRGB(bgr_clr.Red(), bgr_clr.Green(), bgr_clr.Blue()));
+    auto        bgr_clr_str = wxGetApp().get_html_bg_color(parent);
     const int   font_size = font.GetPointSize();
     int         size[] = { font_size, font_size, font_size, font_size, font_size, font_size, font_size };
     html->SetFonts(font.GetFaceName(), monospace.GetFaceName(), size);
@@ -275,7 +271,7 @@ RichMessageDialog::RichMessageDialog(wxWindow* parent,
 {
     add_msg_content(this, content_sizer, get_wraped_wxString(message));
 
-    m_checkBox = new wxCheckBox(this, wxID_ANY, m_checkBoxText);
+    m_checkBox = new ::CheckBox(this, m_checkBoxText);
     wxGetApp().UpdateDarkUI(m_checkBox);
     m_checkBox->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) { m_checkBoxValue = m_checkBox->GetValue(); });
 

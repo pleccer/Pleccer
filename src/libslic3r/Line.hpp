@@ -1,3 +1,13 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv, Pavel Mikuš @Godrak, Lukáš Hejl @hejllukas, Filip Sykala @Jony01, Enrico Turri @enricoturri1966
+///|/ Copyright (c) 2017 Eyal Soha @eyal0
+///|/ Copyright (c) Slic3r 2013 - 2016 Alessandro Ranellucci @alranel
+///|/
+///|/ ported from lib/Slic3r/Line.pm:
+///|/ Copyright (c) Prusa Research 2022 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2011 - 2014 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_Line_hpp_
 #define slic3r_Line_hpp_
 
@@ -38,13 +48,40 @@ template<class L> using Scalar = typename Traits<remove_cvref_t<L>>::Scalar;
 template<class L> auto get_a(L &&l) { return Traits<remove_cvref_t<L>>::get_a(l); }
 template<class L> auto get_b(L &&l) { return Traits<remove_cvref_t<L>>::get_b(l); }
 
+template<class L> auto sqlength(L &&l)
+{
+    return (get_b(l) - get_a(l)).squaredNorm();
+}
+
+template<class Scalar, class L>
+auto sqlength(L &&l)
+{
+    return (get_b(l).template cast<Scalar>() - get_a(l).template cast<Scalar>()).squaredNorm();
+}
+
+template<class L, class = std::enable_if_t<Dim<L> == 2> >
+auto angle_to_x(const L &l)
+{
+    auto dx = double(get_b(l).x()) - get_a(l).x();
+    auto dy = double(get_b(l).y()) - get_a(l).y();
+
+    double a = std::atan2(dy, dx);
+    auto s   = std::signbit(a);
+
+    if(s)
+        a += 2. * PI;
+
+    return a;
+}
+
 // Distance to the closest point of line.
 template<class L>
-double distance_to_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point, Vec<Dim<L>, Scalar<L>> *nearest_point)
+inline double distance_to_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point, Vec<Dim<L>, Scalar<L>> *nearest_point)
 {
-    const Vec<Dim<L>, double>  v  = (get_b(line) - get_a(line)).template cast<double>();
-    const Vec<Dim<L>, double>  va = (point  - get_a(line)).template cast<double>();
-    const double  l2 = v.squaredNorm();  // avoid a sqrt
+    using VecType = Vec<Dim<L>, double>;
+    const VecType  v  = (get_b(line) - get_a(line)).template cast<double>();
+    const VecType  va = (point  - get_a(line)).template cast<double>();
+    const double  l2 = v.squaredNorm();
     if (l2 == 0.0) {
         // a == b case
         *nearest_point = get_a(line);
@@ -53,19 +90,20 @@ double distance_to_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point, V
     // Consider the line extending the segment, parameterized as a + t (b - a).
     // We find projection of this point onto the line.
     // It falls where t = [(this-a) . (b-a)] / |b-a|^2
-    const double t = va.dot(v) / l2;
+    const double t = va.dot(v);
     if (t <= 0.0) {
         // beyond the 'a' end of the segment
         *nearest_point = get_a(line);
         return va.squaredNorm();
-    } else if (t >= 1.0) {
+    } else if (t >= l2) {
         // beyond the 'b' end of the segment
         *nearest_point = get_b(line);
         return (point - get_b(line)).template cast<double>().squaredNorm();
     }
 
-    *nearest_point = (get_a(line).template cast<double>() + t * v).template cast<Scalar<L>>();
-    return (t * v - va).squaredNorm();
+    const VecType w = ((t / l2) * v).eval();
+    *nearest_point = (get_a(line).template cast<double>() + w).template cast<Scalar<L>>();
+    return (w - va).squaredNorm();
 }
 
 // Distance to the closest point of line.
@@ -160,7 +198,7 @@ public:
     void   translate(double x, double y) { this->translate(Point(x, y)); }
     void   rotate(double angle, const Point &center) { this->a.rotate(angle, center); this->b.rotate(angle, center); }
     void   reverse() { std::swap(this->a, this->b); }
-    double length() const { return (b - a).cast<double>().norm(); }
+    double length() const { return (b.cast<double>() - a.cast<double>()).norm(); }
     Point  midpoint() const { return (this->a + this->b) / 2; }
     bool   intersection_infinite(const Line &other, Point* point) const;
     bool   operator==(const Line &rhs) const { return this->a == rhs.a && this->b == rhs.b; }
@@ -208,6 +246,18 @@ public:
 
     double a_width, b_width;
 };
+
+class CurledLine : public Line
+{
+public:
+    CurledLine() : curled_height(0.0f) {}
+    CurledLine(const Point& a, const Point& b) : Line(a, b), curled_height(0.0f) {}
+    CurledLine(const Point& a, const Point& b, float curled_height) : Line(a, b), curled_height(curled_height) {}
+
+    float curled_height;
+};
+
+using CurledLines = std::vector<CurledLine>;
 
 class Line3
 {

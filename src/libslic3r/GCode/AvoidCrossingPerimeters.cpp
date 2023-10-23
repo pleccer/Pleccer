@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2022 Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "../Layer.hpp"
 #include "../GCode.hpp"
 #include "../EdgeGrid.hpp"
@@ -730,7 +734,7 @@ static bool any_expolygon_contains(const ExPolygons &ex_polygons, const std::vec
     return false;
 }
 
-static bool need_wipe(const GCode                    &gcodegen,
+static bool need_wipe(const GCodeGenerator           &gcodegen,
                       const ExPolygons               &lslices_offset,
                       const std::vector<BoundingBox> &lslices_offset_bboxes,
                       const EdgeGrid::Grid           &grid_lslices_offset,
@@ -1167,7 +1171,7 @@ static void init_boundary(AvoidCrossingPerimeters::Boundary *boundary, Polygons 
 }
 
 // Plan travel, which avoids perimeter crossings by following the boundaries of the layer.
-Polyline AvoidCrossingPerimeters::travel_to(const GCode &gcodegen, const Point &point, bool *could_be_wipe_disabled)
+Polyline AvoidCrossingPerimeters::travel_to(const GCodeGenerator &gcodegen, const Point &point, bool *could_be_wipe_disabled)
 {
     // If use_external, then perform the path planning in the world coordinate system (correcting for the gcodegen offset).
     // Otherwise perform the path planning in the coordinate system of the active object.
@@ -1470,7 +1474,7 @@ static size_t avoid_perimeters(const AvoidCrossingPerimeters::Boundary &boundary
 }
 
 // Plan travel, which avoids perimeter crossings by following the boundaries of the layer.
-Polyline AvoidCrossingPerimeters::travel_to(const GCode &gcodegen, const Point &point, bool *could_be_wipe_disabled)
+Polyline AvoidCrossingPerimeters::travel_to(const GCodeGenerator &gcodegen, const Point &point, bool *could_be_wipe_disabled)
 {
     // If use_external, then perform the path planning in the world coordinate system (correcting for the gcodegen offset).
     // Otherwise perform the path planning in the coordinate system of the active object.

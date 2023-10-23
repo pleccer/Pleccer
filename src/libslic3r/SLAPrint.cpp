@@ -1,7 +1,15 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena, Pavel Mikuš @Godrak, Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Roman Beránek @zavorka, Enrico Turri @enricoturri1966
+///|/ Copyright (c) 2022 ole00 @ole00
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "SLAPrint.hpp"
 #include "SLAPrintSteps.hpp"
 #include "CSGMesh/CSGMeshCopy.hpp"
 #include "CSGMesh/PerformCSGMeshBooleans.hpp"
+#include "format.hpp"
+
+#include "Format/SLAArchiveFormatRegistry.hpp"
 
 #include "Geometry.hpp"
 #include "Thread.hpp"
@@ -23,7 +31,7 @@
 
 //! macro used to mark string used at localization,
 //! return same string
-#define L(s) Slic3r::I18N::translate(s)
+#define _u8L(s) Slic3r::I18N::translate(s)
 
 namespace Slic3r {
 
@@ -521,6 +529,7 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
 #endif /* _DEBUG */
 
     m_full_print_config = std::move(config);
+
     return static_cast<ApplyStatus>(apply_status);
 }
 
@@ -530,10 +539,19 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
 std::string SLAPrint::output_filename(const std::string &filename_base) const
 {
     DynamicConfig config = this->finished() ? this->print_statistics().config() : this->print_statistics().placeholders();
-    return this->PrintBase::output_filename(m_print_config.output_filename_format.value, ".sl1", filename_base, &config);
+    std::string default_ext = get_default_extension(m_printer_config.sla_archive_format.value.c_str());
+    if (default_ext.empty())
+        default_ext = "sl1";
+
+    default_ext.insert(default_ext.begin(), '.');
+
+    config.set_key_value("default_output_extension",
+                         new ConfigOptionString(default_ext));
+
+    return this->PrintBase::output_filename(m_print_config.output_filename_format.value, default_ext, filename_base, &config);
 }
 
-std::string SLAPrint::validate(std::string*) const
+std::string SLAPrint::validate(std::vector<std::string>*) const
 {
     for(SLAPrintObject * po : m_objects) {
 
@@ -543,7 +561,7 @@ std::string SLAPrint::validate(std::string*) const
         if(supports_en &&
            mo->sla_points_status == sla::PointsStatus::UserModified &&
            mo->sla_support_points.empty())
-            return L("Cannot proceed without support points! "
+            return _u8L("Cannot proceed without support points! "
                      "Add support points or disable support generation.");
 
         sla::SupportTreeConfig cfg = make_support_cfg(po->config());
@@ -554,13 +572,13 @@ std::string SLAPrint::validate(std::string*) const
         sla::PadConfig::EmbedObject &builtinpad = padcfg.embed_object;
         
         if(supports_en && !builtinpad.enabled && elv < cfg.head_fullwidth())
-            return L(
+            return _u8L(
                 "Elevation is too low for object. Use the \"Pad around "
                 "object\" feature to print the object without elevation.");
         
         if(supports_en && builtinpad.enabled &&
            cfg.pillar_base_safety_distance_mm < builtinpad.object_gap_mm) {
-            return L(
+            return _u8L(
                 "The endings of the support pillars will be deployed on the "
                 "gap between the object and the pad. 'Support base safety "
                 "distance' has to be greater than the 'Pad object gap' "
@@ -576,16 +594,25 @@ std::string SLAPrint::validate(std::string*) const
     double expt_cur = m_material_config.exposure_time.getFloat();
 
     if (expt_cur < expt_min || expt_cur > expt_max)
-        return L("Exposition time is out of printer profile bounds.");
+        return _u8L("Exposition time is out of printer profile bounds.");
 
     double iexpt_max = m_printer_config.max_initial_exposure_time.getFloat();
     double iexpt_min = m_printer_config.min_initial_exposure_time.getFloat();
     double iexpt_cur = m_material_config.initial_exposure_time.getFloat();
 
     if (iexpt_cur < iexpt_min || iexpt_cur > iexpt_max)
-        return L("Initial exposition time is out of printer profile bounds.");
+        return _u8L("Initial exposition time is out of printer profile bounds.");
 
     return "";
+}
+
+void SLAPrint::export_print(const std::string &fname, const ThumbnailsList &thumbnails, const std::string &projectname)
+{
+    if (m_archiver)
+        m_archiver->export_print(fname, *this, thumbnails, projectname);
+    else {
+        throw ExportError(format(_u8L("Unknown archive format: %s"), m_printer_config.sla_archive_format.value));
+    }
 }
 
 bool SLAPrint::invalidate_step(SLAPrintStep step)
@@ -690,7 +717,7 @@ void SLAPrint::process()
     }
 
     // If everything vent well
-    m_report_status(*this, 100, L("Slicing done"));
+    m_report_status(*this, 100, _u8L("Slicing done"));
 
 #ifdef SLAPRINT_DO_BENCHMARK
     std::string csvbenchstr;
@@ -1077,7 +1104,7 @@ SLAPrintObject::get_parts_to_slice(SLAPrintObjectStep untilstep) const
 
     std::vector<csg::CSGPart> ret;
 
-    for (int step = 0; step < s; ++step) {
+    for (unsigned int step = 0; step < s; ++step) {
         auto r = m_mesh_to_slice.equal_range(SLAPrintObjectStep(step));
         csg::copy_csgrange_shallow(Range{r.first, r.second}, std::back_inserter(ret));
     }

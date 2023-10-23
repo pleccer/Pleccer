@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_SearchComboBox_hpp_
 #define slic3r_SearchComboBox_hpp_
 
@@ -20,6 +24,9 @@
 #include "OptionsGroup.hpp"
 #include "libslic3r/Preset.hpp"
 
+#include "Widgets/CheckBox.hpp"
+
+class CheckBox;
 
 namespace Slic3r {
 
@@ -158,8 +165,8 @@ class SearchDialog : public GUI::DPIDialog
     wxTextCtrl*         search_line         { nullptr };
     wxDataViewCtrl*     search_list         { nullptr };
     SearchListModel*    search_list_model   { nullptr };
-    wxCheckBox*         check_category      { nullptr };
-    wxCheckBox*         check_english       { nullptr };
+    CheckBox*           check_category      { nullptr };
+    CheckBox*           check_english       { nullptr };
 
     OptionsSearcher*    searcher            { nullptr };
 
@@ -178,7 +185,7 @@ class SearchDialog : public GUI::DPIDialog
 
 public:
     SearchDialog(OptionsSearcher* searcher);
-    ~SearchDialog() {}
+    ~SearchDialog();
 
     void Popup(wxPoint position = wxDefaultPosition);
     void ProcessSelection(wxDataViewItem selection);

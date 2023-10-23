@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef SLAIMPORTDIALOG_HPP
 #define SLAIMPORTDIALOG_HPP
 
@@ -11,6 +15,7 @@
 
 #include "libslic3r/AppConfig.hpp"
 #include "libslic3r/Format/SLAArchiveReader.hpp"
+#include "libslic3r/Format/SLAArchiveFormatRegistry.hpp"
 
 #include "slic3r/GUI/I18N.hpp"
 
@@ -29,11 +34,16 @@ std::string get_readers_wildcard()
 {
     std::string ret;
 
-    for (const char *archtype : SLAArchiveReader::registered_archives()) {
-        ret += _utf8(SLAArchiveReader::get_description(archtype));
+    auto registry = registered_sla_archives();
+
+    for (const ArchiveEntry &entry : registry) {
+        if (!entry.rdfactoryfn)
+            continue;
+
+        ret += into_u8(_(entry.desc));
         ret += " (";
-        auto extensions = SLAArchiveReader::get_extensions(archtype);
-        for (const char * ext : extensions) {
+        std::vector<std::string> extensions = get_extensions(entry);
+        for (const std::string &ext : extensions) {
             ret += "*.";
             ret += ext;
             ret += ", ";
@@ -83,7 +93,7 @@ public:
         auto szfilepck = new wxBoxSizer{wxHORIZONTAL};
 
         m_filepicker = new wxFilePickerCtrl(this, wxID_ANY,
-                                            from_u8(wxGetApp().app_config->get_last_dir()), _(L("Choose SLA archive:")),
+                                            from_u8(wxGetApp().app_config->get_last_dir()), _L("Choose SLA archive") + ":",
                                             get_readers_wildcard(),
                                             wxDefaultPosition, wxDefaultSize, wxFLP_DEFAULT_STYLE | wxFD_OPEN | wxFD_FILE_MUST_EXIST);
 
@@ -108,9 +118,9 @@ public:
         szchoices->Add(new wxStaticText(this, wxID_ANY, _L("Quality") + ": "), 0, wxALIGN_CENTER | wxALL, 5);
 
         static const std::vector<wxString> qual_choices = {
-            _(L("Accurate")),
-            _(L("Balanced")),
-            _(L("Quick"))
+            _L("Accurate"),
+            _L("Balanced"),
+            _L("Fast")
         };
 
         m_quality_dropdown = new wxComboBox(

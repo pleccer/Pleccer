@@ -157,31 +157,47 @@ template<class RawShape> class EdgeCache {
 
     void createCache(const RawShape& sh) {
         {   // For the contour
-            auto first = shapelike::cbegin(sh);
-            auto next = std::next(first);
-            auto endit = shapelike::cend(sh);
+            auto first = sl::cbegin(sh);
+            auto endit = sl::cend(sh);
+            auto next = first == endit ? endit : std::next(first);
 
-            contour_.distances.reserve(shapelike::contourVertexCount(sh));
+            contour_.distances.reserve(sl::contourVertexCount(sh));
 
             while(next != endit) {
                 contour_.emap.emplace_back(*(first++), *(next++));
                 contour_.full_distance += length(contour_.emap.back());
                 contour_.distances.emplace_back(contour_.full_distance);
             }
+
+            if constexpr (ClosureTypeV<RawShape> == Closure::OPEN) {
+                if (sl::contourVertexCount(sh) > 0) {
+                    contour_.emap.emplace_back(sl::back(sh), sl::front(sh));
+                    contour_.full_distance += length(contour_.emap.back());
+                    contour_.distances.emplace_back(contour_.full_distance);
+                }
+            }
         }
 
         for(auto& h : shapelike::holes(sh)) { // For the holes
-            auto first = h.begin();
-            auto next = std::next(first);
-            auto endit = h.end();
+            auto first = sl::cbegin(h);
+            auto endit = sl::cend(h);
+            auto next = first == endit ? endit :std::next(first);
 
             ContourCache hc;
-            hc.distances.reserve(endit - first);
+            hc.distances.reserve(sl::contourVertexCount(h));
 
             while(next != endit) {
                 hc.emap.emplace_back(*(first++), *(next++));
                 hc.full_distance += length(hc.emap.back());
                 hc.distances.emplace_back(hc.full_distance);
+            }
+
+            if constexpr (ClosureTypeV<RawShape> == Closure::OPEN) {
+                if (sl::contourVertexCount(h) > 0) {
+                    hc.emap.emplace_back(sl::back(sh), sl::front(sh));
+                    hc.full_distance += length(hc.emap.back());
+                    hc.distances.emplace_back(hc.full_distance);
+                }
             }
 
             holes_.emplace_back(std::move(hc));
@@ -206,7 +222,6 @@ template<class RawShape> class EdgeCache {
         contour_.corners.reserve(N / S + 1);
         contour_.corners.emplace_back(0.0);
         auto N_1 = N-1;
-        contour_.corners.emplace_back(0.0);
         for(size_t i = 0; i < N_1; i += S) {
             contour_.corners.emplace_back(
                     contour_.distances.at(i) / contour_.full_distance);
@@ -886,6 +901,7 @@ public:
 
         if(can_pack) {
             ret = PackResult(item);
+            item.onPacked();
             merged_pile_ = nfp::merge(merged_pile_, item.transformedShape());
         } else {
             ret = PackResult(best_overfit);

@@ -1,3 +1,17 @@
+///|/ Copyright (c) Prusa Research 2017 - 2023 Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2019 John Drake @foxox
+///|/ Copyright (c) 2018 Martin Loidl @LoidlM
+///|/
+///|/ ported from lib/Slic3r/GUI/Tab.pm:
+///|/ Copyright (c) Prusa Research 2016 - 2018 Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena
+///|/ Copyright (c) 2015 - 2017 Joseph Lenox @lordofhyphens
+///|/ Copyright (c) Slic3r 2012 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2016 Chow Loong Jin @hyperair
+///|/ Copyright (c) 2012 QuantumConcepts
+///|/ Copyright (c) 2012 Henrik Brix Andersen @henrikbrixandersen
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_Tab_hpp_
 #define slic3r_Tab_hpp_
 
@@ -37,6 +51,8 @@
 #include "OptionsGroup.hpp"
 #include "libslic3r/Preset.hpp"
 
+class CheckBox;
+
 namespace Slic3r {
 namespace GUI {
 
@@ -56,8 +72,11 @@ class SubstitutionManager
 	std::function<void()> m_cb_edited_substitution{ nullptr };
 	std::function<void()> m_cb_hide_delete_all_btn{ nullptr };
 
-	void validate_lenth();
-	bool is_compatibile_with_ui();
+	std::vector<std::string>	m_substitutions;
+	std::vector<wxWindow*>		m_chb_match_single_lines;
+
+	void validate_length();
+	bool is_compatible_with_ui();
 	bool is_valid_id(int substitution_id, const wxString& message);
 
 public:
@@ -172,6 +191,7 @@ protected:
 	ScalableButton*		m_btn_delete_preset;
 	ScalableButton*		m_btn_edit_ph_printer {nullptr};
 	ScalableButton*		m_btn_hide_incompatible_presets;
+	wxBoxSizer*			m_top_hsizer;
 	wxBoxSizer*			m_hsizer;
 	wxBoxSizer*			m_h_buttons_sizer;
 	wxBoxSizer*			m_left_sizer;
@@ -184,7 +204,7 @@ protected:
 
    	struct PresetDependencies {
 		Preset::Type type	  = Preset::TYPE_INVALID;
-		wxCheckBox 	*checkbox = nullptr;
+		wxWindow 	*checkbox = nullptr;
 		ScalableButton 	*btn  = nullptr;
 		std::string  key_list; // "compatible_printers"
 		std::string  key_condition;
@@ -212,7 +232,9 @@ protected:
 	ScalableBitmap 		   *m_bmp_non_system;
 	// Bitmaps to be shown on the "Undo user changes" button next to each input field.
 	ScalableBitmap 			m_bmp_value_revert;
-    
+	// Bitmaps to be shown on the "Undo user changes" button next to each input field.
+	ScalableBitmap 			m_bmp_edit_value;
+
     std::vector<ScalableButton*>	m_scaled_buttons = {};    
     std::vector<ScalableBitmap*>	m_scaled_bitmaps = {};    
     std::vector<ScalableBitmap>     m_scaled_icons_list = {};
@@ -307,12 +329,13 @@ public:
                                   long style = wxBU_EXACTFIT | wxNO_BORDER);
     void        add_scaled_bitmap(wxWindow* parent, ScalableBitmap& btn, const std::string& icon_name);
 	void		update_ui_items_related_on_parent_preset(const Preset* selected_preset_parent);
-    void		load_current_preset();
+    virtual void load_current_preset();
 	void        rebuild_page_tree();
     void		update_btns_enabling();
     void		update_preset_choice();
     // Select a new preset, possibly delete the current one.
-	void		select_preset(std::string preset_name = "", bool delete_current = false, const std::string& last_selected_ph_printer_name = "");
+    // return false, if action was canceled
+    bool        select_preset(std::string preset_name = "", bool delete_current = false, const std::string& last_selected_ph_printer_name = "");
 	bool		may_discard_current_dirty_preset(PresetCollection* presets = nullptr, const std::string& new_printer_name = "");
 
     virtual void    clear_pages();
@@ -387,6 +410,10 @@ public:
 	bool        validate_custom_gcodes();
     bool        validate_custom_gcodes_was_shown{ false };
 
+    void						edit_custom_gcode(const t_config_option_key& opt_key);
+    virtual const std::string&	get_custom_gcode(const t_config_option_key& opt_key);
+    virtual void				set_custom_gcode(const t_config_option_key& opt_key, const std::string& value);
+
 protected:
 	void			create_line_with_widget(ConfigOptionsGroup* optgroup, const std::string& opt_key, const std::string& path, widget_t widget);
 	wxSizer*		compatible_widget_create(wxWindow* parent, PresetDependencies &deps);
@@ -401,6 +428,10 @@ protected:
 	void			update_frequently_changed_parameters();
 	void			fill_icon_descriptions();
 	void			set_tooltips_text();
+
+    virtual bool    select_preset_by_name(const std::string& name_w_suffix, bool force);
+    virtual bool    save_current_preset(const std::string& new_name, bool detach);
+    virtual bool    delete_current_preset();
 
     ConfigManipulation m_config_manipulation;
     ConfigManipulation get_config_manipulation();
@@ -432,7 +463,8 @@ private:
 
 class TabFilament : public Tab
 {
-private:
+    BitmapComboBox* m_extruders_cb {nullptr};
+    int             m_active_extruder {0};
 	ogStaticText*	m_volumetric_speed_description_line {nullptr};
 	ogStaticText*	m_cooling_description_line {nullptr};
 
@@ -440,9 +472,10 @@ private:
     void            update_line_with_near_label_widget(ConfigOptionsGroupShp optgroup, const std::string &opt_key, int opt_index = 0, bool is_checked = true);
     void            add_filament_overrides_page();
     void            update_filament_overrides_page();
+    void            create_extruder_combobox();
 	void 			update_volumetric_flow_preset_hints();
 
-    std::map<std::string, wxCheckBox*> m_overrides_options;
+    std::map<std::string, wxWindow*> m_overrides_options;
 public:
 	TabFilament(wxBookCtrlBase* parent) :
 		Tab(parent, _(L("Filament Settings")), Slic3r::Preset::TYPE_FILAMENT) {}
@@ -454,7 +487,24 @@ public:
 	void		update() override;
 	void		clear_pages() override;
 	void        msw_rescale() override;
+	void		sys_color_changed() override;
 	bool 		supports_printer_technology(const PrinterTechnology tech) const override { return tech == ptFFF; }
+    void        load_current_preset() override;
+
+    // set actiev extruder and update preset combobox if needed
+    // return false, if new preset wasn't selected
+    bool        set_active_extruder(int new_selected_extruder);
+    void        invalidate_active_extruder() { m_active_extruder = -1; }
+    void        update_extruder_combobox();
+    int         get_active_extruder() const { return m_active_extruder; }
+
+	const std::string&	get_custom_gcode(const t_config_option_key& opt_key) override;
+	void				set_custom_gcode(const t_config_option_key& opt_key, const std::string& value) override;
+
+protected:
+    bool        select_preset_by_name(const std::string& name_w_suffix, bool force) override;
+    bool        save_current_preset(const std::string& new_name, bool detach) override;
+    bool        delete_current_preset() override;
 };
 
 class TabPrinter : public Tab

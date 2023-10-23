@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef Slic3r_Measure_hpp_
 #define Slic3r_Measure_hpp_
 
@@ -109,7 +113,7 @@ public:
     const std::vector<SurfaceFeature>& get_plane_features(unsigned int plane_id) const;
 
     // Returns the mesh used for measuring
-    const TriangleMesh& get_mesh() const;
+    const indexed_triangle_set& get_its() const;
 
 private: 
     std::unique_ptr<MeasuringImpl> priv;

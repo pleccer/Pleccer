@@ -1,3 +1,8 @@
+#/|/ Copyright (c) Prusa Research 2016 - 2022 Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966
+#/|/ Copyright (c) Slic3r 2012 - 2016 Alessandro Ranellucci @alranel
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 # extends C++ class Slic3r::Model
 package Slic3r::Model;
 

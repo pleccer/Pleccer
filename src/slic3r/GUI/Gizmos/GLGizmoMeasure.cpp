@@ -1,4 +1,7 @@
-// Include GLGizmoBase.hpp before I18N.hpp as it includes some libigl code, which overrides our localization "L" macro.
+///|/ Copyright (c) Prusa Research 2019 - 2023 Lukáš Matěna @lukasmatena, Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Vojtěch Bubník @bubnikv, Filip Sykala @Jony01
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "GLGizmoMeasure.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
@@ -14,6 +17,8 @@
 #include <numeric>
 
 #include <GL/glew.h>
+
+#include <tbb/parallel_for.h>
 
 #include <wx/clipbrd.h>
 
@@ -61,7 +66,7 @@ static std::string surface_feature_type_as_string(Measure::SurfaceFeatureType ty
     switch (type)
     {
     default:
-    case Measure::SurfaceFeatureType::Undef:  { return _u8L("No feature"); }
+    case Measure::SurfaceFeatureType::Undef:  { return ("No feature"); }
     case Measure::SurfaceFeatureType::Point:  { return _u8L("Vertex"); }
     case Measure::SurfaceFeatureType::Edge:   { return _u8L("Edge"); }
     case Measure::SurfaceFeatureType::Circle: { return _u8L("Circle"); }
@@ -97,6 +102,8 @@ static GLModel::Geometry init_plane_data(const indexed_triangle_set& its, const 
 {
     GLModel::Geometry init_data;
     init_data.format = { GUI::GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3N3 };
+    init_data.reserve_indices(3 * triangle_indices.size());
+    init_data.reserve_vertices(3 * triangle_indices.size());
     unsigned int i = 0;
     for (int idx : triangle_indices) {
         const Vec3f& v0 = its.vertices[its.indices[idx][0]];
@@ -455,7 +462,7 @@ bool GLGizmoMeasure::on_mouse(const wxMouseEvent &mouse_event)
     return false;
 }
 
-void GLGizmoMeasure::data_changed()
+void GLGizmoMeasure::data_changed(bool is_serializing)
 {
     m_parent.toggle_sla_auxiliaries_visibility(false, nullptr, -1);
 
@@ -649,7 +656,7 @@ void GLGizmoMeasure::on_render()
                     const auto [idx, normal, point] = m_curr_feature->get_plane();
                     if (m_last_plane_idx != idx) {
                         m_last_plane_idx = idx;
-                        const indexed_triangle_set& its = m_measuring->get_mesh().its;
+                        const indexed_triangle_set& its = m_measuring->get_its();
                         const std::vector<int>& plane_triangles = m_measuring->get_plane_triangle_indices(idx);
                         GLModel::Geometry init_data = init_plane_data(its, plane_triangles);
                         m_plane.reset();
@@ -1037,11 +1044,19 @@ void GLGizmoMeasure::update_if_needed()
 {
     auto update_plane_models_cache = [this](const indexed_triangle_set& its) {
         m_plane_models_cache.clear();
-        for (int idx = 0; idx < m_measuring->get_num_of_planes(); ++idx) {
-            m_plane_models_cache.emplace_back(GLModel());
-            GLModel::Geometry init_data = init_plane_data(its, m_measuring->get_plane_triangle_indices(idx));
-            m_plane_models_cache.back().init_from(std::move(init_data));
-        }
+        m_plane_models_cache.resize(m_measuring->get_num_of_planes(), GLModel());
+
+        auto& plane_models_cache = m_plane_models_cache;
+        const auto& measuring = m_measuring;
+
+        //for (int idx = 0; idx < m_measuring->get_num_of_planes(); ++idx) {
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, m_measuring->get_num_of_planes()),
+        [&plane_models_cache, &measuring, &its](const tbb::blocked_range<size_t>& range) {
+            for (size_t idx = range.begin(); idx != range.end(); ++idx) {
+                GLModel::Geometry init_data = init_plane_data(its, measuring->get_plane_triangle_indices(idx));
+                plane_models_cache[idx].init_from(std::move(init_data));
+            }
+        });
     };
 
     auto do_update = [this, update_plane_models_cache](const std::vector<VolumeCacheItem>& volumes_cache, const Selection& selection) {
@@ -1060,8 +1075,8 @@ void GLGizmoMeasure::update_if_needed()
         }
 
         m_measuring.reset(new Measure::Measuring(composite_mesh.its));
-        update_plane_models_cache(m_measuring->get_mesh().its);
-        m_raycaster.reset(new MeshRaycaster(std::make_shared<const TriangleMesh>(m_measuring->get_mesh())));
+        update_plane_models_cache(m_measuring->get_its());
+        m_raycaster.reset(new MeshRaycaster(std::make_shared<const TriangleMesh>(composite_mesh)));
         m_volumes_cache = volumes_cache;
     };
 
@@ -1538,7 +1553,7 @@ void GLGizmoMeasure::render_dimensioning()
         m_imgui->set_next_window_pos(label_position_ss.x(), viewport[3] - label_position_ss.y(), ImGuiCond_Always, 0.0f, 1.0f);
         m_imgui->set_next_window_bg_alpha(0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-        m_imgui->begin(_L("##angle"), ImGuiWindowFlags_NoMouseInputs | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove);
+        m_imgui->begin(wxString("##angle"), ImGuiWindowFlags_NoMouseInputs | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove);
         ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
         ImGui::AlignTextToFramePadding();
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -1737,7 +1752,7 @@ void GLGizmoMeasure::render_debug_dialog()
             add_strings_row_to_table(*m_imgui, "m_pt3", ImGuiWrapper::COL_ORANGE_LIGHT, format_vec3(*extra_point), ImGui::GetStyleColorVec4(ImGuiCol_Text));
     };
 
-    m_imgui->begin(_L("Measure tool debug"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+    m_imgui->begin("Measure tool debug", ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
     if (ImGui::BeginTable("Mode", 2)) {
         std::string txt;
         switch (m_mode)
@@ -1937,19 +1952,19 @@ void GLGizmoMeasure::on_render_input_window(float x, float y, float bottom_limit
             );
 
         if (m_mode == EMode::FeatureSelection && m_hover_id != -1) {
-            add_strings_row_to_table(*m_imgui, _u8L("Shift"), ImGuiWrapper::COL_ORANGE_LIGHT, _u8L("Enable point selection"), ImGui::GetStyleColorVec4(ImGuiCol_Text));
+            add_strings_row_to_table(*m_imgui, "Shift", ImGuiWrapper::COL_ORANGE_LIGHT, _u8L("Enable point selection"), ImGui::GetStyleColorVec4(ImGuiCol_Text));
             ++row_count;
         }
 
         if (m_selected_features.first.feature.has_value()) {
-            add_strings_row_to_table(*m_imgui, _u8L("Delete"), ImGuiWrapper::COL_ORANGE_LIGHT, _u8L("Restart selection"), ImGui::GetStyleColorVec4(ImGuiCol_Text));
+            add_strings_row_to_table(*m_imgui, "Delete", ImGuiWrapper::COL_ORANGE_LIGHT, _u8L("Restart selection"), ImGui::GetStyleColorVec4(ImGuiCol_Text));
             ++row_count;
         }
 
         if (m_selected_features.first.feature.has_value() || m_selected_features.second.feature.has_value()) {
           add_row_to_table(
             [this]() {
-                m_imgui->text_colored(ImGuiWrapper::COL_ORANGE_LIGHT, _u8L("Esc"));
+                m_imgui->text_colored(ImGuiWrapper::COL_ORANGE_LIGHT, "Esc");
             },
             [this]() {
                 m_imgui->text_colored(ImGui::GetStyleColorVec4(ImGuiCol_Text), _u8L("Unselect"));
@@ -1992,6 +2007,13 @@ void GLGizmoMeasure::on_render_input_window(float x, float y, float bottom_limit
                 if (use_inches)
                     radius = ObjectManipulation::mm_to_in * radius;
                 text += " (" + _u8L("Diameter") + ": " + format_double(2.0 * radius) + units + ")";
+            }
+            else if (item.feature.has_value() && item.feature->get_type() == Measure::SurfaceFeatureType::Edge) {
+                auto [start, end] = item.feature->get_edge();
+                double length = (end - start).norm();
+                if (use_inches)
+                    length = ObjectManipulation::mm_to_in * length;
+                text += " (" + _u8L("Length") + ": " + format_double(length) + units + ")";
             }
             return text;
         };

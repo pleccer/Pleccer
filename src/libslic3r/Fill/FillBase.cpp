@@ -1,3 +1,12 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas, Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena
+///|/ Copyright (c) SuperSlicer 2018 - 2019 Remi Durand @supermerill
+///|/
+///|/ ported from lib/Slic3r/Fill/Base.pm:
+///|/ Copyright (c) Prusa Research 2016 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2011 - 2014 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <stdio.h>
 #include <numeric>
 
@@ -21,6 +30,7 @@
 #include "FillRectilinear.hpp"
 #include "FillAdaptive.hpp"
 #include "FillLightning.hpp"
+#include "FillEnsuring.hpp"
 
 #include <boost/log/trivial.hpp>
 
@@ -52,6 +62,7 @@ Fill* Fill::new_from_type(const InfillPattern type)
     case ipSupportCubic:        return new FillAdaptive::Filler();
     case ipSupportBase:         return new FillSupportBase();
     case ipLightning:           return new FillLightning::Filler();
+    case ipEnsuring:            return new FillEnsuring();
     default: throw Slic3r::InvalidArgument("unknown type");
     }
 }

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2023 David Kocík @kocikdav
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "FileArchiveDialog.hpp"
 
 #include "I18N.hpp"
@@ -166,11 +170,11 @@ ArchiveViewCtrl::~ArchiveViewCtrl()
     }
 }
 
-FileArchiveDialog::FileArchiveDialog(wxWindow* parent_window, mz_zip_archive* archive, std::vector<boost::filesystem::path>& selected_paths)
+FileArchiveDialog::FileArchiveDialog(wxWindow* parent_window, mz_zip_archive* archive, std::vector<std::pair<boost::filesystem::path, size_t>>& selected_paths_w_size)
     : DPIDialog(parent_window, wxID_ANY, _(L("Archive preview")), wxDefaultPosition,
         wxSize(45 * wxGetApp().em_unit(), 40 * wxGetApp().em_unit()),
         wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMAXIMIZE_BOX)
-    , m_selected_paths (selected_paths)
+    , m_selected_paths_w_size (selected_paths_w_size)
 {
 #ifdef _WIN32
     wxGetApp().UpdateDarkUI(this);
@@ -206,14 +210,14 @@ FileArchiveDialog::FileArchiveDialog(wxWindow* parent_window, mz_zip_archive* ar
             reduce_stack(stack, struct_size);
         }
         if (!file.has_extension() && stack.size() == struct_size)
-            stack.push_back(avc->get_model()->AddFile((stack.empty() ? std::shared_ptr<ArchiveViewNode>(nullptr) : stack.back()), GUI::format_wxstr(file.filename().string()), true)); // filename string to wstring?
+            stack.push_back(avc->get_model()->AddFile((stack.empty() ? std::shared_ptr<ArchiveViewNode>(nullptr) : stack.back()), boost::nowide::widen(file.filename().string()), true)); // filename string to wstring?
         return struct_size + 1;
     };
 
     const std::regex pattern_drop(".*[.](stl|obj|amf|3mf|prusa|step|stp)", std::regex::icase);
     mz_uint num_entries = mz_zip_reader_get_num_files(archive);
     mz_zip_archive_file_stat stat;
-    std::vector<boost::filesystem::path> filtered_entries;
+    std::vector<std::pair<boost::filesystem::path, size_t>> filtered_entries; // second is unzipped size
     for (mz_uint i = 0; i < num_entries; ++i) {
         if (mz_zip_reader_file_stat(archive, i, &stat)) {
             std::string extra(1024, 0);
@@ -223,7 +227,7 @@ FileArchiveDialog::FileArchiveDialog(wxWindow* parent_window, mz_zip_archive* ar
                 path = boost::filesystem::path(extra.substr(0, extra_size));
             } else {
                 wxString wname = boost::nowide::widen(stat.m_filename);
-                std::string name = GUI::format(wname);
+                std::string name = boost::nowide::narrow(wname);
                 path = boost::filesystem::path(name);
             }
             assert(!path.empty());
@@ -232,22 +236,25 @@ FileArchiveDialog::FileArchiveDialog(wxWindow* parent_window, mz_zip_archive* ar
             // filter out MACOS specific hidden files
             if (boost::algorithm::starts_with(path.string(), "__MACOSX"))
                 continue;
-            filtered_entries.emplace_back(std::move(path));
+            filtered_entries.emplace_back(std::move(path), stat.m_uncomp_size);
         }
     }
     // sorting files will help adjust_stack function to not create multiple same folders
-    std::sort(filtered_entries.begin(), filtered_entries.end(), [](const boost::filesystem::path& p1, const boost::filesystem::path& p2){ return p1.string() > p2.string(); });
+    std::sort(filtered_entries.begin(), filtered_entries.end(), [](const std::pair<boost::filesystem::path, size_t>& p1, const std::pair<boost::filesystem::path, size_t>& p2){ return p1.first.string() < p2.first.string(); });
     size_t entry_count = 0;
     size_t depth = 1;
-    for (const boost::filesystem::path& path : filtered_entries)
+    for (const auto& entry : filtered_entries)
     {
+        const boost::filesystem::path& path = entry.first;
         std::shared_ptr<ArchiveViewNode> parent(nullptr);
 
         depth = std::max(depth, adjust_stack(path, stack));
         if (!stack.empty())
             parent = stack.back();
         if (std::regex_match(path.extension().string(), pattern_drop)) { // this leaves out non-compatible files 
-            m_avc->get_model()->AddFile(parent, GUI::format_wxstr(path.filename().string()), false)->set_fullpath(/*std::move(path)*/path); // filename string to wstring?
+            std::shared_ptr<ArchiveViewNode> new_node = m_avc->get_model()->AddFile(parent, boost::nowide::widen(path.filename().string()), false);
+            new_node->set_fullpath(/*std::move(path)*/path); // filename string to wstring?
+            new_node->set_size(entry.second);
             entry_count++;
         }
     }
@@ -305,12 +312,12 @@ void FileArchiveDialog::on_open_button()
     wxDataViewItemArray top_items;
     m_avc->get_model()->GetChildren(wxDataViewItem(nullptr), top_items);
     
-    std::function<void(ArchiveViewNode*)> deep_fill = [&paths = m_selected_paths, &deep_fill](ArchiveViewNode* node){
+    std::function<void(ArchiveViewNode*)> deep_fill = [&paths = m_selected_paths_w_size, &deep_fill](ArchiveViewNode* node){
         if (node == nullptr)
             return;
         if (node->get_children().empty()) {
             if (node->get_toggle()) 
-                paths.emplace_back(node->get_fullpath());
+                paths.emplace_back(node->get_fullpath(), node->get_size());
         } else { 
             for (std::shared_ptr<ArchiveViewNode> child : node->get_children())
                 deep_fill(child.get());

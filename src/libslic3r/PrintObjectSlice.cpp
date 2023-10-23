@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Pavel Mikuš @Godrak, Lukáš Hejl @hejllukas
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "ClipperUtils.hpp"
 #include "ElephantFootCompensation.hpp"
 #include "I18N.hpp"
@@ -10,8 +14,6 @@
 
 #include <tbb/parallel_for.h>
 
-//! macro used to mark string used at localization, return same string
-#define L(s) Slic3r::I18N::translate(s)
 
 namespace Slic3r {
 
@@ -499,7 +501,7 @@ void PrintObject::slice()
 {
     if (! this->set_started(posSlice))
         return;
-    m_print->set_status(10, L("Processing triangulated mesh"));
+    m_print->set_status(10, _u8L("Processing triangulated mesh"));
     std::vector<coordf_t> layer_height_profile;
     this->update_layer_height_profile(*this->model_object(), m_slicing_params, layer_height_profile);
     m_print->throw_if_canceled();
@@ -733,9 +735,9 @@ void PrintObject::slice_volumes()
         if (m_config.xy_size_compensation.value != 0.f) {
             this->active_step_add_warning(
                 PrintStateBase::WarningLevel::CRITICAL,
-                L("An object has enabled XY Size compensation which will not be used because it is also multi-material painted.\nXY Size "
+                _u8L("An object has enabled XY Size compensation which will not be used because it is also multi-material painted.\nXY Size "
                   "compensation cannot be combined with multi-material painting.") +
-                    "\n" + (L("Object name")) + ": " + this->model_object()->name);
+                    "\n" + (_u8L("Object name")) + ": " + this->model_object()->name);
         }
 
         BOOST_LOG_TRIVIAL(debug) << "Slicing volumes - MMU segmentation";

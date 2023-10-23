@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2016 - 2021 Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 // Optimize the extrusion simulator to the bones.
 //#pragma GCC optimize ("O3")
 //#undef SLIC3R_DEBUG
@@ -957,9 +961,9 @@ void ExtrusionSimulator::extrude_to_accumulator(const ExtrusionPath &path, const
 	polyline.reserve(path.polyline.points.size());
 	float scalex  = float(viewport.size().x()) / float(bbox.size().x());
 	float scaley  = float(viewport.size().y()) / float(bbox.size().y());
-	float w = scale_(path.width) * scalex;
+	float w = scale_(path.width()) * scalex;
 	//float h = scale_(path.height) * scalex;
-	w = scale_(path.mm3_per_mm / path.height) * scalex;
+	w = scale_(path.mm3_per_mm() / path.height()) * scalex;
 	// printf("scalex: %f, scaley: %f\n", scalex, scaley);
 	// printf("bbox: %d,%d %d,%d\n", bbox.min.x(), bbox.min.y, bbox.max.x(), bbox.max.y);
 	for (Points::const_iterator it = path.polyline.points.begin(); it != path.polyline.points.end(); ++ it) {

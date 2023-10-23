@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2020 Tomáš Mészáros @tamasmeszaros
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 # This is a basic version file for the Config-mode of find_package().
 # It is used by write_basic_package_version_file() as input file for configure_file()
 # to create a version-file which can be installed along a config.cmake file.

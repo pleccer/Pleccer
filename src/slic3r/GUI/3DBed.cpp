@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Enrico Turri @enricoturri1966, Vojtěch Bubník @bubnikv, Filip Sykala @Jony01, Lukáš Matěna @lukasmatena, Oleksandra Iushchenko @YuSanka
+///|/ Copyright (c) 2022 Michael Kirsch
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "libslic3r/libslic3r.h"
 
 #include "3DBed.hpp"
@@ -28,54 +33,6 @@ static const Slic3r::ColorRGBA DEFAULT_TRANSPARENT_GRID_COLOR  = { 0.9f, 0.9f, 0
 
 namespace Slic3r {
 namespace GUI {
-
-#if !ENABLE_WORLD_COORDINATE
-const float Bed3D::Axes::DefaultStemRadius = 0.5f;
-const float Bed3D::Axes::DefaultStemLength = 25.0f;
-const float Bed3D::Axes::DefaultTipRadius = 2.5f * Bed3D::Axes::DefaultStemRadius;
-const float Bed3D::Axes::DefaultTipLength = 5.0f;
-
-void Bed3D::Axes::render()
-{
-    auto render_axis = [this](GLShaderProgram* shader, const Transform3d& transform) {
-        const Camera& camera = wxGetApp().plater()->get_camera();
-        const Transform3d& view_matrix = camera.get_view_matrix();
-        shader->set_uniform("view_model_matrix", view_matrix * transform);
-        shader->set_uniform("projection_matrix", camera.get_projection_matrix());
-        const Matrix3d view_normal_matrix = view_matrix.matrix().block(0, 0, 3, 3) * transform.matrix().block(0, 0, 3, 3).inverse().transpose();
-        shader->set_uniform("view_normal_matrix", view_normal_matrix);
-        m_arrow.render();
-    };
-
-    if (!m_arrow.is_initialized())
-        m_arrow.init_from(stilized_arrow(16, DefaultTipRadius, DefaultTipLength, DefaultStemRadius, m_stem_length));
-
-    GLShaderProgram* shader = wxGetApp().get_shader("gouraud_light");
-    if (shader == nullptr)
-        return;
-
-    glsafe(::glEnable(GL_DEPTH_TEST));
-
-    shader->start_using();
-    shader->set_uniform("emission_factor", 0.0f);
-
-    // x axis
-    m_arrow.set_color(ColorRGBA::X());
-    render_axis(shader, Geometry::assemble_transform(m_origin, { 0.0, 0.5 * M_PI, 0.0 }));
-
-    // y axis
-    m_arrow.set_color(ColorRGBA::Y());
-    render_axis(shader, Geometry::assemble_transform(m_origin, { -0.5 * M_PI, 0.0, 0.0 }));
-
-    // z axis
-    m_arrow.set_color(ColorRGBA::Z());
-    render_axis(shader, Geometry::assemble_transform(m_origin));
-
-    shader->stop_using();
-
-    glsafe(::glDisable(GL_DEPTH_TEST));
-}
-#endif // !ENABLE_WORLD_COORDINATE
 
 bool Bed3D::set_shape(const Pointfs& bed_shape, const double max_print_height, const std::string& custom_texture, const std::string& custom_model, bool force_as_custom)
 {
@@ -157,23 +114,20 @@ Point Bed3D::point_projection(const Point& point) const
     return m_polygon.point_projection(point);
 }
 
-void Bed3D::render(GLCanvas3D& canvas, const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, float scale_factor, bool show_axes, bool show_texture)
+void Bed3D::render(GLCanvas3D& canvas, const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, float scale_factor, bool show_texture)
 {
-    render_internal(canvas, view_matrix, projection_matrix, bottom, scale_factor, show_axes, show_texture, false);
+    render_internal(canvas, view_matrix, projection_matrix, bottom, scale_factor, show_texture, false);
 }
 
 void Bed3D::render_for_picking(GLCanvas3D& canvas, const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, float scale_factor)
 {
-    render_internal(canvas, view_matrix, projection_matrix, bottom, scale_factor, false, false, true);
+    render_internal(canvas, view_matrix, projection_matrix, bottom, scale_factor, false, true);
 }
 
 void Bed3D::render_internal(GLCanvas3D& canvas, const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, float scale_factor,
-    bool show_axes, bool show_texture, bool picking)
+    bool show_texture, bool picking)
 {
     m_scale_factor = scale_factor;
-
-    if (show_axes)
-        render_axes();
 
     glsafe(::glEnable(GL_DEPTH_TEST));
 
@@ -204,11 +158,7 @@ BoundingBoxf3 Bed3D::calc_extended_bounding_box() const
     out.merge(m_axes.get_origin());
     // extend to contain axes
     out.merge(m_axes.get_origin() + m_axes.get_total_length() * Vec3d::Ones());
-#if ENABLE_WORLD_COORDINATE
     out.merge(out.min + Vec3d(-m_axes.get_tip_radius(), -m_axes.get_tip_radius(), out.max.z()));
-#else
-    out.merge(out.min + Vec3d(-Axes::DefaultTipRadius, -Axes::DefaultTipRadius, out.max.z()));
-#endif // ENABLE_WORLD_COORDINATE
     // extend to contain model, if any
     BoundingBoxf3 model_bb = m_model.model.get_bounding_box();
     if (model_bb.defined) {
@@ -367,11 +317,7 @@ std::tuple<Bed3D::Type, std::string, std::string> Bed3D::detect_type(const Point
 void Bed3D::render_axes()
 {
     if (m_build_volume.valid())
-#if ENABLE_WORLD_COORDINATE
         m_axes.render(Transform3d::Identity(), 0.25f);
-#else
-        m_axes.render();
-#endif // ENABLE_WORLD_COORDINATE
 }
 
 void Bed3D::render_system(GLCanvas3D& canvas, const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool show_texture)
@@ -498,6 +444,14 @@ void Bed3D::render_model(const Transform3d& view_matrix, const Transform3d& proj
         m_model_offset = to_3d(m_build_volume.bounding_volume2d().center(), -0.03);
 
         // register for picking
+        const std::vector<std::shared_ptr<SceneRaycasterItem>>* const raycaster = wxGetApp().plater()->canvas3D()->get_raycasters_for_picking(SceneRaycaster::EType::Bed);
+        if (!raycaster->empty()) {
+            // The raycaster may have been set by the call to init_triangles() made from render_texture() if the printbed was
+            // changed while the camera was pointing upward.
+            // In this case we need to remove it before creating a new using the model geometry
+            wxGetApp().plater()->canvas3D()->remove_raycasters_for_picking(SceneRaycaster::EType::Bed);
+            m_model.mesh_raycaster.reset();
+        }
         register_raycasters_for_picking(m_model.model.get_geometry(), Geometry::translation_transform(m_model_offset));
 
         // update extended bounding box

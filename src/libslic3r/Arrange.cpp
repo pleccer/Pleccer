@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Arrange.hpp"
 
 #include "BoundingBox.hpp"
@@ -12,6 +16,7 @@
 #include <ClipperUtils.hpp>
 
 #include <boost/geometry/index/rtree.hpp>
+#include <boost/container/small_vector.hpp>
 
 #if defined(_MSC_VER) && defined(__clang__)
 #define BOOST_NO_CXX17_HDR_STRING_VIEW
@@ -85,7 +90,13 @@ template<class PConf>
 void fill_config(PConf& pcfg, const ArrangeParams &params) {
 
     // Align the arranged pile into the center of the bin
-    pcfg.alignment = PConf::Alignment::CENTER;
+    switch (params.alignment) {
+    case Pivots::Center: pcfg.alignment = PConf::Alignment::CENTER; break;
+    case Pivots::BottomLeft: pcfg.alignment = PConf::Alignment::BOTTOM_LEFT; break;
+    case Pivots::BottomRight: pcfg.alignment = PConf::Alignment::BOTTOM_RIGHT; break;
+    case Pivots::TopLeft: pcfg.alignment = PConf::Alignment::TOP_LEFT; break;
+    case Pivots::TopRight: pcfg.alignment = PConf::Alignment::TOP_RIGHT; break;
+    }
 
     // Start placing the items from the center of the print bed
     pcfg.starting_point = PConf::Alignment::CENTER;
@@ -252,7 +263,7 @@ protected:
             auto& index = isBig(item.area()) ? spatindex : smalls_spatindex;
 
             // Query the spatial index for the neighbors
-            std::vector<SpatElement> result;
+            boost::container::small_vector<SpatElement, 100> result;
             result.reserve(index.size());
 
             index.query(query, std::back_inserter(result));
@@ -577,8 +588,12 @@ static void process_arrangeable(const ArrangePolygon &arrpoly,
     outp.emplace_back(std::move(p));
     outp.back().rotation(rotation);
     outp.back().translation({offs.x(), offs.y()});
+    outp.back().inflate(arrpoly.inflation);
     outp.back().binId(arrpoly.bed_idx);
     outp.back().priority(arrpoly.priority);
+    outp.back().setOnPackedFn([&arrpoly](Item &itm){
+        itm.inflate(-arrpoly.inflation);
+    });
 }
 
 template<class Fn> auto call_with_bed(const Points &bed, Fn &&fn)
@@ -593,12 +608,18 @@ template<class Fn> auto call_with_bed(const Points &bed, Fn &&fn)
         auto      parea = poly_area(bed);
 
         if ((1.0 - parea / area(bb)) < 1e-3)
-            return fn(bb);
+            return fn(RectangleBed{bb});
         else if (!std::isnan(circ.radius()))
             return fn(circ);
         else
-            return fn(Polygon(bed));
+            return fn(IrregularBed{ExPolygon(bed)});
     }
+}
+
+bool is_box(const Points &bed)
+{
+    return !bed.empty() &&
+           ((1.0 - poly_area(bed) / area(BoundingBox(bed))) < 1e-3);
 }
 
 template<>
@@ -607,9 +628,7 @@ void arrange(ArrangePolygons &      items,
              const Points &         bed,
              const ArrangeParams &  params)
 {
-    call_with_bed(bed, [&](const auto &bin) {
-        arrange(items, excludes, bin, params);
-    });
+    arrange(items, excludes, to_arrange_bed(bed), params);
 }
 
 template<class BedT>
@@ -648,6 +667,114 @@ template void arrange(ArrangePolygons &items, const ArrangePolygons &excludes, c
 template void arrange(ArrangePolygons &items, const ArrangePolygons &excludes, const CircleBed &bed, const ArrangeParams &params);
 template void arrange(ArrangePolygons &items, const ArrangePolygons &excludes, const Polygon &bed, const ArrangeParams &params);
 template void arrange(ArrangePolygons &items, const ArrangePolygons &excludes, const InfiniteBed &bed, const ArrangeParams &params);
+
+ArrangeBed to_arrange_bed(const Points &bedpts)
+{
+    ArrangeBed ret;
+
+    call_with_bed(bedpts, [&](const auto &bed) {
+        ret = bed;
+    });
+
+    return ret;
+}
+
+void arrange(ArrangePolygons &items,
+             const ArrangePolygons &excludes,
+             const SegmentedRectangleBed &bed,
+             const ArrangeParams &params)
+{
+    arrange(items, excludes, bed.bb, params);
+
+    if (! excludes.empty())
+        return;
+
+    auto it = std::max_element(items.begin(), items.end(),
+                               [](auto &i1, auto &i2) {
+                                   return i1.bed_idx < i2.bed_idx;
+                               });
+
+    size_t beds = 0;
+    if (it != items.end())
+        beds = it->bed_idx + 1;
+
+    std::vector<BoundingBox> pilebb(beds);
+
+    for (auto &itm : items) {
+        if (itm.bed_idx >= 0)
+            pilebb[itm.bed_idx].merge(get_extents(itm.transformed_poly()));
+    }
+
+    auto piecesz = unscaled(bed.bb).size();
+    piecesz.x() /= bed.segments.x();
+    piecesz.y() /= bed.segments.y();
+
+    for (size_t bedidx = 0; bedidx < beds; ++bedidx) {
+        BoundingBox bb;
+        auto pilesz = unscaled(pilebb[bedidx]).size();
+        bb.max.x() = scaled(std::ceil(pilesz.x() / piecesz.x()) * piecesz.x());
+        bb.max.y() = scaled(std::ceil(pilesz.y() / piecesz.y()) * piecesz.y());
+        switch (params.alignment) {
+        case Pivots::BottomLeft:
+            bb.translate(bed.bb.min - bb.min);
+            break;
+        case Pivots::TopRight:
+            bb.translate(bed.bb.max - bb.max);
+            break;
+        case Pivots::BottomRight: {
+            Point bedref{bed.bb.max.x(), bed.bb.min.y()};
+            Point bbref {bb.max.x(), bb.min.y()};
+            bb.translate(bedref - bbref);
+            break;
+        }
+        case Pivots::TopLeft: {
+            Point bedref{bed.bb.min.x(), bed.bb.max.y()};
+            Point bbref {bb.min.x(), bb.max.y()};
+            bb.translate(bedref - bbref);
+            break;
+        }
+        case Pivots::Center: {
+            bb.translate(bed.bb.center() - bb.center());
+            break;
+        }
+        }
+
+        Vec2crd d = bb.center() - pilebb[bedidx].center();
+
+        auto bedbb = bed.bb;
+        bedbb.offset(-params.min_bed_distance);
+        auto pilebbx = pilebb[bedidx];
+        pilebbx.translate(d);
+
+        Point corr{0, 0};
+        corr.x() = -std::min(0, pilebbx.min.x() - bedbb.min.x())
+                   -std::max(0, pilebbx.max.x() - bedbb.max.x());
+        corr.y() = -std::min(0, pilebbx.min.y() - bedbb.min.y())
+                   -std::max(0, pilebbx.max.y() - bedbb.max.y());
+
+        d += corr;
+
+        for (auto &itm : items)
+            if (itm.bed_idx == int(bedidx))
+                itm.translation += d;
+    }
+}
+
+BoundingBox bounding_box(const InfiniteBed &bed)
+{
+    BoundingBox ret;
+    using C = coord_t;
+
+    // It is important for Mx and My to be strictly less than half of the
+    // range of type C. width(), height() and area() will not overflow this way.
+    C Mx = C((std::numeric_limits<C>::lowest() + 2 * bed.center.x()) / 4.01);
+    C My = C((std::numeric_limits<C>::lowest() + 2 * bed.center.y()) / 4.01);
+
+    ret.max = bed.center - Point{Mx, My};
+    ret.min = bed.center + Point{Mx, My};
+
+    return ret;
+}
 
 } // namespace arr
 } // namespace Slic3r

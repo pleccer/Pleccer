@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2023 David Kocík @kocikdav
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GUI_FileArchiveDialog_hpp_
 #define slic3r_GUI_FileArchiveDialog_hpp_
 
@@ -33,6 +37,8 @@ public:
     void                                            set_is_folder(bool is_folder)                       { m_folder = is_folder; }
     void                                            set_fullpath(boost::filesystem::path path)          { m_fullpath = path; }
     boost::filesystem::path                         get_fullpath() const                                { return m_fullpath; }
+    void                                            set_size(size_t size)                               { m_size = size; }
+    size_t                                          get_size() const                                    { return m_size; }
 
 private:
     wxString m_name;
@@ -43,6 +49,7 @@ private:
     bool        m_folder { false };
     boost::filesystem::path m_fullpath;
     bool        m_container { false };
+    size_t      m_size { 0 };
 };
 
 class ArchiveViewModel : public wxDataViewModel
@@ -100,7 +107,7 @@ protected:
 class FileArchiveDialog : public DPIDialog
 {
 public:
-    FileArchiveDialog(wxWindow* parent_window, mz_zip_archive* archive, std::vector<boost::filesystem::path>& selected_paths);
+    FileArchiveDialog(wxWindow* parent_window, mz_zip_archive* archive, std::vector<std::pair<boost::filesystem::path, size_t>>& selected_paths_w_size);
         
 protected:
     void on_dpi_changed(const wxRect& suggested_rect) override;
@@ -109,7 +116,9 @@ protected:
     void on_all_button();
     void on_none_button();
 
-    std::vector<boost::filesystem::path>& m_selected_paths;
+    // chosen files are written into this vector and returned to caller via reference.
+    // path in archive and decompressed size. The size can be used to distinguish between files with same path.
+    std::vector<std::pair<boost::filesystem::path,size_t>>& m_selected_paths_w_size;
     ArchiveViewCtrl* m_avc;
 };
 

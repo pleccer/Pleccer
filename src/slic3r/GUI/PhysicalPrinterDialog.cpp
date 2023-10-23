@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "PhysicalPrinterDialog.hpp"
 #include "PresetComboBoxes.hpp"
 
@@ -116,7 +120,7 @@ void PresetForPrinter::update_full_printer_name()
     wxString printer_name   = m_parent->get_printer_name();
     wxString preset_name    = m_presets_list->GetString(m_presets_list->GetSelection());
 
-    m_full_printer_name->SetLabelText(printer_name + " * " + preset_name);
+    m_full_printer_name->SetLabelText(printer_name + from_u8(PhysicalPrinter::separator()) + preset_name);
 }
 
 std::string PresetForPrinter::get_preset_name()
@@ -180,7 +184,7 @@ PhysicalPrinterDialog::PhysicalPrinterDialog(wxWindow* parent, wxString printer_
     m_add_preset_btn->SetToolTip(_L("Add preset for this printer device")); 
     m_add_preset_btn->Bind(wxEVT_BUTTON, &PhysicalPrinterDialog::AddPreset, this);
 
-    m_printer_name    = new wxTextCtrl(this, wxID_ANY, printer_name, wxDefaultPosition, wxDefaultSize);
+    m_printer_name    = new ::TextInput(this,printer_name);
     wxGetApp().UpdateDarkUI(m_printer_name);
     m_printer_name->Bind(wxEVT_TEXT, [this](wxEvent&) { this->update_full_printer_names(); });
 
@@ -238,7 +242,7 @@ PhysicalPrinterDialog::PhysicalPrinterDialog(wxWindow* parent, wxString printer_
 
     if (new_printer) {
         m_printer_name->SetFocus();
-        m_printer_name->SelectAll();
+        m_printer_name->GetTextCtrl()->SelectAll();
     }
 
     this->Fit();
@@ -504,7 +508,7 @@ void PhysicalPrinterDialog::update(bool printer_change)
             supports_multiple_printers = opt && opt->value == htRepetier;
             if (opt->value == htPrusaConnect) { // automatically show default prusaconnect address
                 if (Field* printhost_field = m_optgroup->get_field("print_host"); printhost_field) {
-                    if (wxTextCtrl* temp = dynamic_cast<wxTextCtrl*>(printhost_field->getWindow()); temp && temp->GetValue().IsEmpty()) {
+                    if (text_ctrl* temp = dynamic_cast<text_ctrl*>(printhost_field->getWindow()); temp && temp->GetValue().IsEmpty()) {
                         temp->SetValue(L"https://connect.prusa3d.com");
                     }
                 }
@@ -547,18 +551,22 @@ void PhysicalPrinterDialog::update_host_type(bool printer_change)
     } link, connect;
     // allowed models are: all MINI, all MK3 and newer, MK2.5 and MK2.5S  
     auto model_supports_prusalink = [](const std::string& model) {
-        return model.size() >= 3 &&
+        return model.size() >= 2 &&
                 (( boost::starts_with(model, "MK") && model[2] > '2' && model[2] <= '9')
                 || boost::starts_with(model, "MINI")
                 || boost::starts_with(model, "MK2.5")
-                //|| boost::starts_with(model, "MK2.5S")
+                || boost::starts_with(model, "XL")
                 );
     };
-    // allowed models are: all MK3/S and MK2.5/S
+    // allowed models are: all MK3/S and MK2.5/S.
+    // Since 2.6.2 also MINI, which makes list of supported printers same for both services.
+    // Lets keep these 2 functions separated for now.
     auto model_supports_prusaconnect = [](const std::string& model) {
-        return model.size() >= 3 &&
-                (boost::starts_with(model, "MK3")
+        return model.size() >= 2 &&
+                ((boost::starts_with(model, "MK") && model[2] > '2' && model[2] <= '9')
+                || boost::starts_with(model, "MINI")
                 || boost::starts_with(model, "MK2.5")
+                || boost::starts_with(model, "XL")
                 );
     };
 
@@ -632,7 +640,6 @@ void PhysicalPrinterDialog::update_host_type(bool printer_change)
 
     Choice* choice = dynamic_cast<Choice*>(ht);
     choice->set_values(types);
-    int dif = (int)ht->m_opt.enum_def->values().size() - (int)types.size();
     int index_in_choice = (printer_change ? std::clamp(last_in_conf - ((int)ht->m_opt.enum_def->values().size() - (int)types.size()), 0, (int)ht->m_opt.enum_def->values().size() - 1) : last_in_conf);
     choice->set_value(index_in_choice);
     if (link.supported && link.label == _(ht->m_opt.enum_def->label(index_in_choice)))
@@ -654,6 +661,24 @@ wxString PhysicalPrinterDialog::get_printer_name()
 
 void PhysicalPrinterDialog::update_full_printer_names()
 {
+    // check input symbols for usability
+
+    const char* unusable_symbols = "<>[]:/\\|?*\"";
+
+    wxString printer_name = m_printer_name->GetValue();
+    for (size_t i = 0; i < std::strlen(unusable_symbols); i++) {
+        size_t pos = printer_name.find_first_of(unusable_symbols[i]);
+        if (pos != std::string::npos) {
+            wxString str = printer_name.SubString(pos, 1);
+            printer_name.Remove(pos, 1);
+            InfoDialog(this, format_wxstr("%1%: \"%2%\" ", _L("Unexpected character"),  str),
+                       _L("The following characters are not allowed in the name") + ": " + unusable_symbols).ShowModal();
+            m_printer_name->SetValue(printer_name);
+            m_printer_name->GetTextCtrl()->SetInsertionPointEnd();
+            return;
+        }
+    }
+
     for (PresetForPrinter* preset : m_presets)
         preset->update_full_printer_name();
 
@@ -701,11 +726,7 @@ void PhysicalPrinterDialog::on_sys_color_changed()
 void PhysicalPrinterDialog::OnOK(wxEvent& event)
 {
     wxString printer_name = m_printer_name->GetValue();
-    if (printer_name.IsEmpty()) {
-        warning_catcher(this, _L("The supplied name is empty. It can't be saved."));
-        return;
-    }
-    if (printer_name == m_default_name) {
+    if (printer_name.IsEmpty() || printer_name == m_default_name) {
         warning_catcher(this, _L("You have to enter a printer name."));
         return;
     }
@@ -817,5 +838,4 @@ void PhysicalPrinterDialog::DeletePreset(PresetForPrinter* preset_for_printer)
 
     update_host_type(true);
 }
-
 }}    // namespace Slic3r::GUI

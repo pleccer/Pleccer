@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, David Kocík @kocikdav, Vojtěch Bubník @bubnikv
+///|/ Copyright (c) 2021 Justin Schuh @jschuh
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "GLGizmoMmuSegmentation.hpp"
 
 #include "slic3r/GUI/GLCanvas3D.hpp"
@@ -71,7 +76,7 @@ static std::vector<std::string> get_extruders_names()
     std::vector<std::string> extruders_out;
     extruders_out.reserve(extruders_count);
     for (size_t extruder_idx = 1; extruder_idx <= extruders_count; ++extruder_idx)
-        extruders_out.emplace_back("Extruder " + std::to_string(extruder_idx));
+        extruders_out.emplace_back(_u8L("Extruder") + " " + std::to_string(extruder_idx));
 
     return extruders_out;
 }
@@ -147,9 +152,9 @@ void GLGizmoMmuSegmentation::render_painter_gizmo()
     glsafe(::glDisable(GL_BLEND));
 }
 
-void GLGizmoMmuSegmentation::data_changed()
+void GLGizmoMmuSegmentation::data_changed(bool is_serializing)
 {
-    GLGizmoPainterBase::data_changed();
+    GLGizmoPainterBase::data_changed(is_serializing);
     if (m_state != On || wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() != ptFFF || wxGetApp().extruders_edited_cnt() <= 1)
         return;
 
@@ -334,7 +339,12 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
 
     const ColorRGBA& select_first_color = m_modified_extruders_colors[m_first_selected_extruder_idx];
     ImVec4           first_color        = ImGuiWrapper::to_ImVec4(select_first_color);
-    if (ImGui::ColorEdit4("First color##color_picker", (float*)&first_color, ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+    const std::string first_label       = into_u8(m_desc.at("first_color")) + "##color_picker";
+    if (ImGui::ColorEdit4(first_label.c_str(), (float*)&first_color, ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel,
+        // TRN Means "current color"
+        _u8L("Current").c_str(),
+        // TRN Means "original color"
+        _u8L("Original").c_str()))
         m_modified_extruders_colors[m_first_selected_extruder_idx] = ImGuiWrapper::from_ImVec4(first_color);
 
     ImGui::AlignTextToFramePadding();
@@ -346,7 +356,9 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
 
     const ColorRGBA& select_second_color = m_modified_extruders_colors[m_second_selected_extruder_idx];
     ImVec4           second_color        = ImGuiWrapper::to_ImVec4(select_second_color);
-    if (ImGui::ColorEdit4("Second color##color_picker", (float*)&second_color, ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+    const std::string second_label       = into_u8(m_desc.at("second_color")) + "##color_picker";
+    if (ImGui::ColorEdit4(second_label.c_str(), (float*)&second_color, ImGuiColorEditFlags_NoAlpha | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel,
+        _u8L("Current").c_str(), _u8L("Original").c_str()))
         m_modified_extruders_colors[m_second_selected_extruder_idx] = ImGuiWrapper::from_ImVec4(second_color);
 
     const float max_tooltip_width = ImGui::GetFontSize() * 20.0f;

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "../Print.hpp"
 #include "../ShortestPath.hpp"
 
@@ -14,7 +18,7 @@ void Filler::_fill_surface_single(
     ExPolygon                      expolygon,
     Polylines                     &polylines_out)
 {
-    const Layer &layer      = generator->getTreesForLayer(this->layer_id - this->num_raft_layers);
+    const Layer &layer      = generator->getTreesForLayer(this->layer_id);
     Polylines    fill_lines = layer.convertToLines(to_polygons(expolygon), scaled<coord_t>(0.5 * this->spacing - this->overlap));
 
     if (params.dont_connect() || fill_lines.size() <= 1) {

@@ -690,3 +690,57 @@ TEST_CASE("Arachne - #8846 - Degenerated Voronoi diagram - Voronoi edges interse
     // Total extrusion length should be around 500mm when the part is ok and 680mm when it has perimeters in places where they shouldn't be.
     REQUIRE(total_extrusion_length <= scaled<int64_t>(500.));
 }
+
+// This test case was distilled from GitHub issue #10034.
+// In this test case previous rotation by PI / 6 wasn't able to fix non-planar Voronoi diagram.
+TEST_CASE("Arachne - #10034 - Degenerated Voronoi diagram - That wasn't fixed by rotation by PI / 6", "[ArachneDegeneratedDiagram10034RotationNotWorks]") {
+    Polygon poly_0 = {
+        Point(43612632, -25179766), Point(58456010, 529710),    Point(51074898, 17305660),   Point(49390982, 21042355),
+        Point(48102357, 23840161),  Point(46769686, 26629546),  Point(45835761, 28472742),   Point(45205450, 29623133),
+        Point(45107431, 29878059),  Point(45069846, 30174950),  Point(45069846, 50759533),   Point(-45069846, 50759533),
+        Point(-45069852, 29630557), Point(-45105780, 29339980), Point(-45179725, 29130704),  Point(-46443313, 26398986),
+        Point(-52272109, 13471493), Point(-58205450, 95724),    Point(-29075091, -50359531), Point(29075086, -50359531),
+    };
+
+    Polygon poly_1 = {
+        Point(-37733905, 45070445), Point(-37813254, 45116257), Point(-39353851, 47784650), Point(-39353851, 47876274),
+        Point(-38632470, 49125743), Point(-38553121, 49171555), Point(-33833475, 49171555), Point(-33754126, 49125743),
+        Point(-33032747, 47876277), Point(-33032747, 47784653), Point(-34007855, 46095721), Point(-34573350, 45116257),
+        Point(-34652699, 45070445),
+    };
+
+    Polygon poly_2 = {
+        Point(-44016799, 40706401), Point(-44116953, 40806555), Point(-44116953, 46126289), Point(-44016799, 46226443),
+        Point(-42211438, 46226443), Point(-42132089, 46180631), Point(-40591492, 43512233), Point(-40591492, 43420609),
+        Point(-41800123, 41327194), Point(-42132089, 40752213), Point(-42211438, 40706401),
+    };
+
+    Polygon poly_3 = {
+        Point(6218189, 10966609),  Point(6138840, 11012421), Point(4598238, 13680817), Point(4598238, 13772441),  Point(6138840, 16440843),
+        Point(6218189, 16486655),  Point(9299389, 16486655), Point(9378738, 16440843), Point(10919340, 13772441), Point(10919340, 13680817),
+        Point(10149039, 12346618), Point(9378738, 11012421), Point(9299389, 10966609),
+    };
+
+    Polygon poly_4 = {
+        Point(13576879, 6718065),  Point(13497530, 6763877),  Point(11956926, 9432278),  Point(11956926, 9523902),
+        Point(13497528, 12192302), Point(13576877, 12238114), Point(16658079, 12238112), Point(16737428, 12192300),
+        Point(18278031, 9523904),  Point(18278031, 9432280),  Point(17507729, 8098077),  Point(16737428, 6763877),
+        Point(16658079, 6718065),
+    };
+
+    Polygons polygons = {
+        poly_0, poly_1, poly_2, poly_3, poly_4,
+    };
+
+    coord_t  ext_perimeter_spacing = 407079;
+    coord_t  perimeter_spacing     = 407079;
+    coord_t  inset_count           = 1;
+
+    Arachne::WallToolPaths wall_tool_paths(polygons, ext_perimeter_spacing, perimeter_spacing, inset_count, 0, 0.2, PrintObjectConfig::defaults(), PrintConfig::defaults());
+    wall_tool_paths.generate();
+    std::vector<Arachne::VariableWidthLines> perimeters = wall_tool_paths.getToolPaths();
+
+#ifdef ARACHNE_DEBUG_OUT
+    export_perimeters_to_svg(debug_out_path("arachne-degenerated-diagram-10034-rotation-not-works.svg"), polygons, perimeters, union_ex(wall_tool_paths.getInnerContour()));
+#endif
+}

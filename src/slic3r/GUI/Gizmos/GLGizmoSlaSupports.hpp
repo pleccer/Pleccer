@@ -1,8 +1,13 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Tomáš Mészáros @tamasmeszaros, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GLGizmoSlaSupports_hpp_
 #define slic3r_GLGizmoSlaSupports_hpp_
 
 #include "GLGizmoSlaBase.hpp"
 #include "slic3r/GUI/GLSelectionRectangle.hpp"
+#include "slic3r/GUI/I18N.hpp"
 
 #include "libslic3r/SLA/SupportPoint.hpp"
 #include "libslic3r/ObjectID.hpp"
@@ -54,7 +59,7 @@ private:
 public:
     GLGizmoSlaSupports(GLCanvas3D& parent, const std::string& icon_filename, unsigned int sprite_id);
     virtual ~GLGizmoSlaSupports() = default;
-    void data_changed() override;
+    void data_changed(bool is_serializing) override;
     bool gizmo_event(SLAGizmoEventType action, const Vec2d& mouse_position, bool shift_down, bool alt_down, bool control_down);
     void delete_selected_points(bool force = false);
     //ClippingPlane get_sla_clipping_plane() const;
@@ -109,7 +114,6 @@ private:
 
     bool m_wait_for_up_event = false;
     bool m_selection_empty = true;
-    EState m_old_state = Off; // to be able to see that the gizmo has just been closed (see on_set_state)
 
     std::vector<const ConfigOption*> get_config_options(const std::vector<std::string>& keys) const;
     bool is_mesh_point_clipped(const Vec3d& point) const;
@@ -130,7 +134,9 @@ private:
     void auto_generate();
     void switch_to_editing_mode();
     void disable_editing_mode();
-    void ask_about_changes_call_after(std::function<void()> on_yes, std::function<void()> on_no);
+
+    // return false if Cancel was selected
+    bool ask_about_changes(std::function<void()> on_yes, std::function<void()> on_no);
 
 protected:
     void on_set_state() override;

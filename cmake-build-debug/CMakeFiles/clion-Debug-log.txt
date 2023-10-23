@@ -1,0 +1,22 @@
+/root/.cache/JetBrains/RemoteDev/dist/1466a3f304df6_CLion-231.8109.141/bin/cmake/linux/x64/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/root/.cache/JetBrains/RemoteDev/dist/1466a3f304df6_CLion-231.8109.141/bin/ninja/linux/x64/ninja -G Ninja -S /home/plec/Pleccer -B /home/plec/Pleccer/cmake-build-debug
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+CMake Error at version.inc:4:
+  Parse error.  Expected a command name, got unquoted argument with text
+  "<<<<<<<".
+Call Stack (most recent call first):
+  CMakeLists.txt:14 (include)
+
+
+-- Configuring incomplete, errors occurred!
+See also "/home/plec/Pleccer/cmake-build-debug/CMakeFiles/CMakeOutput.log".

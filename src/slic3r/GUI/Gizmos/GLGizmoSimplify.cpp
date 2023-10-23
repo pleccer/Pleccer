@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Hejl @hejllukas, Enrico Turri @enricoturri1966, David Kocík @kocikdav, Filip Sykala @Jony01, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "GLGizmoSimplify.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
@@ -37,7 +41,7 @@ static void call_after_if_active(std::function<void()> fn, GUI_App* app = &wxGet
     });
 }
 
-static std::set<ObjectID> get_volume_ids(const Selection &selection)
+static std::set<ObjectID> get_selected_volume_ids(const Selection &selection)
 {
     const Selection::IndicesList &volume_ids = selection.get_volume_idxs();
     const ModelObjectPtrs &model_objects     = selection.get_model()->objects;
@@ -64,20 +68,6 @@ static std::set<ObjectID> get_volume_ids(const Selection &selection)
     return result;
 }
 
-// return ModelVolume from selection by object id
-static ModelVolume *get_volume(const ObjectID &id, const Selection &selection) {
-    const Selection::IndicesList &volume_ids = selection.get_volume_idxs();
-    const ModelObjectPtrs &model_objects     = selection.get_model()->objects;
-    for (auto volume_id : volume_ids) {
-        const GLVolume *selected_volume = selection.get_volume(volume_id);
-        const GLVolume::CompositeID &cid = selected_volume->composite_id;
-        ModelObject *obj    = model_objects[cid.object_id];
-        ModelVolume *volume = obj->volumes[cid.volume_id];
-        if (id == volume->id()) return volume;
-    }
-    return nullptr;
-}
-
 static std::string create_volumes_name(const std::set<ObjectID>& ids, const Selection &selection){
     assert(!ids.empty());
     std::string name;
@@ -88,7 +78,7 @@ static std::string create_volumes_name(const std::set<ObjectID>& ids, const Sele
         else
             name += " + ";
 
-        const ModelVolume *volume = get_volume(id, selection);
+        const ModelVolume *volume = get_selected_volume(id, selection);
         assert(volume != nullptr);
         name += volume->name;
     }
@@ -104,7 +94,7 @@ GLGizmoSimplify::GLGizmoSimplify(GLCanvas3D &parent)
     // translation for GUI size
     , tr_mesh_name(_u8L("Mesh name"))
     , tr_triangles(_u8L("Triangles"))
-    , tr_detail_level(_u8L("Detail level"))
+    , tr_detail_level(_u8L("Level of detail"))
     , tr_decimate_ratio(_u8L("Decimate ratio"))
 {}
 
@@ -144,7 +134,7 @@ void GLGizmoSimplify::add_simplify_suggestion_notification(
 
     for (size_t object_id : big_ids) {
         std::string t = GUI::format(_L(
-            "Processing model '%1%' with more than 1M triangles "
+            "Processing model \"%1%\" with more than 1M triangles "
             "could be slow. It is highly recommended to reduce "
             "amount of triangles."), objects[object_id]->name);
         std::string hypertext = _u8L("Simplify model");
@@ -181,7 +171,7 @@ void GLGizmoSimplify::on_render_input_window(float x, float y, float bottom_limi
 {
     create_gui_cfg();
     const Selection &selection = m_parent.get_selection();
-    auto act_volume_ids = get_volume_ids(selection);
+    auto act_volume_ids = get_selected_volume_ids(selection);
     if (act_volume_ids.empty()) {
         stop_worker_thread_request();
         close();
@@ -318,10 +308,8 @@ void GLGizmoSimplify::on_render_input_window(float x, float y, float bottom_limi
         m_configuration.use_count = !m_configuration.use_count;
         start_process = true;
     } else if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && is_multipart)
-        ImGui::SetTooltip("%s", GUI::format(_L(
-             "Multipart object can be simplified only by %1%. "
-             "If you want specify %2% process it separately."),
-            tr_detail_level, tr_decimate_ratio).c_str());
+        ImGui::SetTooltip("%s", _u8L("A multipart object can be simplified using only a Level of detail. "
+                                     "If you want to enter a Decimate ratio, do the simplification separately.").c_str());
     ImGui::SameLine();
 
     // show preview result triangle count (percent)
@@ -472,7 +460,7 @@ void GLGizmoSimplify::process()
     const Selection& selection = m_parent.get_selection();
     State::Data its;
     for (const auto &id : m_volume_ids) {
-        const ModelVolume *volume = get_volume(id, selection);
+        const ModelVolume *volume = get_selected_volume(id, selection);
         its[id] = std::make_unique<indexed_triangle_set>(volume->mesh().its); // copy
     }
     
@@ -539,13 +527,18 @@ void GLGizmoSimplify::apply_simplify() {
 
     const Selection& selection = m_parent.get_selection();
     auto plater = wxGetApp().plater();
-    plater->take_snapshot(_u8L("Simplify ") + create_volumes_name(m_volume_ids, selection));
-    plater->clear_before_change_mesh(selection.get_object_idx());
+    // TRN %1% = volumes name
+    plater->take_snapshot(Slic3r::format(_u8L("Simplify %1%"), create_volumes_name(m_volume_ids, selection)));
+    plater->clear_before_change_mesh(selection.get_object_idx(), _u8L("Custom supports, seams and multimaterial painting were "
+                                                                      "removed after simplifying the mesh."));
+    // After removing custom supports, seams, and multimaterial painting, we have to update info about the object to remove information about
+    // custom supports, seams, and multimaterial painting in the right panel.
+    wxGetApp().obj_list()->update_info_items(selection.get_object_idx());
 
     for (const auto &item: m_state.result) {
         const ObjectID &id = item.first;
         const indexed_triangle_set &its = *item.second;
-        ModelVolume *volume = get_volume(id, selection);
+        ModelVolume *volume = get_selected_volume(id, selection);
         assert(volume != nullptr);
         ModelObject *obj = volume->get_object();
 
@@ -721,7 +714,7 @@ void GLGizmoSimplify::on_render()
     const Selection &             selection  = m_parent.get_selection();
     
     // Check that the GLVolume still belongs to the ModelObject we work on.
-    if (m_volume_ids != get_volume_ids(selection)) return;
+    if (m_volume_ids != get_selected_volume_ids(selection)) return;
 
     const ModelObjectPtrs &model_objects = selection.get_model()->objects;
     const Selection::IndicesList &volume_idxs = selection.get_volume_idxs();

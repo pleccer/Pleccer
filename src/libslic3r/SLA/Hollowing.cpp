@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <functional>
 #include <optional>
 #include <numeric>
@@ -22,10 +26,6 @@
 
 #include <libslic3r/MTUtils.hpp>
 #include <libslic3r/I18N.hpp>
-
-//! macro used to mark string used at localization,
-//! return same string
-#define L(s) Slic3r::I18N::translate(s)
 
 namespace Slic3r {
 namespace sla {
@@ -83,12 +83,12 @@ InteriorPtr generate_interior(const VoxelGrid       &vgrid,
     auto   narrowb  = 1.f;  // voxel units (voxel count)
 
     if (ctl.stopcondition()) return {};
-    else ctl.statuscb(0, L("Hollowing"));
+    else ctl.statuscb(0, _u8L("Hollowing"));
 
     auto gridptr = dilate_grid(vgrid, out_range, in_range);
 
     if (ctl.stopcondition()) return {};
-    else ctl.statuscb(30, L("Hollowing"));
+    else ctl.statuscb(30, _u8L("Hollowing"));
 
     double iso_surface = D;
     if (D > EPSILON) {
@@ -103,7 +103,7 @@ InteriorPtr generate_interior(const VoxelGrid       &vgrid,
     }
 
     if (ctl.stopcondition()) return {};
-    else ctl.statuscb(70, L("Hollowing"));
+    else ctl.statuscb(70, _u8L("Hollowing"));
 
     double adaptivity = 0.;
     InteriorPtr interior = InteriorPtr{new Interior{}};
@@ -112,7 +112,7 @@ InteriorPtr generate_interior(const VoxelGrid       &vgrid,
     interior->gridptr = std::move(gridptr);
 
     if (ctl.stopcondition()) return {};
-    else ctl.statuscb(100, L("Hollowing"));
+    else ctl.statuscb(100, _u8L("Hollowing"));
 
     interior->iso_surface = iso_surface;
     interior->thickness   = offset;

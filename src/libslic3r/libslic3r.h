@@ -1,3 +1,16 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Pavel Mikuš @Godrak, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, Enrico Turri @enricoturri1966, Vojtěch Král @vojtechkral
+///|/ Copyright (c) Slic3r 2013 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2016 Miro Hrončok @hroncok
+///|/ Copyright (c) 2014 Kamil Kwolek
+///|/
+///|/ ported from xs/src/libslic3r/libslic3r.h:
+///|/ Copyright (c) Prusa Research 2016 - 2019 Vojtěch Král @vojtechkral, Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966
+///|/ Copyright (c) Slic3r 2013 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2016 Miro Hrončok @hroncok
+///|/ Copyright (c) 2014 Kamil Kwolek
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef _libslic3r_h_
 #define _libslic3r_h_
 
@@ -106,8 +119,8 @@ enum Axis {
 	NUM_AXES_WITH_UNKNOWN,
 };
 
-template <typename T>
-inline void append(std::vector<T>& dest, const std::vector<T>& src)
+template <typename T, typename Alloc, typename Alloc2>
+inline void append(std::vector<T, Alloc> &dest, const std::vector<T, Alloc2> &src)
 {
     if (dest.empty())
         dest = src; // copy
@@ -115,8 +128,8 @@ inline void append(std::vector<T>& dest, const std::vector<T>& src)
         dest.insert(dest.end(), src.begin(), src.end());
 }
 
-template <typename T>
-inline void append(std::vector<T>& dest, std::vector<T>&& src)
+template <typename T, typename Alloc>
+inline void append(std::vector<T, Alloc> &dest, std::vector<T, Alloc> &&src)
 {
     if (dest.empty())
         dest = std::move(src);
@@ -124,8 +137,7 @@ inline void append(std::vector<T>& dest, std::vector<T>&& src)
         dest.insert(dest.end(),
             std::make_move_iterator(src.begin()),
             std::make_move_iterator(src.end()));
-
-        // Vojta wants back compatibility
+        // Release memory of the source contour now.
         src.clear();
         src.shrink_to_fit();
     }
@@ -161,8 +173,7 @@ inline void append_reversed(std::vector<T>& dest, std::vector<T>&& src)
         dest.insert(dest.end(), 
             std::make_move_iterator(src.rbegin()),
             std::make_move_iterator(src.rend()));
-
-    // Vojta wants back compatibility
+    // Release memory of the source contour now.
     src.clear();
     src.shrink_to_fit();
 }
@@ -323,7 +334,8 @@ template<class T, class I, class... Args> // Arbitrary allocator can be used
 IntegerOnly<I, std::vector<T, Args...>> reserve_vector(I capacity)
 {
     std::vector<T, Args...> ret;
-    if (capacity > I(0)) ret.reserve(size_t(capacity));
+    if (capacity > I(0))
+        ret.reserve(size_t(capacity));
 
     return ret;
 }
@@ -331,6 +343,18 @@ IntegerOnly<I, std::vector<T, Args...>> reserve_vector(I capacity)
 // Borrowed from C++20
 template<class T>
 using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
+
+namespace detail_strip_ref_wrappers {
+template<class T> struct StripCVRef_ { using type = remove_cvref_t<T>; };
+template<class T> struct StripCVRef_<std::reference_wrapper<T>>
+{
+    using type = std::remove_cv_t<T>;
+};
+} // namespace detail
+
+// Removes reference wrappers as well
+template<class T> using  StripCVRef =
+    typename detail_strip_ref_wrappers::StripCVRef_<remove_cvref_t<T>>::type;
 
 // A very simple range concept implementation with iterator-like objects.
 // This should be replaced by std::ranges::subrange (C++20)
@@ -360,6 +384,48 @@ template<class Cont> auto range(Cont &&cont)
     return Range{std::begin(cont), std::end(cont)};
 }
 
+template<class Cont> auto crange(Cont &&cont)
+{
+    return Range{std::cbegin(cont), std::cend(cont)};
+}
+
+template<class IntType = int, class = IntegerOnly<IntType, void>>
+class IntIterator {
+    IntType m_val;
+public:
+    using iterator_category = std::bidirectional_iterator_tag;
+    using difference_type   = std::ptrdiff_t;
+    using value_type        = IntType;
+    using pointer           = IntType*;  // or also value_type*
+    using reference         = IntType&;  // or also value_type&
+
+    IntIterator(IntType v): m_val{v} {}
+
+    IntIterator & operator++() { ++m_val; return *this; }
+    IntIterator operator++(int) { auto cpy = *this; ++m_val; return cpy; }
+    IntIterator & operator--() { --m_val; return *this; }
+    IntIterator operator--(int) { auto cpy = *this; --m_val; return cpy; }
+
+    IntType operator*() const { return m_val; }
+    IntType operator->() const { return m_val; }
+
+    bool operator==(const IntIterator& other) const
+    {
+        return m_val == other.m_val;
+    }
+
+    bool operator!=(const IntIterator& other) const
+    {
+        return !(*this == other);
+    }
+};
+
+template<class IntType, class = IntegerOnly<IntType>>
+auto range(IntType from, IntType to)
+{
+    return Range{IntIterator{from}, IntIterator{to}};
+}
+
 template<class T, class = FloatingOnly<T>>
 constexpr T NaN = std::numeric_limits<T>::quiet_NaN();
 
@@ -386,6 +452,32 @@ inline IntegerOnly<I, I> fast_round_up(double a)
 }
 
 template<class T> using SamePair = std::pair<T, T>;
+
+// Helper to be used in static_assert.
+template<class T> struct always_false { enum { value = false }; };
+
+// Map a generic function to each argument following the mapping function
+template<class Fn, class...Args>
+Fn for_each_argument(Fn &&fn, Args&&...args)
+{
+    // see https://www.fluentcpp.com/2019/03/05/for_each_arg-applying-a-function-to-each-argument-of-a-function-in-cpp/
+    (fn(std::forward<Args>(args)),...);
+
+    return fn;
+}
+
+// Call fn on each element of the input tuple tup.
+template<class Fn, class Tup>
+Fn for_each_in_tuple(Fn fn, Tup &&tup)
+{
+    auto mpfn = [&fn](auto&...pack) {
+        for_each_argument(fn, pack...);
+    };
+
+    std::apply(mpfn, tup);
+
+    return fn;
+}
 
 } // namespace Slic3r
 

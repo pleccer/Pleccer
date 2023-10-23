@@ -1,4 +1,7 @@
-// Include GLGizmoBase.hpp before I18N.hpp as it includes some libigl code, which overrides our localization "L" macro.
+///|/ Copyright (c) Prusa Research 2019 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "GLGizmoFlatten.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
@@ -25,14 +28,8 @@ GLGizmoFlatten::GLGizmoFlatten(GLCanvas3D& parent, const std::string& icon_filen
 
 bool GLGizmoFlatten::on_mouse(const wxMouseEvent &mouse_event)
 {
-    if (mouse_event.Moving()) {
-        // only for sure 
-        m_mouse_left_down = false;
-        return false;
-    }
     if (mouse_event.LeftDown()) {
         if (m_hover_id != -1) {
-            m_mouse_left_down = true;
             Selection &selection = m_parent.get_selection();
             if (selection.is_single_full_instance()) {
                 // Rotate the object so the normal points downward:
@@ -43,29 +40,23 @@ bool GLGizmoFlatten::on_mouse(const wxMouseEvent &mouse_event)
             return true;
         }
     }
-    else if (mouse_event.LeftUp()) {
-        if (m_mouse_left_down) {
-            // responsible for mouse left up after selecting plane
-            m_mouse_left_down = false;
-            return true;
-        }
-
-    }
-    else if (mouse_event.Leaving())
-        m_mouse_left_down = false;
+    else if (mouse_event.LeftUp())
+        return m_hover_id != -1;
 
     return false;
 }
 
-void GLGizmoFlatten::data_changed()
+void GLGizmoFlatten::data_changed(bool is_serializing)
 {
     const Selection &  selection    = m_parent.get_selection();
     const ModelObject *model_object = nullptr;
+    int                instance_id = -1;
     if (selection.is_single_full_instance() ||
         selection.is_from_single_object() ) {        
         model_object = selection.get_model()->objects[selection.get_object_idx()];
-    }    
-    set_flattening_data(model_object);
+        instance_id = selection.get_instance_idx();
+    }
+    set_flattening_data(model_object, instance_id);
 }
 
 bool GLGizmoFlatten::on_init()
@@ -157,9 +148,9 @@ void GLGizmoFlatten::on_unregister_raycasters_for_picking()
     m_planes_casters.clear();
 }
 
-void GLGizmoFlatten::set_flattening_data(const ModelObject* model_object)
+void GLGizmoFlatten::set_flattening_data(const ModelObject* model_object, int instance_id)
 {
-    if (model_object != m_old_model_object) {
+    if (model_object != m_old_model_object || instance_id != m_old_instance_id) {
         m_planes.clear();
         on_unregister_raycasters_for_picking();
     }
@@ -179,11 +170,7 @@ void GLGizmoFlatten::update_planes()
     ch = ch.convex_hull_3d();
     m_planes.clear();
     on_unregister_raycasters_for_picking();
-#if ENABLE_WORLD_COORDINATE
     const Transform3d inst_matrix = mo->instances.front()->get_matrix_no_offset();
-#else
-    const Transform3d& inst_matrix = mo->instances.front()->get_matrix(true);
-#endif // ENABLE_WORLD_COORDINATE
 
     // Following constants are used for discarding too small polygons.
     const float minimal_area = 5.f; // in square mm (world coordinates)
@@ -368,6 +355,7 @@ void GLGizmoFlatten::update_planes()
     m_first_instance_scale = mo->instances.front()->get_scaling_factor();
     m_first_instance_mirror = mo->instances.front()->get_mirror();
     m_old_model_object = mo;
+    m_old_instance_id = m_c->selection_info()->get_active_instance();
 
     // And finally create respective VBOs. The polygon is convex with
     // the vertices in order, so triangulation is trivial.

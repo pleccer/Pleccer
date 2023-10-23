@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2022 Oleksandra Iushchenko @YuSanka
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "BitmapComboBox.hpp"
 
 #include <cstddef>
@@ -62,10 +66,11 @@ BitmapComboBox::BitmapComboBox(wxWindow* parent,
                                 int n/* = 0*/,
                                 const wxString choices[]/* = NULL*/,
                                     long style/* = 0*/) :
-    wxBitmapComboBox(parent, id, value, pos, size, n, choices, style)
+//    wxBitmapComboBox(parent, id, value, pos, size, n, choices, style)
+    ::ComboBox(parent, id, value, pos, size, n, choices, style | DD_NO_CHECK_ICON)
 {
     SetFont(Slic3r::GUI::wxGetApp().normal_font());
-#ifdef _WIN32
+#if 0 //#ifdef _WIN32
     // Workaround for ignoring CBN_EDITCHANGE events, which are processed after the content of the combo box changes, so that
     // the index of the item inside CBN_EDITCHANGE may no more be valid.
     EnableTextChangedEvents(false);
@@ -75,11 +80,12 @@ BitmapComboBox::BitmapComboBox(wxWindow* parent,
 #endif /* _WIN32 */
 }
 
+#if 0
 BitmapComboBox::~BitmapComboBox()
 {
 }
 
-#ifdef _WIN32
+//#ifdef _WIN32
 
 int BitmapComboBox::Append(const wxString& item)
 {

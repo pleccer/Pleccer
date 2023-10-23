@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <exception>
 
 #include "BoostThreadWorker.hpp"
@@ -172,10 +176,11 @@ bool BoostThreadWorker::wait_for_idle(unsigned timeout_ms)
 
 bool BoostThreadWorker::push(std::unique_ptr<Job> job)
 {
-    if (job)
-        m_input_queue.push(JobEntry{std::move(job)});
+    if (!job)
+        return false;
 
-    return bool{job};
+    m_input_queue.push(JobEntry{std::move(job)});
+    return true;
 }
 
 }} // namespace Slic3r::GUI

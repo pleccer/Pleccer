@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2018 - 2021 Enrico Turri @enricoturri1966, Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv, Vojtěch Král @vojtechkral
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 # https://cmake.org/cmake/help/latest/variable/MSVC_VERSION.html
 if (MSVC_VERSION EQUAL 1800)
 # 1800      = VS 12.0 (v120 toolset)

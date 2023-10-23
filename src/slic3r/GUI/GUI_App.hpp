@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, David Kocík @kocikdav, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2021 Li Jiang
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GUI_App_hpp_
 #define slic3r_GUI_App_hpp_
 
@@ -73,14 +78,14 @@ enum FileType
 
     FT_SL1,
 
+    FT_ZIP,
+
     FT_SIZE,
 };
 
-#if ENABLE_ALTERNATIVE_FILE_WILDCARDS_GENERATOR
-extern wxString file_wildcards(FileType file_type);
-#else
-extern wxString file_wildcards(FileType file_type, const std::string &custom_extension = std::string{});
-#endif // ENABLE_ALTERNATIVE_FILE_WILDCARDS_GENERATOR
+extern wxString file_wildcards(FileType file_type, const std::string &custom_extension = {});
+
+wxString sla_wildcards(const char *formatid);
 
 enum ConfigMenuIDs {
     ConfigMenuWizard,
@@ -96,6 +101,7 @@ enum ConfigMenuIDs {
     ConfigMenuLanguage,
     ConfigMenuFlashFirmware,
     ConfigMenuCnt,
+    ConfigMenuWifiConfigFile
 };
 
 class Tab;
@@ -125,9 +131,7 @@ private:
     bool            m_last_app_conf_lower_version{ false };
     EAppMode        m_app_mode{ EAppMode::Editor };
     bool            m_is_recreating_gui{ false };
-#ifdef __linux__
     bool            m_opengl_initialized{ false };
-#endif
 
     wxColour        m_color_label_modified;
     wxColour        m_color_label_sys;
@@ -210,6 +214,7 @@ public:
     void            UpdateDVCDarkUI(wxDataViewCtrl* dvc, bool highlited = false);
     // update color mode for panel including all static texts controls
     void            UpdateAllStaticTextDarkUI(wxWindow* parent);
+    void            SetWindowVariantForButton(wxButton* btn);
     void            init_fonts();
 	void            update_fonts(const MainFrame *main_frame = nullptr);
     void            set_label_clr_modified(const wxColour& clr);
@@ -219,6 +224,8 @@ public:
     const wxColour& get_label_clr_sys()     { return m_color_label_sys; }
     const wxColour& get_label_clr_default() { return m_color_label_default; }
     const wxColour& get_window_default_clr(){ return m_color_window_default; }
+
+    const std::string       get_html_bg_color(wxWindow* html_parent);
 
     const std::string&      get_mode_btn_color(int mode_id);
     std::vector<wxColour>   get_mode_palette();
@@ -242,7 +249,9 @@ public:
     const wxFont&   link_font()             { return m_link_font; }
     int             em_unit() const         { return m_em_unit; }
     bool            tabs_as_menu() const;
-    wxSize          get_min_size() const;
+    bool            suppress_round_corners() const;
+    wxSize          get_min_size(wxWindow* display_win) const;
+    int             get_max_font_pt_size();
     float           toolbar_icon_scale(const bool is_limited = false) const;
     void            set_auto_toolbar_icon_scale(float scale) const;
     void            check_printer_presets();
@@ -252,6 +261,7 @@ public:
     void            keyboard_shortcuts();
     void            load_project(wxWindow *parent, wxString& input_file) const;
     void            import_model(wxWindow *parent, wxArrayString& input_files) const;
+    void            import_zip(wxWindow* parent, wxString& input_file) const;
     void            load_gcode(wxWindow* parent, wxString& input_file) const;
 
     static bool     catch_error(std::function<void()> cb, const std::string& err);
@@ -362,6 +372,7 @@ public:
     void            associate_3mf_files();
     void            associate_stl_files();
     void            associate_gcode_files();
+    void            associate_bgcode_files();
 #endif // __WXMSW__
 
 

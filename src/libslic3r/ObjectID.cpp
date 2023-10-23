@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2020 Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "ObjectID.hpp"
 
 namespace Slic3r {

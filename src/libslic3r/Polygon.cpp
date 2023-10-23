@@ -1,8 +1,21 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Vojtěch Bubník @bubnikv, Filip Sykala @Jony01, Lukáš Matěna @lukasmatena, Tomáš Mészáros @tamasmeszaros, Enrico Turri @enricoturri1966
+///|/ Copyright (c) Slic3r 2013 - 2015 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2014 Petr Ledvina @ledvinap
+///|/
+///|/ ported from lib/Slic3r/Polygon.pm:
+///|/ Copyright (c) Prusa Research 2017 - 2022 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2011 - 2014 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2012 Mark Hindess
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "BoundingBox.hpp"
 #include "ClipperUtils.hpp"
 #include "Exception.hpp"
 #include "Polygon.hpp"
 #include "Polyline.hpp"
+
+#include <ankerl/unordered_dense.h>
 
 namespace Slic3r {
 
@@ -94,7 +107,7 @@ bool Polygon::make_clockwise()
 void Polygon::douglas_peucker(double tolerance)
 {
     this->points.push_back(this->points.front());
-    Points p = MultiPoint::_douglas_peucker(this->points, tolerance);
+    Points p = MultiPoint::douglas_peucker(this->points, tolerance);
     p.pop_back();
     this->points = std::move(p);
 }
@@ -108,7 +121,7 @@ Polygons Polygon::simplify(double tolerance) const
     // on the whole polygon
     Points points = this->points;
     points.push_back(points.front());
-    Polygon p(MultiPoint::_douglas_peucker(points, tolerance));
+    Polygon p(MultiPoint::douglas_peucker(points, tolerance));
     p.points.pop_back();
     
     Polygons pp;
@@ -400,14 +413,32 @@ bool has_duplicate_points(const Polygons &polys)
 {
 #if 1
     // Check globally.
-    size_t cnt = 0;
-    for (const Polygon &poly : polys)
-        cnt += poly.points.size();
-    std::vector<Point> allpts;
-    allpts.reserve(cnt);
+#if 0
+    // Detect duplicates by sorting with quicksort. It is quite fast, but ankerl::unordered_dense is around 1/4 faster.
+    Points allpts;
+    allpts.reserve(count_points(polys));
     for (const Polygon &poly : polys)
         allpts.insert(allpts.end(), poly.points.begin(), poly.points.end());
     return has_duplicate_points(std::move(allpts));
+#else
+    // Detect duplicates by inserting into an ankerl::unordered_dense hash set, which is is around 1/4 faster than qsort.
+    struct PointHash {
+        uint64_t operator()(const Point &p) const noexcept {
+            uint64_t h;
+            static_assert(sizeof(h) == sizeof(p));
+            memcpy(&h, &p, sizeof(p));
+            return ankerl::unordered_dense::detail::wyhash::hash(h);
+        }
+    };
+    ankerl::unordered_dense::set<Point, PointHash> allpts;
+    allpts.reserve(count_points(polys));
+    for (const Polygon &poly : polys)
+        for (const Point &pt : poly.points)
+        if (! allpts.insert(pt).second)
+            // Duplicate point was discovered.
+            return true;
+    return false;
+#endif
 #else
     // Check per contour.
     for (const Polygon &poly : polys)
@@ -415,6 +446,38 @@ bool has_duplicate_points(const Polygons &polys)
             return true;
     return false;
 #endif
+}
+
+bool remove_same_neighbor(Polygon &polygon)
+{
+    Points &points = polygon.points;
+    if (points.empty())
+        return false;
+    auto last = std::unique(points.begin(), points.end());
+
+    // remove first and last neighbor duplication
+    if (const Point &last_point = *(last - 1); last_point == points.front()) {
+        --last;
+    }
+
+    // no duplicits
+    if (last == points.end())
+        return false;
+
+    points.erase(last, points.end());
+    return true;
+}
+
+bool remove_same_neighbor(Polygons &polygons)
+{
+    if (polygons.empty())
+        return false;
+    bool exist = false;
+    for (Polygon &polygon : polygons)
+        exist |= remove_same_neighbor(polygon);
+    // remove empty polygons
+    polygons.erase(std::remove_if(polygons.begin(), polygons.end(), [](const Polygon &p) { return p.points.size() <= 2; }), polygons.end());
+    return exist;
 }
 
 static inline bool is_stick(const Point &p1, const Point &p2, const Point &p3)
@@ -557,23 +620,40 @@ void remove_collinear(Polygons &polys)
 		remove_collinear(poly);
 }
 
-Polygons polygons_simplify(const Polygons &source_polygons, double tolerance)
+static inline void simplify_polygon_impl(const Points &points, double tolerance, bool strictly_simple, Polygons &out)
+{
+    Points simplified = MultiPoint::douglas_peucker(points, tolerance);
+    // then remove the last (repeated) point.
+    simplified.pop_back();
+    // Simplify the decimated contour by ClipperLib.
+    bool ccw = ClipperLib::Area(simplified) > 0.;
+    for (Points& path : ClipperLib::SimplifyPolygons(ClipperUtils::SinglePathProvider(simplified), ClipperLib::pftNonZero, strictly_simple)) {
+        if (!ccw)
+            // ClipperLib likely reoriented negative area contours to become positive. Reverse holes back to CW.
+            std::reverse(path.begin(), path.end());
+        out.emplace_back(std::move(path));
+    }
+}
+
+Polygons polygons_simplify(Polygons &&source_polygons, double tolerance, bool strictly_simple /* = true */)
+{
+    Polygons out;
+    out.reserve(source_polygons.size());
+    for (Polygon &source_polygon : source_polygons) {
+        // Run Douglas / Peucker simplification algorithm on an open polyline (by repeating the first point at the end of the polyline),
+        source_polygon.points.emplace_back(source_polygon.points.front());
+        simplify_polygon_impl(source_polygon.points, tolerance, strictly_simple, out);
+    }
+    return out;
+}
+
+Polygons polygons_simplify(const Polygons &source_polygons, double tolerance, bool strictly_simple /* = true */)
 {
     Polygons out;
     out.reserve(source_polygons.size());
     for (const Polygon &source_polygon : source_polygons) {
         // Run Douglas / Peucker simplification algorithm on an open polyline (by repeating the first point at the end of the polyline),
-        Points simplified = MultiPoint::_douglas_peucker(to_polyline(source_polygon).points, tolerance);
-        // then remove the last (repeated) point.
-        simplified.pop_back();
-        // Simplify the decimated contour by ClipperLib.
-        bool ccw = ClipperLib::Area(simplified) > 0.;
-        for (Points &path : ClipperLib::SimplifyPolygons(ClipperUtils::SinglePathProvider(simplified), ClipperLib::pftNonZero)) {
-            if (! ccw)
-                // ClipperLib likely reoriented negative area contours to become positive. Reverse holes back to CW.
-                std::reverse(path.begin(), path.end());
-            out.emplace_back(std::move(path));
-        }
+        simplify_polygon_impl(to_polyline(source_polygon).points, tolerance, strictly_simple, out);
     }
     return out;
 }

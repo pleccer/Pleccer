@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2022 Pavel Mikuš @Godrak, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef libslic3r_SeamPlacer_hpp_
 #define libslic3r_SeamPlacer_hpp_
 
@@ -141,7 +145,7 @@ public:
 
     void init(const Print &print, std::function<void(void)> throw_if_canceled_func);
 
-    void place_seam(const Layer *layer, ExtrusionLoop &loop, bool external_first, const Point &last_pos) const;
+    Point place_seam(const Layer *layer, const ExtrusionLoop &loop, bool external_first, const Point &last_pos) const;
 
 private:
     void gather_seam_candidates(const PrintObject *po, const SeamPlacerImpl::GlobalModelInfo &global_model_info);

@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2020 - 2022 Tomáš Mészáros @tamasmeszaros, Filip Sykala @Jony01
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 #prusaslicer_add_cmake_project(EXPAT
 #  # GIT_REPOSITORY https://github.com/nigels-com/glew.git
 #  # GIT_TAG 3a8eff7 # 2.1.0

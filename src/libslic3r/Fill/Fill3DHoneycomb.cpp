@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2016 - 2021 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) SuperSlicer 2019 Remi Durand @supermerill
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "../ClipperUtils.hpp"
 #include "../ShortestPath.hpp"
 #include "../Surface.hpp"

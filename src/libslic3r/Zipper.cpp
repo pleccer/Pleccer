@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <exception>
 
 #include "Exception.hpp"
@@ -5,10 +9,6 @@
 #include "miniz_extension.hpp"
 #include <boost/log/trivial.hpp>
 #include "I18N.hpp"
-
-//! macro used to mark string used at localization,
-//! return same string
-#define L(s) Slic3r::I18N::translate(s)
 
 #if defined(_MSC_VER) &&  _MSC_VER <= 1800 || __cplusplus < 201103L
     #define SLIC3R_NORETURN
@@ -24,7 +24,7 @@ public:
 
     std::string formatted_errorstr() const
     {
-        return L("Error with zip archive") + " " + m_zipname + ": " +
+        return _u8L("Error with ZIP archive") + " " + m_zipname + ": " +
                get_errorstr();
     }
 

@@ -1,9 +1,10 @@
-#define NOMINMAX
-
+///|/ Copyright (c) Prusa Research 2020 - 2023 Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <libslic3r/SLA/SupportTreeBuilder.hpp>
 #include <libslic3r/SLA/SupportTreeUtils.hpp>
 #include <libslic3r/SLA/SupportTreeMesher.hpp>
-//#include <libslic3r/SLA/Contour3D.hpp>
 
 namespace Slic3r {
 namespace sla {

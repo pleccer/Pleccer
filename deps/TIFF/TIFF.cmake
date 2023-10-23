@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2021 Tomáš Mészáros @tamasmeszaros
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 find_package(OpenGL QUIET REQUIRED)
 
 prusaslicer_add_cmake_project(TIFF

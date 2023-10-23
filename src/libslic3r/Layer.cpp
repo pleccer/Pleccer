@@ -1,11 +1,24 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Vojtěch Bubník @bubnikv, Pavel Mikuš @Godrak, Lukáš Hejl @hejllukas
+///|/ Copyright (c) Slic3r 2014 - 2015 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2015 Maksim Derbasov @ntfshard
+///|/
+///|/ ported from lib/Slic3r/Layer.pm:
+///|/ Copyright (c) Prusa Research 2016 - 2022 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2011 - 2016 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Layer.hpp"
-#include <clipper/clipper_z.hpp>
+#include "ClipperZUtils.hpp"
 #include "ClipperUtils.hpp"
+#include "Point.hpp"
+#include "Polygon.hpp"
 #include "Print.hpp"
 #include "Fill/Fill.hpp"
 #include "ShortestPath.hpp"
 #include "SVG.hpp"
 #include "BoundingBox.hpp"
+#include "clipper/clipper.hpp"
 
 #include <boost/log/trivial.hpp>
 
@@ -57,7 +70,10 @@ void Layer::make_slices()
 }
 
 // used by Layer::build_up_down_graph()
-[[nodiscard]] static ClipperLib_Z::Paths expolygons_to_zpaths(const ExPolygons &expolygons, coord_t isrc)
+// Shrink source polygons one by one, so that they will be separated if they were touching
+// at vertices (non-manifold situation).
+// Then convert them to Z-paths with Z coordinate indicating index of the source expolygon.
+[[nodiscard]] static ClipperLib_Z::Paths expolygons_to_zpaths_shrunk(const ExPolygons &expolygons, coord_t isrc)
 {
     size_t num_paths = 0;
     for (const ExPolygon &expolygon : expolygons)
@@ -66,15 +82,90 @@ void Layer::make_slices()
     ClipperLib_Z::Paths out;
     out.reserve(num_paths);
 
-    for (const ExPolygon &expolygon : expolygons) {
-        for (size_t icontour = 0; icontour < expolygon.num_contours(); ++ icontour) {
-            const Polygon &contour = expolygon.contour_or_hole(icontour);
-            out.emplace_back();
-            ClipperLib_Z::Path &path = out.back();
-            path.reserve(contour.size());
-            for (const Point &p : contour.points)
-                path.push_back({ p.x(), p.y(), isrc });
+    ClipperLib::Paths           contours;
+    ClipperLib::Paths           holes;
+    ClipperLib::Clipper         clipper;
+    ClipperLib::ClipperOffset   co;
+    ClipperLib::Paths           out2;
+
+    // Top / bottom surfaces must overlap more than 2um to be chained into a Z graph.
+    // Also a larger offset will likely be more robust on non-manifold input polygons.
+    static constexpr const float delta = scaled<float>(0.001);
+    // Don't scale the miter limit, it is a factor, not an absolute length!
+    co.MiterLimit = 3.;
+// Use the default zero edge merging distance. For this kind of safety offset the accuracy of normal direction is not important.
+//    co.ShortestEdgeLength = delta * ClipperOffsetShortestEdgeFactor;
+//    static constexpr const double accept_area_threshold_ccw = sqr(scaled<double>(0.1 * delta));
+    // Such a small hole should not survive the shrinkage, it should grow over
+//    static constexpr const double accept_area_threshold_cw  = sqr(scaled<double>(0.2 * delta));
+
+    for (const ExPolygon &expoly : expolygons) {
+        contours.clear();
+        co.Clear();
+        co.AddPath(expoly.contour.points, ClipperLib::jtMiter, ClipperLib::etClosedPolygon);
+        co.Execute(contours, - delta);
+//        size_t num_prev = out.size();
+        if (! contours.empty()) {
+            holes.clear();
+            for (const Polygon &hole : expoly.holes) {
+                co.Clear();
+                co.AddPath(hole.points, ClipperLib::jtMiter, ClipperLib::etClosedPolygon);
+                // Execute reorients the contours so that the outer most contour has a positive area. Thus the output
+                // contours will be CCW oriented even though the input paths are CW oriented.
+                // Offset is applied after contour reorientation, thus the signum of the offset value is reversed.
+                out2.clear();
+                co.Execute(out2, delta);
+                append(holes, std::move(out2));
+            }
+            // Subtract holes from the contours.
+            if (! holes.empty()) {
+                clipper.Clear();
+                clipper.AddPaths(contours, ClipperLib::ptSubject, true);
+                clipper.AddPaths(holes, ClipperLib::ptClip, true);
+                contours.clear();
+                clipper.Execute(ClipperLib::ctDifference, contours, ClipperLib::pftNonZero, ClipperLib::pftNonZero);
+            }
+            for (const auto &contour : contours) {
+                bool accept = true;
+                // Trying to get rid of offset artifacts, that may be created due to numerical issues in offsetting algorithm
+                // or due to self-intersections in the source polygons.
+                //FIXME how reliable is it? Is it helpful or harmful? It seems to do more harm than good as it tends to punch holes
+                // into existing ExPolygons.
+#if 0
+                if (contour.size() < 8) {
+                    // Only accept contours with area bigger than some threshold.
+                    double a = ClipperLib::Area(contour);
+                    // Polygon has to be bigger than some threshold to be accepted.
+                    // Hole to be accepted has to have an area slightly bigger than the non-hole, so it will not happen due to rounding errors,
+                    // that a hole will be accepted without its outer contour.
+                    accept = a > 0 ? a > accept_area_threshold_ccw : a < - accept_area_threshold_cw;
+                }
+#endif
+                if (accept) {
+                    out.emplace_back();
+                    ClipperLib_Z::Path &path = out.back();
+                    path.reserve(contour.size());
+                    for (const Point &p : contour)
+                        path.push_back({ p.x(), p.y(), isrc });
+                }
+            }
         }
+#if 0 // #ifndef NDEBUG
+        // Test whether the expolygons in a single layer overlap.
+        Polygons test;
+        for (size_t i = num_prev; i < out.size(); ++ i)
+            test.emplace_back(ClipperZUtils::from_zpath(out[i]));
+        Polygons outside = diff(test, to_polygons(expoly));
+        if (! outside.empty()) {
+            BoundingBox bbox(get_extents(expoly));
+            bbox.merge(get_extents(test));
+            SVG svg(debug_out_path("expolygons_to_zpaths_shrunk-self-intersections.svg").c_str(), bbox);
+            svg.draw(expoly, "blue");
+            svg.draw(test, "green");
+            svg.draw(outside, "red");
+        }
+        assert(outside.empty());
+#endif // NDEBUG
         ++ isrc;
     }
 
@@ -123,78 +214,36 @@ static void connect_layer_slices(
             if (polynode.Contour.size() >= 3) {
                 // If there is an intersection point, it should indicate which contours (one from layer below, the other from layer above) intersect.
                 // Otherwise the contour is fully inside another contour.
-                int32_t i = -1, j = -1;
-                for (int icontour = 0; icontour <= polynode.ChildCount(); ++ icontour) {
-                    const ClipperLib_Z::Path &contour = icontour == 0 ? polynode.Contour : polynode.Childs[icontour - 1]->Contour;
-                    if (contour.size() >= 3) {
-                        for (const ClipperLib_Z::IntPoint &pt : contour) {
-                            j = pt.z();
-                            if (j < 0) {
-                                const auto &intersection = m_intersections[-j - 1];
-                                assert(intersection.first <= intersection.second);
-                                if (intersection.second < m_offset_above) {
-                                    // Ignore intersection of polygons on the 1st layer.
-                                    assert(intersection.first >= m_offset_below);
-                                    j = i;
-                                } else if (intersection.first >= m_offset_above) {
-                                    // Ignore intersection of polygons on the 2nd layer
-                                    assert(intersection.second < m_offset_end);
-                                    j = i;
-                                } else {
-                                    std::tie(i, j) = m_intersections[-j - 1];
-                                    assert(assert_intersection_valid(i, j));
-                                    goto end;
-                                }
-                            } else if (i == -1) {
-                                // First source contour of this expolygon was found.
-                                i = j;
-                            } else if (i != j) {
-                                // Second source contour of this expolygon was found.
-                                if (i > j)
-                                    std::swap(i, j);
-                                assert(assert_intersection_valid(i, j));
-                                goto end;
-                            }
-                        }
+                auto [i, j] = this->find_top_bottom_contour_ids_strict(polynode);
+                bool found = false;
+                if (i < 0 && j < 0) {
+                    // This should not happen. It may only happen if the source contours had just self intersections or intersections with contours at the same layer.
+                    // We may safely ignore such cases where the intersection area is meager.
+                    double a = ClipperLib_Z::Area(polynode.Contour);
+                    if (a < sqr(scaled<double>(0.001))) {
+                        // Ignore tiny overlaps. They are not worth resolving.
+                    } else {
+                        // We should not ignore large cases. Try to resolve the conflict by a majority of references.
+                        std::tie(i, j) = this->find_top_bottom_contour_ids_approx(polynode);
+                        // At least top or bottom should be resolved.
+                        assert(i >= 0 || j >= 0);
                     }
                 }
-            end:
-                bool found = false;
-                if (i == -1) {
-                    // This should not happen. It may only happen if the source contours had just self intersections or intersections with contours at the same layer.
-                    assert(false);
-                } else if (i == j) {
-                    // The contour is completely inside another contour.
-                    Point pt(polynode.Contour.front().x(), polynode.Contour.front().y());
-                    if (i < m_offset_above) {
-                        // Index of an island below. Look-it up in the island above.
-                        assert(i >= m_offset_below);
-                        i -= m_offset_below;
-                        for (int l = int(m_above.lslices_ex.size()) - 1; l >= 0; -- l) {
-                            LayerSlice &lslice = m_above.lslices_ex[l];
-                            if (lslice.bbox.contains(pt) && m_above.lslices[l].contains(pt)) {
-                                found = true;
-                                j = l;
-                                assert(i >= 0 && i < m_below.lslices_ex.size());
-                                assert(j >= 0 && j < m_above.lslices_ex.size());
-                                break;
-                            }
-                        }
+                if (j < 0) {
+                    if (i < 0) {
+                        // this->find_top_bottom_contour_ids_approx() shoudl have made sure this does not happen.
+                        assert(false);
                     } else {
-                        // Index of an island above. Look-it up in the island below.
-                        assert(j < m_offset_end);
-                        j -= m_offset_above;
-                        for (int l = int(m_below.lslices_ex.size()) - 1; l >= 0; -- l) {
-                            LayerSlice &lslice = m_below.lslices_ex[l];
-                            if (lslice.bbox.contains(pt) && m_below.lslices[l].contains(pt)) {
-                                found = true;
-                                i = l;
-                                assert(i >= 0 && i < m_below.lslices_ex.size());
-                                assert(j >= 0 && j < m_above.lslices_ex.size());
-                                break;
-                            }
-                        }
+                        assert(i >= m_offset_below && i < m_offset_above);
+                        i -= m_offset_below;
+                        j = this->find_other_contour_costly(polynode, m_above, j == -2);
+                        found = j >= 0;
                     }
+                } else if (i < 0) {
+                    assert(j >= m_offset_above && j < m_offset_end);
+                    j -= m_offset_above;
+                    i = this->find_other_contour_costly(polynode, m_below, i == -2);
+                    found = i >= 0;
                 } else {
                     assert(assert_intersection_valid(i, j));
                     i -= m_offset_below;
@@ -204,6 +253,8 @@ static void connect_layer_slices(
                     found = true;
                 }
                 if (found) {
+                    assert(i >= 0 && i < m_below.lslices_ex.size());
+                    assert(j >= 0 && j < m_above.lslices_ex.size());
                     // Subtract area of holes from the area of outer contour.
                     double area = ClipperLib_Z::Area(polynode.Contour);
                     for (int icontour = 0; icontour < polynode.ChildCount(); ++ icontour)
@@ -243,6 +294,188 @@ static void connect_layer_slices(
         }
 
     private:
+        // Find the indices of the contour below & above for an expolygon created as an intersection of two expolygons, one below, the other above.
+        // Returns -1 if there is no point on the intersection refering bottom resp. top source expolygon.
+        // Returns -2 if the intersection refers to multiple source expolygons on bottom resp. top layers.
+        std::pair<int32_t, int32_t> find_top_bottom_contour_ids_strict(const ClipperLib_Z::PolyNode &polynode) const
+        {
+            // If there is an intersection point, it should indicate which contours (one from layer below, the other from layer above) intersect.
+            // Otherwise the contour is fully inside another contour.
+            int32_t i = -1, j = -1;
+            auto process_i = [&i, &j](coord_t k) {
+                if (i == -1)
+                    i = k;
+                else if (i >= 0) {
+                    if (i != k) {
+                        // Error: Intersection contour contains points of two or more source bottom contours.
+                        i = -2;
+                        if (j == -2)
+                            // break
+                            return true;
+                    }
+                } else
+                    assert(i == -2);
+                return false;
+            };
+            auto process_j = [&i, &j](coord_t k) {
+                if (j == -1)
+                    j = k;
+                else if (j >= 0) {
+                    if (j != k) {
+                        // Error: Intersection contour contains points of two or more source top contours.
+                        j = -2;
+                        if (i == -2)
+                            // break
+                            return true;
+                    }
+                } else
+                    assert(j == -2);
+                return false;
+            };
+            for (int icontour = 0; icontour <= polynode.ChildCount(); ++ icontour) {
+                const ClipperLib_Z::Path &contour = icontour == 0 ? polynode.Contour : polynode.Childs[icontour - 1]->Contour;
+                if (contour.size() >= 3) {
+                    for (const ClipperLib_Z::IntPoint &pt : contour)
+                        if (coord_t k = pt.z(); k < 0) {
+                            const auto &intersection = m_intersections[-k - 1];
+                            assert(intersection.first <= intersection.second);
+                            if (intersection.first < m_offset_above ? process_i(intersection.first) : process_j(intersection.first))
+                                goto end;
+                            if (intersection.second < m_offset_above ? process_i(intersection.second) : process_j(intersection.second))
+                                goto end;
+                        } else if (k < m_offset_above ? process_i(k) : process_j(k))
+                            goto end;
+                }
+            }
+        end:
+            return { i, j };
+        }
+
+        // Find the indices of the contour below & above for an expolygon created as an intersection of two expolygons, one below, the other above.
+        // This variant expects that the source expolygon assingment is not unique, it counts the majority.
+        // Returns -1 if there is no point on the intersection refering bottom resp. top source expolygon.
+        // Returns -2 if the intersection refers to multiple source expolygons on bottom resp. top layers.
+        std::pair<int32_t, int32_t> find_top_bottom_contour_ids_approx(const ClipperLib_Z::PolyNode &polynode) const
+        {
+            // 1) Collect histogram of contour references.
+            struct HistoEl {
+                int32_t id;
+                int32_t count;
+            };
+            std::vector<HistoEl> histogram;
+            {
+                auto increment_counter = [&histogram](const int32_t i) {
+                    auto it = std::lower_bound(histogram.begin(), histogram.end(), i, [](auto l, auto r){ return l.id < r; });
+                    if (it == histogram.end() || it->id != i)
+                        histogram.insert(it, HistoEl{ i, int32_t(1) });
+                    else
+                        ++ it->count;
+                };
+                for (int icontour = 0; icontour <= polynode.ChildCount(); ++ icontour) {
+                    const ClipperLib_Z::Path &contour = icontour == 0 ? polynode.Contour : polynode.Childs[icontour - 1]->Contour;
+                    if (contour.size() >= 3) {
+                        for (const ClipperLib_Z::IntPoint &pt : contour)
+                            if (coord_t k = pt.z(); k < 0) {
+                                const auto &intersection = m_intersections[-k - 1];
+                                assert(intersection.first <= intersection.second);
+                                increment_counter(intersection.first);
+                                increment_counter(intersection.second);
+                            } else
+                                increment_counter(k);
+                    }
+                }
+                assert(! histogram.empty());
+            }
+            int32_t i = -1;
+            int32_t j = -1;
+            if (! histogram.empty()) {
+                // 2) Split the histogram to bottom / top.
+                auto mid          = std::upper_bound(histogram.begin(), histogram.end(), m_offset_above, [](auto l, auto r){ return l < r.id; });
+                // 3) Sort the bottom / top parts separately.
+                auto bottom_begin = histogram.begin();
+                auto bottom_end   = mid;
+                auto top_begin    = mid;
+                auto top_end      = histogram.end();
+                std::sort(bottom_begin, bottom_end, [](auto l, auto r) { return l.count > r.count; });
+                std::sort(top_begin,    top_end,    [](auto l, auto r) { return l.count > r.count; });
+                double i_quality = 0;
+                double j_quality = 0;
+                if (bottom_begin != bottom_end) {
+                    i = bottom_begin->id;
+                    i_quality = std::next(bottom_begin) == bottom_end ? std::numeric_limits<double>::max() : double(bottom_begin->count) / std::next(bottom_begin)->count;
+                }
+                if (top_begin != top_end) {
+                    j = top_begin->id;
+                    j_quality = std::next(top_begin) == top_end ? std::numeric_limits<double>::max() : double(top_begin->count) / std::next(top_begin)->count;
+                }
+                // Expected to be called only if there are duplicate references to be resolved by the histogram.
+                assert(i >= 0 || j >= 0);
+                assert(i_quality < std::numeric_limits<double>::max() || j_quality < std::numeric_limits<double>::max());
+                if (i >= 0 && i_quality < j_quality) {
+                    // Force the caller to resolve the bottom references the costly but robust way.
+                    assert(j >= 0);
+                    // Twice the number of references for the best contour.
+                    assert(j_quality >= 2.);
+                    i = -2;
+                } else if (j >= 0) {
+                    // Force the caller to resolve the top reference the costly but robust way.
+                    assert(i >= 0);
+                    // Twice the number of references for the best contour.
+                    assert(i_quality >= 2.);
+                    j = -2;
+                }
+
+            }
+            return { i, j };
+        }
+
+        static int32_t find_other_contour_costly(const ClipperLib_Z::PolyNode &polynode, const Layer &other_layer, bool other_has_duplicates)
+        {
+            if (! other_has_duplicates) {
+                // The contour below is likely completely inside another contour above. Look-it up in the island above.
+                Point pt(polynode.Contour.front().x(), polynode.Contour.front().y());
+                for (int i = int(other_layer.lslices_ex.size()) - 1; i >= 0; -- i)
+                    if (other_layer.lslices_ex[i].bbox.contains(pt) && other_layer.lslices[i].contains(pt))
+                        return i;
+                // The following shall not happen now as the source expolygons are being shrunk a bit before intersecting,
+                // thus each point of each intersection polygon should fit completely inside one of the original (unshrunk) expolygons.
+                assert(false);
+            }
+            // The comment below may not be valid anymore, see the comment above. However the code is used in case the polynode contains multiple references
+            // to other_layer expolygons, thus the references are not unique.
+            //
+            // The check above might sometimes fail when the polygons overlap only on points, which causes the clipper to detect no intersection.
+            // The problem happens rarely, mostly on simple polygons (in terms of number of points), but regardless of size!
+            // example of failing link on two layers, each with single polygon without holes.
+            // layer A = Polygon{(-24931238,-11153865),(-22504249,-8726874),(-22504249,11477151),(-23261469,12235585),(-23752371,12727276),(-25002495,12727276),(-27502745,10227026),(-27502745,-12727274),(-26504645,-12727274)}
+            // layer B = Polygon{(-24877897,-11100524),(-22504249,-8726874),(-22504249,11477151),(-23244827,12218916),(-23752371,12727276),(-25002495,12727276),(-27502745,10227026),(-27502745,-12727274),(-26504645,-12727274)}
+            // note that first point is not identical, and the check above picks (-24877897,-11100524) as the first contour point (polynode.Contour.front()).
+            // that point is sadly slightly outisde of the layer A, so no link is detected, eventhough they are overlaping "completely"
+            Polygons contour_poly{ Polygon{ClipperZUtils::from_zpath(polynode.Contour)} };
+            BoundingBox contour_aabb{contour_poly.front().points};
+            int32_t i_largest = -1;
+            double  a_largest = 0;
+            for (int i = int(other_layer.lslices_ex.size()) - 1; i >= 0; -- i)
+                if (contour_aabb.overlap(other_layer.lslices_ex[i].bbox))
+                    // it is potentially slow, but should be executed rarely
+                    if (Polygons overlap = intersection(contour_poly, other_layer.lslices[i]); ! overlap.empty()) {
+                        if (other_has_duplicates) {
+                            // Find the contour with the largest overlap. It is expected that the other overlap will be very small.
+                            double a = area(overlap);
+                            if (a > a_largest) {
+                                a_largest = a;
+                                i_largest = i;
+                            }
+                        } else {
+                            // Most likely there is just one contour that overlaps, however it is not guaranteed.
+                            i_largest = i;
+                            break;
+                        }
+                    }
+            assert(i_largest >= 0);
+            return i_largest;
+        }
+
         const std::vector<std::pair<coord_t, coord_t>> &m_intersections;
         Layer                                          &m_below;
         Layer                                          &m_above;
@@ -279,10 +512,10 @@ static void connect_layer_slices(
 #endif // NDEBUG
 
     // Scatter the links, but don't sort them yet.
-    for (int32_t islice = 0; islice < below.lslices_ex.size(); ++ islice)
+    for (int32_t islice = 0; islice < int32_t(below.lslices_ex.size()); ++ islice)
         for (LayerSlice::Link &link : below.lslices_ex[islice].overlaps_above)
             above.lslices_ex[link.slice_idx].overlaps_below.push_back({ islice, link.area });
-    for (int32_t islice = 0; islice < above.lslices_ex.size(); ++ islice)
+    for (int32_t islice = 0; islice < int32_t(above.lslices_ex.size()); ++ islice)
         for (LayerSlice::Link &link : above.lslices_ex[islice].overlaps_below)
             below.lslices_ex[link.slice_idx].overlaps_above.push_back({ islice, link.area });
     // Sort the links.
@@ -295,55 +528,23 @@ static void connect_layer_slices(
 void Layer::build_up_down_graph(Layer& below, Layer& above)
 {
     coord_t             paths_below_offset = 0;
-    ClipperLib_Z::Paths paths_below = expolygons_to_zpaths(below.lslices, paths_below_offset);
+    ClipperLib_Z::Paths paths_below = expolygons_to_zpaths_shrunk(below.lslices, paths_below_offset);
     coord_t             paths_above_offset = paths_below_offset + coord_t(below.lslices.size());
-    ClipperLib_Z::Paths paths_above = expolygons_to_zpaths(above.lslices, paths_above_offset);
+    ClipperLib_Z::Paths paths_above = expolygons_to_zpaths_shrunk(above.lslices, paths_above_offset);
 #ifndef NDEBUG
     coord_t             paths_end = paths_above_offset + coord_t(above.lslices.size());
 #endif // NDEBUG
 
-    class ZFill {
-    public:
-        ZFill() = default;
-        void reset() { m_intersections.clear(); }
-        void operator()(
-            const ClipperLib_Z::IntPoint& e1bot, const ClipperLib_Z::IntPoint& e1top,
-            const ClipperLib_Z::IntPoint& e2bot, const ClipperLib_Z::IntPoint& e2top,
-            ClipperLib_Z::IntPoint& pt) {
-            coord_t srcs[4]{ e1bot.z(), e1top.z(), e2bot.z(), e2top.z() };
-            coord_t* begin = srcs;
-            coord_t* end = srcs + 4;
-            std::sort(begin, end);
-            end = std::unique(begin, end);
-            if (begin + 1 == end) {
-                // Self intersection may happen on source contour. Just copy the Z value.
-                pt.z() = *begin;
-            } else {
-                assert(begin + 2 == end);
-                if (begin + 2 <= end) {
-                    // store a -1 based negative index into the "intersections" vector here.
-                    m_intersections.emplace_back(srcs[0], srcs[1]);
-                    pt.z() = -coord_t(m_intersections.size());
-                }
-            }
-        }
-        const std::vector<std::pair<coord_t, coord_t>>& intersections() const { return m_intersections; }
-
-    private:
-        std::vector<std::pair<coord_t, coord_t>> m_intersections;
-    } zfill;
-
     ClipperLib_Z::Clipper  clipper;
     ClipperLib_Z::PolyTree result;
-    clipper.ZFillFunction(
-        [&zfill](const ClipperLib_Z::IntPoint &e1bot, const ClipperLib_Z::IntPoint &e1top, 
-                 const ClipperLib_Z::IntPoint &e2bot, const ClipperLib_Z::IntPoint &e2top, ClipperLib_Z::IntPoint &pt)
-        { return zfill(e1bot, e1top, e2bot, e2top, pt); });
+    ClipperZUtils::ClipperZIntersectionVisitor::Intersections intersections;
+    ClipperZUtils::ClipperZIntersectionVisitor visitor(intersections);
+    clipper.ZFillFunction(visitor.clipper_callback());
     clipper.AddPaths(paths_below, ClipperLib_Z::ptSubject, true);
     clipper.AddPaths(paths_above, ClipperLib_Z::ptClip, true);
     clipper.Execute(ClipperLib_Z::ctIntersection, result, ClipperLib_Z::pftNonZero, ClipperLib_Z::pftNonZero);
 
-    connect_layer_slices(below, above, result, zfill.intersections(), paths_below_offset, paths_above_offset
+    connect_layer_slices(below, above, result, intersections, paths_below_offset, paths_above_offset
 #ifndef NDEBUG
         , paths_end
 #endif // NDEBUG
@@ -466,13 +667,23 @@ void Layer::make_perimeters()
     	        layer_region_ids.push_back(region_id);
     	        for (LayerRegionPtrs::const_iterator it = layerm + 1; it != m_regions.end(); ++it)
     	            if (! (*it)->slices().empty()) {
-    		            LayerRegion* other_layerm = *it;
-    		            const PrintRegionConfig &other_config = other_layerm->region().config();
-    		            if (config.perimeter_extruder             == other_config.perimeter_extruder
+                        LayerRegion             *other_layerm                         = *it;
+                        const PrintRegionConfig &other_config                         = other_layerm->region().config();
+                        bool                     dynamic_overhang_speed_compatibility = config.enable_dynamic_overhang_speeds ==
+                                                                    other_config.enable_dynamic_overhang_speeds;
+                        if (dynamic_overhang_speed_compatibility && config.enable_dynamic_overhang_speeds) {
+                            dynamic_overhang_speed_compatibility = config.overhang_speed_0 == other_config.overhang_speed_0 &&
+                                                                   config.overhang_speed_1 == other_config.overhang_speed_1 &&
+                                                                   config.overhang_speed_2 == other_config.overhang_speed_2 &&
+                                                                   config.overhang_speed_3 == other_config.overhang_speed_3;
+                        }
+
+                        if (config.perimeter_extruder             == other_config.perimeter_extruder
     		                && config.perimeters                  == other_config.perimeters
     		                && config.perimeter_speed             == other_config.perimeter_speed
     		                && config.external_perimeter_speed    == other_config.external_perimeter_speed
-    		                && (config.gap_fill_enabled ? config.gap_fill_speed.value : 0.) == 
+                            && dynamic_overhang_speed_compatibility
+    		                && (config.gap_fill_enabled ? config.gap_fill_speed.value : 0.) ==
                                (other_config.gap_fill_enabled ? other_config.gap_fill_speed.value : 0.)
     		                && config.overhangs                   == other_config.overhangs
     		                && config.opt_serialize("perimeter_extrusion_width") == other_config.opt_serialize("perimeter_extrusion_width")
@@ -746,7 +957,7 @@ void Layer::sort_perimeters_into_islands(
                 island.fill_region_id = LayerIsland::fill_region_composite_id;
                 for (uint32_t fill_idx : fill_range) {
                     if (const int fill_regon_id = map_expolygon_to_region_and_fill[fill_idx].region_id; 
-                        fill_regon_id == -1 || (island.fill_region_id != LayerIsland::fill_region_composite_id && island.fill_region_id != fill_regon_id)) {
+                        fill_regon_id == -1 || (island.fill_region_id != LayerIsland::fill_region_composite_id && int(island.fill_region_id) != fill_regon_id)) {
                         island.fill_region_id = LayerIsland::fill_region_composite_id;
                         break;
                     } else

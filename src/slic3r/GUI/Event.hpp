@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2020 Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_Events_hpp_
 #define slic3r_Events_hpp_
 

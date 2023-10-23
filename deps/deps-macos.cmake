@@ -1,3 +1,8 @@
+#/|/ Copyright (c) Prusa Research 2018 - 2022 Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka, Vojtěch Král @vojtechkral
+#/|/ Copyright (c) 2020 Bertrand Giot @bgiot
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 
 # This ensures dependencies don't use SDK features which are not available in the version specified by Deployment target
 # That can happen when one uses a recent SDK but specifies an older Deployment target

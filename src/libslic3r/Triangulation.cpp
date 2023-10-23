@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2022 Filip Sykala @Jony01, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Triangulation.hpp"
 #include "IntersectionPoints.hpp"
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
@@ -61,7 +65,7 @@ inline bool has_self_intersection(
     lines.reserve(constrained_half_edges.size());
     for (const auto &he : constrained_half_edges)
         lines.emplace_back(points[he.first], points[he.second]);
-    return !intersection_points(lines).empty();
+    return !get_intersections(lines).empty();
 }
 
 } // namespace priv

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Pavel Mikuš @Godrak
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_PrincipalComponents2D_hpp_
 #define slic3r_PrincipalComponents2D_hpp_
 

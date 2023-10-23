@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "RasterToPolygons.hpp"
 
 #include "AGGRaster.hpp"

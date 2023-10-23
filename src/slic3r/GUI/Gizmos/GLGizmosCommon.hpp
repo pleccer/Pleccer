@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Lukáš Matěna @lukasmatena, Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Tomáš Mészáros @tamasmeszaros, Lukáš Hejl @hejllukas
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GUI_GLGizmosCommon_hpp_
 #define slic3r_GUI_GLGizmosCommon_hpp_
 
@@ -242,15 +246,15 @@ public:
     void set_normal(const Vec3d& dir);
     double get_position() const { return m_clp_ratio; }
     const ClippingPlane* get_clipping_plane(bool ignore_hide_clipped = false) const;
-    void render_cut() const;
+    void render_cut(const std::vector<size_t>* ignore_idxs = nullptr) const;
     void set_position_by_ratio(double pos, bool keep_normal);
     void set_range_and_pos(const Vec3d& cpl_normal, double cpl_offset, double pos);
     void set_behavior(bool hide_clipped, bool fill_cut, double contour_width);
     
-    void pass_mouse_click(const Vec3d& pt);
-    std::vector<Vec3d> get_disabled_contours() const;
+    int get_number_of_contours() const;
+    std::vector<Vec3d> point_per_contour() const;
 
-    bool is_projection_inside_cut(const Vec3d& point_in) const;
+    int is_projection_inside_cut(const Vec3d& point_in) const;
     bool has_valid_contour() const;
 
 
@@ -293,10 +297,10 @@ protected:
     void on_release() override;
 
 private:
-    size_t m_old_timestamp = 0;
     int m_print_object_idx = -1;
-    int m_print_objects_count = 0;
-    std::unique_ptr<MeshClipper> m_clipper;
+//    int m_print_objects_count = 0;
+    std::unique_ptr<MeshClipper> m_supports_clipper;
+    std::unique_ptr<MeshClipper> m_pad_clipper;
 };
 
 } // namespace CommonGizmosDataObjects

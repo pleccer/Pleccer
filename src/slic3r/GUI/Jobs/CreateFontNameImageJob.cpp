@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 Filip Sykala @Jony01
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "CreateFontNameImageJob.hpp"
 
 #include "libslic3r/Emboss.hpp"
@@ -74,7 +78,7 @@ void CreateFontImageJob::process(Ctl &ctl)
 
     // normalize height of font
     BoundingBox bounding_box;
-    for (ExPolygon &shape : shapes)
+    for (const ExPolygon &shape : shapes)
         bounding_box.merge(BoundingBox(shape.contour.points));
     if (bounding_box.size().x() < 1 || bounding_box.size().y() < 1) {
         m_input.cancel->store(true);

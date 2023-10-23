@@ -1,10 +1,11 @@
-// Include GLGizmoBase.hpp before I18N.hpp as it includes some libigl code, which overrides our localization "L" macro.
+///|/ Copyright (c) Prusa Research 2019 - 2023 Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "GLGizmoMove.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
-#if ENABLE_WORLD_COORDINATE
 #include "slic3r/GUI/GUI_ObjectManipulation.hpp"
-#endif // ENABLE_WORLD_COORDINATE
 #include "slic3r/GUI/Plater.hpp"
 #include "libslic3r/Model.hpp"
 
@@ -23,8 +24,7 @@ GLGizmoMove3D::GLGizmoMove3D(GLCanvas3D& parent, const std::string& icon_filenam
 
 std::string GLGizmoMove3D::get_tooltip() const
 {
-#if ENABLE_WORLD_COORDINATE
-    if (m_hover_id == 0)
+  if (m_hover_id == 0)
         return "X: " + format(m_displacement.x(), 2);
     else if (m_hover_id == 1)
         return "Y: " + format(m_displacement.y(), 2);
@@ -32,27 +32,13 @@ std::string GLGizmoMove3D::get_tooltip() const
         return "Z: " + format(m_displacement.z(), 2);
     else
         return "";
-#else
-    const Selection& selection = m_parent.get_selection();
-    const bool show_position = selection.is_single_full_instance();
-    const Vec3d& position = selection.get_bounding_box().center();
-
-    if (m_hover_id == 0 || m_grabbers[0].dragging)
-        return "X: " + format(show_position ? position.x() : m_displacement.x(), 2);
-    else if (m_hover_id == 1 || m_grabbers[1].dragging)
-        return "Y: " + format(show_position ? position.y() : m_displacement.y(), 2);
-    else if (m_hover_id == 2 || m_grabbers[2].dragging)
-        return "Z: " + format(show_position ? position.z() : m_displacement.z(), 2);
-    else
-        return "";
-#endif // ENABLE_WORLD_COORDINATE
 }
 
 bool GLGizmoMove3D::on_mouse(const wxMouseEvent &mouse_event) {
     return use_grabbers(mouse_event);
 }
 
-void GLGizmoMove3D::data_changed() {
+void GLGizmoMove3D::data_changed(bool is_serializing) {
     m_grabbers[2].enabled = !m_parent.get_selection().is_wipe_tower();
 }
 
@@ -85,31 +71,10 @@ bool GLGizmoMove3D::on_is_activable() const
 void GLGizmoMove3D::on_start_dragging()
 {
     assert(m_hover_id != -1);
-
     m_displacement = Vec3d::Zero();
-#if ENABLE_WORLD_COORDINATE
-    const Selection& selection = m_parent.get_selection();
-    const ECoordinatesType coordinates_type = wxGetApp().obj_manipul()->get_coordinates_type();
-    if (coordinates_type == ECoordinatesType::World)
-        m_starting_drag_position = m_center + m_grabbers[m_hover_id].center;
-    else if (coordinates_type == ECoordinatesType::Local && selection.is_single_volume_or_modifier()) {
-        const GLVolume& v = *selection.get_first_volume();
-        m_starting_drag_position = m_center + v.get_instance_transformation().get_rotation_matrix() * v.get_volume_transformation().get_rotation_matrix() * m_grabbers[m_hover_id].center;
-    }
-    else {
-        const GLVolume& v = *selection.get_first_volume();
-        m_starting_drag_position = m_center + v.get_instance_transformation().get_rotation_matrix() * m_grabbers[m_hover_id].center;
-    }
+    m_starting_drag_position = m_grabbers[m_hover_id].matrix * m_grabbers[m_hover_id].center;
     m_starting_box_center = m_center;
-    m_starting_box_bottom_center = m_center;
-    m_starting_box_bottom_center.z() = m_bounding_box.min.z();
-#else
-    const BoundingBoxf3& box = m_parent.get_selection().get_bounding_box();
-    m_starting_drag_position = m_grabbers[m_hover_id].center;
-    m_starting_box_center = box.center();
-    m_starting_box_bottom_center = box.center();
-    m_starting_box_bottom_center.z() = box.min.z();
-#endif // ENABLE_WORLD_COORDINATE
+    m_starting_box_bottom_center = Vec3d(m_center.x(), m_center.y(), m_bounding_box.min.z());
 }
 
 void GLGizmoMove3D::on_stop_dragging()
@@ -128,7 +93,6 @@ void GLGizmoMove3D::on_dragging(const UpdateData& data)
         m_displacement.z() = calc_projection(data);
         
     Selection &selection = m_parent.get_selection();
-#if ENABLE_WORLD_COORDINATE
     TransformationType trafo_type;
     trafo_type.set_relative();
     switch (wxGetApp().obj_manipul()->get_coordinates_type())
@@ -138,9 +102,6 @@ void GLGizmoMove3D::on_dragging(const UpdateData& data)
     default: { break; }
     }
     selection.translate(m_displacement, trafo_type);
-#else
-    selection.translate(m_displacement);
-#endif // ENABLE_WORLD_COORDINATE
 }
 
 void GLGizmoMove3D::on_render()
@@ -148,12 +109,12 @@ void GLGizmoMove3D::on_render()
     glsafe(::glClear(GL_DEPTH_BUFFER_BIT));
     glsafe(::glEnable(GL_DEPTH_TEST));
 
-#if ENABLE_WORLD_COORDINATE
     const Selection& selection = m_parent.get_selection();
     const auto& [box, box_trafo] = selection.get_bounding_box_in_current_reference_system();
     m_bounding_box = box;
     m_center = box_trafo.translation();
-    const Transform3d base_matrix = local_transform(m_parent.get_selection());
+    const Transform3d base_matrix = box_trafo;
+
     for (int i = 0; i < 3; ++i) {
         m_grabbers[i].matrix = base_matrix;
     }
@@ -172,42 +133,16 @@ void GLGizmoMove3D::on_render()
     // z axis
     m_grabbers[2].center = { 0.0, 0.0, half_box_size.z() + Offset };
     m_grabbers[2].color = AXES_COLOR[2];
-#else
-    const Selection& selection = m_parent.get_selection();
-    const BoundingBoxf3& box = selection.get_bounding_box();
-    const Vec3d& center = box.center();
-
-    // x axis
-    m_grabbers[0].center = { box.max.x() + Offset, center.y(), center.z() };
-    m_grabbers[0].color = AXES_COLOR[0];
-
-    // y axis
-    m_grabbers[1].center = { center.x(), box.max.y() + Offset, center.z() };
-    m_grabbers[1].color = AXES_COLOR[1];
-
-    // z axis
-    m_grabbers[2].center = { center.x(), center.y(), box.max.z() + Offset };
-    m_grabbers[2].color = AXES_COLOR[2];
-#endif // ENABLE_WORLD_COORDINATE
 
 #if ENABLE_GL_CORE_PROFILE
     if (!OpenGLManager::get_gl_info().is_core_profile())
 #endif // ENABLE_GL_CORE_PROFILE
         glsafe(::glLineWidth((m_hover_id != -1) ? 2.0f : 1.5f));
 
-#if ENABLE_WORLD_COORDINATE
     auto render_grabber_connection = [this, &zero](unsigned int id) {
-#else
-    auto render_grabber_connection = [this, &center](unsigned int id) {
-#endif // ENABLE_WORLD_COORDINATE
         if (m_grabbers[id].enabled) {
-#if ENABLE_WORLD_COORDINATE
             if (!m_grabber_connections[id].model.is_initialized() || !m_grabber_connections[id].old_center.isApprox(m_grabbers[id].center)) {
                 m_grabber_connections[id].old_center = m_grabbers[id].center;
-#else
-            if (!m_grabber_connections[id].model.is_initialized() || !m_grabber_connections[id].old_center.isApprox(center)) {
-                m_grabber_connections[id].old_center = center;
-#endif // ENABLE_WORLD_COORDINATE
                 m_grabber_connections[id].model.reset();
 
                 GLModel::Geometry init_data;
@@ -217,11 +152,7 @@ void GLGizmoMove3D::on_render()
                 init_data.indices.reserve(2);
 
                 // vertices
-#if ENABLE_WORLD_COORDINATE
                 init_data.add_vertex((Vec3f)zero.cast<float>());
-#else
-                init_data.add_vertex((Vec3f)center.cast<float>());
-#endif // ENABLE_WORLD_COORDINATE
                 init_data.add_vertex((Vec3f)m_grabbers[id].center.cast<float>());
 
                 // indices
@@ -243,11 +174,7 @@ void GLGizmoMove3D::on_render()
         if (shader != nullptr) {
             shader->start_using();
             const Camera& camera = wxGetApp().plater()->get_camera();
-#if ENABLE_WORLD_COORDINATE
             shader->set_uniform("view_model_matrix", camera.get_view_matrix() * base_matrix);
-#else
-            shader->set_uniform("view_model_matrix", camera.get_view_matrix());
-#endif // ENABLE_WORLD_COORDINATE
             shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if ENABLE_GL_CORE_PROFILE
             const std::array<int, 4>& viewport = camera.get_viewport();
@@ -265,11 +192,7 @@ void GLGizmoMove3D::on_render()
         }
 
         // draw grabbers
-#if ENABLE_WORLD_COORDINATE
         render_grabbers(m_bounding_box);
-#else
-        render_grabbers(box);
-#endif // ENABLE_WORLD_COORDINATE
     }
     else {
         // draw axis
@@ -282,11 +205,7 @@ void GLGizmoMove3D::on_render()
             shader->start_using();
 
             const Camera& camera = wxGetApp().plater()->get_camera();
-#if ENABLE_WORLD_COORDINATE
             shader->set_uniform("view_model_matrix", camera.get_view_matrix()* base_matrix);
-#else
-            shader->set_uniform("view_model_matrix", camera.get_view_matrix());
-#endif // ENABLE_WORLD_COORDINATE
             shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if ENABLE_GL_CORE_PROFILE
             const std::array<int, 4>& viewport = camera.get_viewport();
@@ -303,14 +222,12 @@ void GLGizmoMove3D::on_render()
         if (shader != nullptr) {
             shader->start_using();
             shader->set_uniform("emission_factor", 0.1f);
+            glsafe(::glDisable(GL_CULL_FACE));
             // draw grabber
-#if ENABLE_WORLD_COORDINATE
             const Vec3d box_size = m_bounding_box.size();
-#else
-            const Vec3d box_size = box.size();
-#endif // ENABLE_WORLD_COORDINATE
             const float mean_size = (float)((box_size.x() + box_size.y() + box_size.z()) / 3.0);
             m_grabbers[m_hover_id].render(true, mean_size);
+            glsafe(::glEnable(GL_CULL_FACE));
             shader->stop_using();
         }
     }
@@ -353,7 +270,6 @@ double GLGizmoMove3D::calc_projection(const UpdateData& data) const
     return projection;
 }
 
-#if ENABLE_WORLD_COORDINATE
 Transform3d GLGizmoMove3D::local_transform(const Selection& selection) const
 {
     Transform3d ret = Geometry::translation_transform(m_center);
@@ -366,7 +282,6 @@ Transform3d GLGizmoMove3D::local_transform(const Selection& selection) const
     }
     return ret;
 }
-#endif // ENABLE_WORLD_COORDINATE
 
 } // namespace GUI
 } // namespace Slic3r

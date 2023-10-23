@@ -1,3 +1,8 @@
+REM /|/ Copyright (c) 2022 Jebtrix @Jebtrix
+REM /|/ Copyright (c) 2021 Justin Schuh @jschuh
+REM /|/
+REM /|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+REM /|/
 @setlocal disableDelayedExpansion enableExtensions
 @IF "%PS_ECHO_ON%" NEQ "" (echo on) ELSE (echo off)
 @GOTO :MAIN

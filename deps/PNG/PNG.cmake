@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2020 - 2021 Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 if (APPLE)
     # Only disable NEON extension for Apple ARM builds, leave it enabled for Raspberry PI.
     set(_disable_neon_extension "-DPNG_ARM_NEON=off")

@@ -49,28 +49,12 @@ if (SLIC3R_GUI)
 
     if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set (wxWidgets_CONFIG_OPTIONS "--toolkit=gtk${SLIC3R_GTK}")
-        if (SLIC3R_WX_STABLE)
-            find_package(wxWidgets 3.0 REQUIRED COMPONENTS base core adv html gl)
-        else ()
-            find_package(wxWidgets 3.1 QUIET COMPONENTS base core adv html gl)
-
-            if (NOT wxWidgets_FOUND)
-                message(FATAL_ERROR "\nCould not find wxWidgets 3.1.\n"
-                    "Hint: On Linux you can set -DSLIC3R_WX_STABLE=1 to use wxWidgets 3.0\n")
-            endif ()
-        endif ()
-
-        include(${wxWidgets_USE_FILE})
-    else ()
-        find_package(wxWidgets 3.1 COMPONENTS html adv gl core base)
-        if (NOT wxWidgets_FOUND)
-            message(STATUS "Trying to find wxWidgets in CONFIG mode...")
-            find_package(wxWidgets 3.2 CONFIG REQUIRED COMPONENTS html adv gl core base)
-            slic3r_remap_configs(wx::wxhtml wx::wxadv wx::wxgl wx::wxcore wx::wxbase RelWithDebInfo Release)
-        else ()
-            include(${wxWidgets_USE_FILE})
-        endif ()
     endif ()
+    find_package(wxWidgets 3.2 MODULE REQUIRED COMPONENTS base core adv html gl)
+
+    include(${wxWidgets_USE_FILE})
+
+    slic3r_remap_configs(wx::wxhtml wx::wxadv wx::wxgl wx::wxcore wx::wxbase RelWithDebInfo Release)
 
     if(UNIX)
         message(STATUS "wx-config path: ${wxWidgets_CONFIG_EXECUTABLE}")

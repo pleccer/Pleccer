@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 Pavel Mikuš @Godrak
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Subdivide.hpp"
 #include "Point.hpp"
 

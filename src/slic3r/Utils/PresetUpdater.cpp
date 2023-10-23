@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Vojtěch Bubník @bubnikv, David Kocík @kocikdav, Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2020 Ondřej Nový @onovy
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "PresetUpdater.hpp"
 
 #include <algorithm>
@@ -49,7 +54,7 @@ using Slic3r::GUI::Config::SnapshotDB;
 namespace Slic3r {
 
 
-static const char *INDEX_FILENAME = "index.idx";
+//static const char *INDEX_FILENAME = "index.idx";
 static const char *TMP_EXTENSION = ".download";
 
 namespace {
@@ -84,6 +89,9 @@ std::string escape_string_url(const std::string& unescaped)
 	return ret_val;
 }
 }
+
+wxDEFINE_EVENT(EVT_CONFIG_UPDATER_SYNC_DONE, wxCommandEvent);
+
 struct Update
 {
 	fs::path source;
@@ -94,15 +102,17 @@ struct Update
 	std::string changelog_url;
 
 	bool forced_update;
+	std::vector<std::string> new_printers;
 
 	Update() {}
-	Update(fs::path &&source, fs::path &&target, const Version &version, std::string vendor, std::string changelog_url, bool forced = false)
+	Update(fs::path &&source, fs::path &&target, const Version &version, std::string vendor, std::string changelog_url, bool forced = false, std::vector<std::string> new_printers = {})
 		: source(std::move(source))
 		, target(std::move(target))
 		, version(version)
 		, vendor(std::move(vendor))
 		, changelog_url(std::move(changelog_url))
 		, forced_update(forced)
+		, new_printers(std::move(new_printers))
 	{}
 
 	void install() const
@@ -399,7 +409,7 @@ void PresetUpdater::priv::sync_config(const VendorMap vendors, const std::string
 				std::string name(stat.m_filename);
 				if (stat.m_uncomp_size > 0) {
 					std::string buffer((size_t)stat.m_uncomp_size, 0);
-					mz_bool res = mz_zip_reader_extract_file_to_mem(&archive, stat.m_filename, (void*)buffer.data(), (size_t)stat.m_uncomp_size, 0);
+					mz_bool res = mz_zip_reader_extract_to_mem(&archive, stat.m_file_index, (void*)buffer.data(), (size_t)stat.m_uncomp_size, 0);
 					if (res == 0) {
 						BOOST_LOG_TRIVIAL(error) << "Failed to unzip " << stat.m_filename;
 						continue;
@@ -895,13 +905,16 @@ Updates PresetUpdater::priv::get_config_updates(const Semver &old_slic3r_version
 		if (fs::exists(path_in_cache)) {
 			try {
 				VendorProfile new_vp = VendorProfile::from_ini(path_in_cache, true);
+				VendorProfile old_vp = VendorProfile::from_ini(bundle_path, true);
 				if (new_vp.config_version == recommended->config_version) {
 					// The config bundle from the cache directory matches the recommended version of the index from the cache directory.
 					// This is the newest known recommended config. Use it.
 					if (!PresetUtils::vendor_profile_has_all_resources(new_vp)) {
 						BOOST_LOG_TRIVIAL(warning) << "Some resources are missing for update of vedor " << new_vp.id;
 					}
-					new_update = Update(std::move(path_in_cache), std::move(bundle_path), *recommended, vp.name, vp.changelog_url, current_not_supported);
+					std::vector<std::string> new_printers;
+					PresetUtils::compare_vendor_profile_printers(old_vp, new_vp, new_printers);
+					new_update = Update(std::move(path_in_cache), std::move(bundle_path), *recommended, vp.name, vp.changelog_url, current_not_supported, std::move(new_printers));
 					// and install the config index from the cache into vendor's directory.
 					bundle_path_idx_to_install = idx.path();
 					found = true;
@@ -961,7 +974,7 @@ Updates PresetUpdater::priv::get_config_updates(const Semver &old_slic3r_version
 					BOOST_LOG_TRIVIAL(error) << format("Cannot load the installed index at `%1%`: %2%", bundle_path_idx, err.what());
 				}
 			}
-
+#if 0
 			// Check if the update is already present in a snapshot
 			if(!current_not_supported)
 			{
@@ -974,7 +987,7 @@ Updates PresetUpdater::priv::get_config_updates(const Semver &old_slic3r_version
 					continue;
 				}
 			}
-
+#endif // 0
 			updates.updates.emplace_back(std::move(new_update));
 			// 'Install' the index in the vendor directory. This is used to memoize
 			// offered updates and to not offer the same update again if it was cancelled by the user.
@@ -1115,7 +1128,7 @@ PresetUpdater::~PresetUpdater()
 	}
 }
 
-void PresetUpdater::sync(const PresetBundle *preset_bundle)
+void PresetUpdater::sync(const PresetBundle *preset_bundle, wxEvtHandler* evt_handler)
 {
 	p->set_download_prefs(GUI::wxGetApp().app_config);
 	if (!p->enabled_version_check && !p->enabled_config_update) { return; }
@@ -1126,9 +1139,11 @@ void PresetUpdater::sync(const PresetBundle *preset_bundle)
 	VendorMap vendors = preset_bundle->vendors;
 	std::string index_archive_url = GUI::wxGetApp().app_config->index_archive_url();
 
-    p->thread = std::thread([this, vendors, index_archive_url]() {
+    p->thread = std::thread([this, vendors, index_archive_url, evt_handler]() {
 		this->p->prune_tmps();
 		this->p->sync_config(std::move(vendors), index_archive_url);
+		wxCommandEvent* evt = new wxCommandEvent(EVT_CONFIG_UPDATER_SYNC_DONE);
+		evt_handler->QueueEvent(evt);
     });
 }
 
@@ -1168,7 +1183,7 @@ void PresetUpdater::slic3r_update_notify()
 
 static bool reload_configs_update_gui()
 {
-	wxString header = _L("Configuration Updates causes a loss of preset modification.\n"
+	wxString header = _L("Configuration Update will cause the preset modification to be lost.\n"
 						 "So, check unsaved changes and save them if necessary.");
 	if (!GUI::wxGetApp().check_and_save_current_preset_changes(_L("Updating"), header, false ))
 		return false;
@@ -1247,7 +1262,13 @@ PresetUpdater::UpdateResult PresetUpdater::config_update(const Semver& old_slic3
 			std::vector<GUI::MsgUpdateForced::Update> updates_msg;
 			for (const auto& update : updates.updates) {
 				std::string changelog_url = update.version.config_version.prerelease() == nullptr ? update.changelog_url : std::string();
-				updates_msg.emplace_back(update.vendor, update.version.config_version, update.version.comment, std::move(changelog_url));
+				std::string printers;
+				for (size_t i = 0; i < update.new_printers.size(); i++) {
+					if (i > 0)
+						printers += ", ";
+					printers += update.new_printers[i];
+				}
+				updates_msg.emplace_back(update.vendor, update.version.config_version, update.version.comment, std::move(changelog_url), std::move(printers));
 			}
 
 			GUI::MsgUpdateForced dlg(updates_msg);
@@ -1269,7 +1290,14 @@ PresetUpdater::UpdateResult PresetUpdater::config_update(const Semver& old_slic3
 		// regular update
 		if (params == UpdateParams::SHOW_NOTIFICATION) {
 			p->set_waiting_updates(updates);
-			GUI::wxGetApp().plater()->get_notification_manager()->push_notification(GUI::NotificationType::PresetUpdateAvailable);
+			bool new_printer = false;
+			for (const Update& updt : updates.updates) {
+				if(updt.new_printers.size() > 0) {
+					new_printer = true;
+					break;
+				}
+			}
+			GUI::wxGetApp().plater()->get_notification_manager()->push_notification(new_printer? GUI::NotificationType::PresetUpdateAvailableNewPrinter : GUI::NotificationType::PresetUpdateAvailable);
 		}
 		else {
 			BOOST_LOG_TRIVIAL(info) << format("Update of %1% bundles available. Asking for confirmation ...", p->waiting_updates.updates.size());
@@ -1277,7 +1305,13 @@ PresetUpdater::UpdateResult PresetUpdater::config_update(const Semver& old_slic3
 			std::vector<GUI::MsgUpdateConfig::Update> updates_msg;
 			for (const auto& update : updates.updates) {
 				std::string changelog_url = update.version.config_version.prerelease() == nullptr ? update.changelog_url : std::string();
-				updates_msg.emplace_back(update.vendor, update.version.config_version, update.version.comment, std::move(changelog_url));
+				std::string printers;
+				for (size_t i = 0; i < update.new_printers.size(); i++) {
+					if (i > 0)
+						printers += ", ";
+					printers += update.new_printers[i];
+				}
+				updates_msg.emplace_back(update.vendor, update.version.config_version, update.version.comment, std::move(changelog_url), std::move(printers));
 			}
 
 			GUI::MsgUpdateConfig dlg(updates_msg, params == UpdateParams::FORCED_BEFORE_WIZARD);
@@ -1320,7 +1354,35 @@ bool PresetUpdater::install_bundles_rsrc_or_cache_vendor(std::vector<std::string
 		bool is_in_rsrc = fs::exists(path_in_rsrc);
 		bool is_in_cache_vendor = fs::exists(path_in_cache_vendor) && !fs::is_empty(path_in_cache_vendor);
 
-		// find if in cache vendor is newer version than in resources
+		// Find if in cache vendor is newer version than in resources.
+		// But we also need to mind too new versions - have to read index.
+
+		// Fresh index should be in archive_dir, otherwise look for it in cache
+		fs::path idx_path (path_in_cache_vendor);
+		idx_path.replace_extension(".idx");
+		if (!boost::filesystem::exists(idx_path)) {
+			BOOST_LOG_TRIVIAL(error) << GUI::format("Couldn't locate idx file %1% when performing updates.", idx_path.string());
+			idx_path = fs::path(p->cache_path / idx_path.filename());
+		}
+		if (!boost::filesystem::exists(idx_path)) {
+			std::string msg = GUI::format(_L("Couldn't locate index file for vendor %1% when performing updates. The profile will not be installed."), bundle);
+			BOOST_LOG_TRIVIAL(error) << msg;
+			GUI::show_error(nullptr, msg);
+			continue;
+		}
+		Slic3r::GUI::Config::Index index;
+		try {
+			index.load(idx_path);
+		}
+		catch (const std::exception& /* err */) {
+			std::string msg = GUI::format(_L("Couldn't load index file for vendor %1% when performing updates. The profile will not be installed. Reason: Corrupted index file %2%."), bundle, idx_path.string());
+			BOOST_LOG_TRIVIAL(error) << msg;
+			GUI::show_error(nullptr, msg);
+			continue;
+		}
+		const auto recommended_it = index.recommended();
+		const auto recommended = recommended_it->config_version;
+
 		if (is_in_cache_vendor) {
 			Semver version_cache = Semver::zero();
 			try {
@@ -1329,13 +1391,11 @@ bool PresetUpdater::install_bundles_rsrc_or_cache_vendor(std::vector<std::string
 			}
 			catch (const std::exception& e) {
 				BOOST_LOG_TRIVIAL(error) << format("Corrupted profile file for vendor %1%, message: %2%", path_in_cache_vendor, e.what());
-				// lets use file in resources
-				if (is_in_rsrc) {
-					updates.updates.emplace_back(std::move(path_in_rsrc), std::move(path_in_vendors), Version(), "", "");
-				}
-				continue;
+				version_cache = Semver::zero();
 			}
-			
+			if (version_cache > recommended)
+				version_cache = Semver::zero();
+
 			Semver version_rsrc = Semver::zero();
 			try {
 				if (is_in_rsrc) {
@@ -1345,26 +1405,33 @@ bool PresetUpdater::install_bundles_rsrc_or_cache_vendor(std::vector<std::string
 			}
 			catch (const std::exception& e) {
 				BOOST_LOG_TRIVIAL(error) << format("Corrupted profile file for vendor %1%, message: %2%", path_in_rsrc, e.what());
-				continue;
+				//continue;
+				version_rsrc = Semver::zero();
 			}
+			// Should not happen!
+			if (version_rsrc > recommended)
+				version_rsrc = Semver::zero();
 
-			if (!is_in_rsrc || version_cache > version_rsrc) {
-				// in case we are installing from cache / vendor. we should also copy index to cache
-				// This needs to be done now bcs the current one would be missing this version on next start 
-				// dk: Should we copy it to vendor dir too?
-				auto path_idx_cache_vendor(path_in_cache_vendor);
-				path_idx_cache_vendor.replace_extension(".idx");
-				auto  path_idx_cache = (p->cache_path / bundle).replace_extension(".idx");
-				// DK: do this during perform_updates() too?
-				if (fs::exists(path_idx_cache_vendor))
-					copy_file_fix(path_idx_cache_vendor, path_idx_cache);
-				else // Should we dialog this?
-					BOOST_LOG_TRIVIAL(error) << GUI::format(_L("Couldn't locate idx file %1% when performing updates."), path_idx_cache_vendor.string());
+			if (version_cache == Semver::zero() && version_rsrc == Semver::zero()) {
+				std::string msg = GUI::format(_L("Couldn't open profile file for vendor %1% when performing updates. The profile will not be installed. This installation might be corrupted."), bundle);
+				BOOST_LOG_TRIVIAL(error) << msg;
+				GUI::show_error(nullptr, msg);
+				continue;
+			} else if (version_cache == Semver::zero()) {
+				// cache vendor cannot be used, use resources
+				updates.updates.emplace_back(std::move(path_in_rsrc), std::move(path_in_vendors), Version(), "", "");
+			} else if (version_rsrc == Semver::zero()) {
+				// resources cannto be used, use cache vendor
 				updates.updates.emplace_back(std::move(path_in_cache_vendor), std::move(path_in_vendors), Version(), "", "");
-			
+			} else if (version_cache > version_rsrc) {
+				// in case we are installing from cache / vendor. we should also copy index to cache
+				// This needs to be done now bcs the current one would be missing this version on the next start
+				auto  path_idx_cache = (p->cache_path / bundle).replace_extension(".idx");
+				if (idx_path != path_idx_cache)
+					copy_file_fix(idx_path, path_idx_cache);
+				updates.updates.emplace_back(std::move(path_in_cache_vendor), std::move(path_in_vendors), Version(), "", "");
 			} else {
-				if (is_in_rsrc)
-					updates.updates.emplace_back(std::move(path_in_rsrc), std::move(path_in_vendors), Version(), "", "");
+				updates.updates.emplace_back(std::move(path_in_rsrc), std::move(path_in_vendors), Version(), "", "");
 			}
 		} else {
 			if (! is_in_rsrc) {
@@ -1388,7 +1455,13 @@ void PresetUpdater::on_update_notification_confirm()
 	std::vector<GUI::MsgUpdateConfig::Update> updates_msg;
 	for (const auto& update : p->waiting_updates.updates) {
 		std::string changelog_url = update.version.config_version.prerelease() == nullptr ? update.changelog_url : std::string();
-		updates_msg.emplace_back(update.vendor, update.version.config_version, update.version.comment, std::move(changelog_url));
+		std::string printers;
+		for (size_t i = 0; i < update.new_printers.size(); i++) {
+			if (i > 0)
+				printers += ", ";
+			printers += update.new_printers[i];
+		}
+		updates_msg.emplace_back(update.vendor, update.version.config_version, update.version.comment, std::move(changelog_url), std::move(printers));
 	}
 
 	GUI::MsgUpdateConfig dlg(updates_msg);

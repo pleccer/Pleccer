@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2017 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2019 John Drake @foxox
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_Preset_hpp_
 #define slic3r_Preset_hpp_
 
@@ -341,7 +346,8 @@ public:
     // Save the preset under a new name. If the name is different from the old one,
     // a new preset is stored into the list of presets.
     // All presets are marked as not modified and the new preset is activated.
-    void            save_current_preset(const std::string &new_name, bool detach = false);
+    // return true, if new preset is stored
+    bool            save_current_preset(const std::string &new_name, bool detach = false);
 
     // Find the preset with a new_name or create a new one,
     // initialize it with the initial_preset config.
@@ -507,7 +513,7 @@ public:
     // Generate a file path from a profile name. Add the ".ini" suffix if it is missing.
     std::string     path_from_name(const std::string &new_name) const;
 
-    size_t num_default_presets() { return m_num_default_presets; }
+    size_t num_default_presets() const { return m_num_default_presets; }
 
 protected:
     PresetCollection() = default;
@@ -566,6 +572,8 @@ public:
     static bool                     is_dirty(const Preset *edited, const Preset *reference);
     static std::vector<std::string> dirty_options(const Preset *edited, const Preset *reference, const bool deep_compare = false);
     static bool                     is_independent_from_extruder_number_option(const std::string& opt_key);
+
+    const std::vector<std::pair<std::string, std::string>>& map_alias_to_profile_name() { return m_map_alias_to_profile_name; }
 private:
     // Type of this PresetCollection: TYPE_PRINT, TYPE_FILAMENT or TYPE_PRINTER.
     Preset::Type            m_type;
@@ -622,6 +630,7 @@ namespace PresetUtils {
     std::string system_printer_bed_model(const Preset& preset);
     std::string system_printer_bed_texture(const Preset& preset);
     bool        vendor_profile_has_all_resources(const VendorProfile& vp);
+    bool        compare_vendor_profile_printers(const VendorProfile& vp_old, const VendorProfile& vp_new, std::vector<std::string>& new_printers);
 } // namespace PresetUtils
 
 
@@ -824,6 +833,142 @@ private:
 
     // Path to the directory to store the config files into.
     std::string                 m_dir_path;
+};
+
+
+// ---------------------------------
+// ***  ExtruderFilaments  ***
+// ---------------------------------
+
+class Filament
+{
+public:
+    Filament(const Preset* preset) : preset(preset) {}
+    // Sort lexicographically by a preset name. The preset name shall be unique across a single PresetCollection.
+    bool            operator<(const Filament& other) const { return this->preset->name < other.preset->name; }
+
+    const Preset*   preset;
+    bool            is_compatible{ true };
+};
+
+// Collections of filaments for extruder
+class ExtruderFilaments
+{
+    PresetCollection*               m_filaments{ nullptr };
+    // Selected filament.
+    size_t                          m_idx_selected{ size_t(-1) };
+    // List of filaments for this extruder
+    std::deque<Filament>            m_extr_filaments;
+
+    size_t                          m_extruder_id;
+
+    std::string                     m_cached_selected_name{ std::string() };
+
+public:
+    ExtruderFilaments(PresetCollection* filaments_collection, size_t extruder_id = 0, std::string selected_name = std::string());
+
+    typedef std::deque<Filament>::iterator Iterator;
+    typedef std::deque<Filament>::const_iterator ConstIterator;
+    Iterator        begin()         { return m_extr_filaments.begin(); }
+    ConstIterator   begin()  const  { return m_extr_filaments.cbegin(); }
+    ConstIterator   cbegin() const  { return m_extr_filaments.cbegin(); }
+    Iterator        end()           { return m_extr_filaments.end(); }
+    ConstIterator   end()    const  { return m_extr_filaments.cend(); }
+    ConstIterator   cend()   const  { return m_extr_filaments.cend(); }
+
+    bool            empty()  const  { return m_extr_filaments.empty(); }
+
+    const std::deque<Filament>& operator()() const  { return m_extr_filaments; }
+
+    // Return a filament by an index. If the filament is active, a temporary copy is returned.
+    Filament&       filament(size_t idx)            { return m_extr_filaments[idx]; }
+    const Filament& filament(size_t idx) const      { return const_cast<ExtruderFilaments*>(this)->filament(idx); }
+
+    // Select filament by the full filament name, which contains name of filament, separator and name of selected preset
+    // If full_name doesn't contain name of selected preset, then select first preset in the list for this filament
+    bool select_filament(const std::string& name, bool force = false);
+    void select_filament(size_t idx)                        { m_idx_selected = idx; }
+
+    std::string             get_selected_preset_name()  const { return m_idx_selected == size_t(-1) ? std::string() : m_extr_filaments[m_idx_selected].preset->name; }
+    const Preset*           get_selected_preset()       const { return m_idx_selected == size_t(-1) ? nullptr   : m_extr_filaments[m_idx_selected].preset; }
+    const Filament*         get_selected_filament()     const { return m_idx_selected == size_t(-1) ? nullptr   : &m_extr_filaments[m_idx_selected]; }
+    size_t                  get_selected_idx()          const { return m_idx_selected; }
+
+    friend class PresetBundle;
+
+    ExtruderFilaments() = default;
+    ExtruderFilaments& operator=(const ExtruderFilaments& other) = default;
+
+private:
+    // Find a preset position in the sorted list of presets.
+    // The "-- default -- " preset is always the first, so it needs
+    // to be handled differently.
+    // If a preset does not exist, an iterator is returned indicating where to insert a preset with the same name.
+    std::deque<Filament>::iterator find_filament_internal(const std::string& name)
+    {
+        return Slic3r::lower_bound_by_predicate(m_extr_filaments.begin(), m_extr_filaments.end(), [&name](const auto& l) {
+            return l.preset->name < name;
+        });
+    }
+    std::deque<Filament>::const_iterator find_filament_internal(const std::string& name) const
+    {
+        return const_cast<ExtruderFilaments*>(this)->find_filament_internal(name);
+    }
+
+    void cache_selected_name()                      { m_cached_selected_name = get_selected_preset_name(); }
+    std::string get_cached_selected_name() const    { return m_cached_selected_name; }
+
+    // Return index of the first compatible preset. Certainly at least the '- default -' preset shall be compatible.
+// If one of the prefered_alternates is compatible, select it.
+    template<typename PreferedCondition>
+    size_t          first_compatible_idx(PreferedCondition prefered_condition) const
+    {
+        size_t i = m_filaments->is_default_suppressed() ? m_filaments->num_default_presets() : 0;
+        size_t n = m_extr_filaments.size();
+        size_t i_compatible = n;
+        int    match_quality = -1;
+        for (; i < n; ++i)
+            // Since we use the filament selection from Wizard, it's needed to control the preset visibility too
+            if (m_extr_filaments[i].is_compatible && m_filaments->preset(i).is_visible) {
+                int this_match_quality = prefered_condition(*(m_extr_filaments[i].preset));
+                if (this_match_quality > match_quality) {
+                    if (match_quality == std::numeric_limits<int>::max())
+                        // Better match will not be found.
+                        return i;
+                    // Store the first compatible profile with highest match quality into i_compatible.
+                    i_compatible = i;
+                    match_quality = this_match_quality;
+                }
+            }
+        return (i_compatible == n) ?
+            // No compatible preset found, return the default preset.
+            0 :
+            // Compatible preset found.
+            i_compatible;
+    }
+    // Return index of the first compatible preset. Certainly at least the '- default -' preset shall be compatible.
+    size_t          first_compatible_idx() const { return this->first_compatible_idx([](const /*Filament*/Preset&) -> int { return 0; }); }
+
+    template<typename PreferedCondition>
+    const Preset* first_compatible(PreferedCondition prefered_condition)    { return m_extr_filaments[this->first_compatible_idx(prefered_condition)].preset;}
+    const Preset* first_compatible()                                        { return m_extr_filaments[this->first_compatible_idx()].preset; }
+
+    const std::string& get_preset_name_by_alias(const std::string& alias) const;
+
+    size_t  update_compatible_internal(const PresetWithVendorProfile& active_printer, const PresetWithVendorProfile* active_print, PresetSelectCompatibleType unselect_if_incompatible);
+
+    // For Print / Filament presets, disable those, which are not compatible with the printer.
+    template<typename PreferedCondition>
+    void    update_compatible(const PresetWithVendorProfile& active_printer, const PresetWithVendorProfile* active_print, PresetSelectCompatibleType select_other_if_incompatible, PreferedCondition prefered_condition)
+    {
+        if (this->update_compatible_internal(active_printer, active_print, select_other_if_incompatible) == (size_t)-1)
+            // Find some other compatible preset, or the "-- default --" preset.
+            this->select_filament(this->first_compatible_idx(prefered_condition));
+    }
+    void    update_compatible(const PresetWithVendorProfile& active_printer, const PresetWithVendorProfile* active_print, PresetSelectCompatibleType select_other_if_incompatible)
+    {
+        this->update_compatible(active_printer, active_print, select_other_if_incompatible, [](const /*Filament*/Preset&) -> int { return 0; });
+    }
 };
 
 

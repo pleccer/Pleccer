@@ -1,7 +1,7 @@
 #include <catch2/catch.hpp>
 
 #include "test_data.hpp"
-#include "clipper/clipper_z.hpp"
+#include "libslic3r/ClipperZUtils.hpp"
 #include "libslic3r/clipper.hpp"
 
 using namespace Slic3r;
@@ -132,3 +132,72 @@ SCENARIO("Clipper Z", "[ClipperZ]")
         REQUIRE(pt.z() == 1);
 }
 
+SCENARIO("Intersection with multiple polylines", "[ClipperZ]")
+{
+    // 1000x1000 CCQ square
+    ClipperLib_Z::Path clip { { 0, 0, 1 }, { 1000, 0, 1 }, { 1000, 1000, 1 }, { 0, 1000, 1 } };
+    // Two lines interseting inside the square above, crossing the bottom edge of the square.
+    ClipperLib_Z::Path line1 { { +100, -100, 2 }, { +900, +900, 2 } };
+    ClipperLib_Z::Path line2 { { +100, +900, 3 }, { +900, -100, 3 } };
+
+    ClipperLib_Z::Clipper clipper;
+    ClipperZUtils::ClipperZIntersectionVisitor::Intersections intersections;
+    ClipperZUtils::ClipperZIntersectionVisitor visitor(intersections);
+    clipper.ZFillFunction(visitor.clipper_callback());
+    clipper.AddPath(line1, ClipperLib_Z::ptSubject, false);
+    clipper.AddPath(line2, ClipperLib_Z::ptSubject, false);
+    clipper.AddPath(clip,  ClipperLib_Z::ptClip, true);
+
+    ClipperLib_Z::PolyTree polytree;
+    ClipperLib_Z::Paths    paths;
+    clipper.Execute(ClipperLib_Z::ctIntersection, polytree, ClipperLib_Z::pftNonZero, ClipperLib_Z::pftNonZero);
+    ClipperLib_Z::PolyTreeToPaths(polytree, paths);
+
+    REQUIRE(paths.size() == 2);
+
+    THEN("First output polyline is a trimmed 2nd line") {
+        // Intermediate point (intersection) was removed)
+        REQUIRE(paths.front().size() == 2);
+        REQUIRE(paths.front().front().z() == 3);
+        REQUIRE(paths.front().back().z() < 0);
+        REQUIRE(intersections[- paths.front().back().z() - 1] == std::pair<coord_t, coord_t>(1, 3));
+    }
+
+    THEN("Second output polyline is a trimmed 1st line") {
+        // Intermediate point (intersection) was removed)
+        REQUIRE(paths[1].size() == 2);
+        REQUIRE(paths[1].front().z() < 0);
+        REQUIRE(paths[1].back().z() == 2);
+        REQUIRE(intersections[- paths[1].front().z() - 1] == std::pair<coord_t, coord_t>(1, 2));
+    }
+}
+
+SCENARIO("Interseting a closed loop as an open polyline", "[ClipperZ]")
+{
+    // 1000x1000 CCQ square
+    ClipperLib_Z::Path clip{ { 0, 0, 1 }, { 1000, 0, 1 }, { 1000, 1000, 1 }, { 0, 1000, 1 } };
+    // Two lines interseting inside the square above, crossing the bottom edge of the square.
+    ClipperLib_Z::Path rect{ { 500, 500, 2}, { 500, 1500, 2 }, { 1500, 1500, 2}, { 500, 1500, 2}, { 500, 500, 2 } };
+
+    ClipperLib_Z::Clipper clipper;
+    clipper.AddPath(rect, ClipperLib_Z::ptSubject, false);
+    clipper.AddPath(clip, ClipperLib_Z::ptClip, true);
+
+    ClipperLib_Z::PolyTree polytree;
+    ClipperLib_Z::Paths    paths;
+    ClipperZUtils::ClipperZIntersectionVisitor::Intersections intersections;
+    ClipperZUtils::ClipperZIntersectionVisitor visitor(intersections);
+    clipper.ZFillFunction(visitor.clipper_callback());
+    clipper.Execute(ClipperLib_Z::ctIntersection, polytree, ClipperLib_Z::pftNonZero, ClipperLib_Z::pftNonZero);
+    ClipperLib_Z::PolyTreeToPaths(std::move(polytree), paths);
+
+    THEN("Open polyline is clipped into two pieces") {
+        REQUIRE(paths.size() == 2);
+        REQUIRE(paths.front().size() == 2);
+        REQUIRE(paths.back().size() == 2);
+        REQUIRE(paths.front().front().z() == 2);
+        REQUIRE(paths.back().back().z() == 2);
+        REQUIRE(paths.front().front().x() == paths.back().back().x());
+        REQUIRE(paths.front().front().y() == paths.back().back().y());
+    }
+}

@@ -1,3 +1,12 @@
+///|/ Copyright (c) 2023 Pedro Lamas @PedroLamas
+///|/ Copyright (c) Prusa Research 2018 - 2023 David Kocík @kocikdav, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2020 Sergey Kovalev @RandoMan70
+///|/ Copyright (c) 2019 Spencer Owen @spuder
+///|/ Copyright (c) 2019 Stephan Reichhelm @stephanr
+///|/ Copyright (c) 2018 Martin Loidl @LoidlM
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "PrintHost.hpp"
 
 #include <vector>
@@ -19,6 +28,7 @@
 #include "AstroBox.hpp"
 #include "Repetier.hpp"
 #include "MKS.hpp"
+#include "Moonraker.hpp"
 #include "../GUI/PrintHostDialogs.hpp"
 
 namespace fs = boost::filesystem;
@@ -54,6 +64,7 @@ PrintHost* PrintHost::get_print_host(DynamicPrintConfig *config)
             case htPrusaLink: return new PrusaLink(config);
             case htPrusaConnect: return new PrusaConnect(config);
             case htMKS:       return new MKS(config);
+            case htMoonraker: return new Moonraker(config);
             default:          return nullptr;
         }
     } else {

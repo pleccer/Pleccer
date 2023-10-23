@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "GalleryDialog.hpp"
 
 #include <cstddef>
@@ -94,10 +98,12 @@ GalleryDialog::GalleryDialog(wxWindow* parent) :
 #endif
 
     wxStdDialogButtonSizer* buttons = this->CreateStdDialogButtonSizer(wxOK | wxCLOSE);
-    m_ok_btn = static_cast<wxButton*>(FindWindowById(wxID_OK, this));
+    wxGetApp().SetWindowVariantForButton(buttons->GetCancelButton());
+    m_ok_btn = buttons->GetAffirmativeButton();
+    wxGetApp().SetWindowVariantForButton(m_ok_btn);
     m_ok_btn->Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& evt) { evt.Enable(!m_selected_items.empty()); });
 
-    static_cast<wxButton*>(FindWindowById(wxID_CLOSE, this))->Bind(wxEVT_BUTTON, [this](wxCommandEvent&){ this->EndModal(wxID_CLOSE); });
+    buttons->GetCancelButton()->Bind(wxEVT_BUTTON, [this](wxCommandEvent&){ this->EndModal(wxID_CLOSE); });
     this->SetEscapeId(wxID_CLOSE);
     auto add_btn = [this, buttons]( size_t pos, int& ID, wxString title, wxString tooltip,
                                     void (GalleryDialog::* method)(wxEvent&), 
@@ -105,6 +111,7 @@ GalleryDialog::GalleryDialog(wxWindow* parent) :
         ID = NewControlId();
         wxButton* btn = new wxButton(this, ID, title);
         btn->SetToolTip(tooltip);
+        wxGetApp().SetWindowVariantForButton(btn);
         btn->Bind(wxEVT_UPDATE_UI, [enable_fn](wxUpdateUIEvent& evt) { evt.Enable(enable_fn()); });
         buttons->Insert(pos, btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, BORDER_W);
         this->Bind(wxEVT_BUTTON, method, this, ID);
@@ -134,7 +141,12 @@ GalleryDialog::GalleryDialog(wxWindow* parent) :
 }
 
 GalleryDialog::~GalleryDialog()
-{   
+{
+    // From wxWidgets docs:
+    // The method void wxListCtrl::SetImageList(wxImageList* imageList, int which)
+    // does not take ownership of the image list, you have to delete it yourself.
+    if (m_image_list)
+        delete m_image_list;
 }
 
 int GalleryDialog::show(bool show_from_menu) 

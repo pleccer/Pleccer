@@ -1,3 +1,13 @@
+#/|/ Copyright (c) Prusa Research 2017 - 2022 Vojtěch Bubník @bubnikv
+#/|/ Copyright (c) Slic3r 2011 - 2015 Alessandro Ranellucci @alranel
+#/|/ Copyright (c) 2013 Jose Luis Perez Diez
+#/|/ Copyright (c) 2013 Anders Sundman
+#/|/ Copyright (c) 2013 Jesse Vincent
+#/|/ Copyright (c) 2012 Mike Sheldrake @mesheldrake
+#/|/ Copyright (c) 2012 Mark Hindess
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 package Slic3r::Geometry;
 use strict;
 use warnings;
@@ -15,7 +25,6 @@ our @EXPORT_OK = qw(
 
     X Y Z
     convex_hull
-    chained_path_from
     deg2rad
     rad2deg
 );

@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Lukáš Matěna @lukasmatena, Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966
+///|/ Copyright (c) 2022 ole00 @ole00
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_SLAPrint_hpp_
 #define slic3r_SLAPrint_hpp_
 
@@ -494,7 +499,7 @@ public:
 
     const SLAPrintStatistics&   print_statistics() const { return m_print_statistics; }
 
-    std::string validate(std::string* warning = nullptr) const override;
+    std::string validate(std::vector<std::string>* warnings = nullptr) const override;
 
     // An aggregation of SliceRecord-s from all the print objects for each
     // occupied layer. Slice record levels dont have to match exactly.
@@ -546,10 +551,7 @@ public:
 
     void export_print(const std::string    &fname,
                       const ThumbnailsList &thumbnails,
-                      const std::string    &projectname = "")
-    {
-        m_archiver->export_print(fname, *this, thumbnails, projectname);
-    }
+                      const std::string    &projectname = "");
     
 private:
     

@@ -1,5 +1,9 @@
-#ifndef WipeTower_
-#define WipeTower_
+///|/ Copyright (c) Prusa Research 2017 - 2023 Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
+#ifndef slic3r_GCode_WipeTower_hpp_
+#define slic3r_GCode_WipeTower_hpp_
 
 #include <cmath>
 #include <string>
@@ -14,6 +18,7 @@ namespace Slic3r
 
 class WipeTowerWriter;
 class PrintConfig;
+class PrintRegionConfig;
 enum GCodeFlavor : unsigned char;
 
 
@@ -22,6 +27,8 @@ class WipeTower
 {
 public:
     static const std::string never_skip_tag() { return "_GCODE_WIPE_TOWER_NEVER_SKIP_TAG"; }
+	static std::pair<double, double> get_wipe_tower_cone_base(double width, double height, double depth, double angle_deg);
+	static std::vector<std::vector<float>> extract_wipe_volumes(const PrintConfig& config);
 
     struct Extrusion
     {
@@ -127,7 +134,10 @@ public:
 	// y			-- y coordinates of wipe tower in mm ( left bottom corner )
 	// width		-- width of wipe tower in mm ( default 60 mm - leave as it is )
 	// wipe_area	-- space available for one toolchange in mm
-    WipeTower(const PrintConfig& config, const std::vector<std::vector<float>>& wiping_matrix, size_t initial_tool);
+    WipeTower(const PrintConfig& config,
+	          const PrintRegionConfig& default_region_config,
+			  const std::vector<std::vector<float>>& wiping_matrix,
+			  size_t initial_tool);
 
 
 	// Set the extruder properties.
@@ -141,7 +151,9 @@ public:
 	void generate(std::vector<std::vector<ToolChangeResult>> &result);
 
     float get_depth() const { return m_wipe_tower_depth; }
+	std::vector<std::pair<float, float>> get_z_and_depth_pairs() const;
     float get_brim_width() const { return m_wipe_tower_brim_width_real; }
+	float get_wipe_tower_height() const { return m_wipe_tower_height; }
 
 
 
@@ -233,6 +245,8 @@ public:
         std::vector<float>  ramming_speed;
         float               nozzle_diameter;
         float               filament_area;
+		bool			    multitool_ramming;
+		float               multitool_ramming_time = 0.f;
     };
 
 private:
@@ -253,6 +267,8 @@ private:
     Vec2f  m_wipe_tower_pos; 			// Left front corner of the wipe tower in mm.
 	float  m_wipe_tower_width; 			// Width of the wipe tower.
 	float  m_wipe_tower_depth 	= 0.f; 	// Depth of the wipe tower
+	float  m_wipe_tower_height  = 0.f;
+	float  m_wipe_tower_cone_angle = 0.f;
     float  m_wipe_tower_brim_width      = 0.f; 	// Width of brim (mm) from config
     float  m_wipe_tower_brim_width_real = 0.f; 	// Width of brim (mm) after generation
 	float  m_wipe_tower_rotation_angle = 0.f; // Wipe tower rotation angle in degrees (with respect to x axis)
@@ -263,6 +279,8 @@ private:
 	size_t m_max_color_changes 	= 0; 	// Maximum number of color changes per layer.
     int    m_old_temperature    = -1;   // To keep track of what was the last temp that we set (so we don't issue the command when not neccessary)
     float  m_travel_speed       = 0.f;
+	float  m_infill_speed       = 0.f;
+	float  m_perimeter_speed    = 0.f;
     float  m_first_layer_speed  = 0.f;
     size_t m_first_layer_idx    = size_t(-1);
 
@@ -359,6 +377,10 @@ private:
 	std::vector<WipeTowerInfo> m_plan; 	// Stores information about all layers and toolchanges for the future wipe tower (filled by plan_toolchange(...))
 	std::vector<WipeTowerInfo>::iterator m_layer_info = m_plan.end();
 
+	// This sums height of all extruded layers, not counting the layers which
+	// will be later removed when the "no_sparse_layers" is used.
+	float m_current_height = 0.f;
+
     // Stores information about used filament length per extruder:
     std::vector<float> m_used_filament_length;
 
@@ -393,4 +415,4 @@ private:
 
 } // namespace Slic3r
 
-#endif // WipeTowerPrusaMM_hpp_ 
+#endif // slic3r_GCode_WipeTower_hpp_

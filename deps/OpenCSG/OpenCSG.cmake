@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2019 - 2021 Tomáš Mészáros @tamasmeszaros
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 
 prusaslicer_add_cmake_project(OpenCSG
     # GIT_REPOSITORY https://github.com/floriankirsch/OpenCSG.git

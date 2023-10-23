@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 David Kocík @kocikdav, Lukáš Hejl @hejllukas, Oleksandra Iushchenko @YuSanka, Vojtěch Král @vojtechkral, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_UpdateDialogs_hpp_
 #define slic3r_UpdateDialogs_hpp_
 
@@ -86,12 +90,14 @@ public:
 		Semver version;
 		std::string comment;
 		std::string changelog_url;
+		std::string new_printers;
 
-		Update(std::string vendor, Semver version, std::string comment, std::string changelog_url)
+		Update(std::string vendor, Semver version, std::string comment, std::string changelog_url, std::string new_printers)
 			: vendor(std::move(vendor))
 			, version(std::move(version))
 			, comment(std::move(comment))
 			, changelog_url(std::move(changelog_url))
+			, new_printers(std::move(new_printers))
 		{}
 	};
 
@@ -114,12 +120,14 @@ public:
 		Semver version;
 		std::string comment;
 		std::string changelog_url;
+		std::string new_printers;
 
-		Update(std::string vendor, Semver version, std::string comment, std::string changelog_url)
+		Update(std::string vendor, Semver version, std::string comment, std::string changelog_url, std::string new_printers)
 			: vendor(std::move(vendor))
 			, version(std::move(version))
 			, comment(std::move(comment))
 			, changelog_url(std::move(changelog_url))
+			, new_printers(std::move(new_printers))
 		{}
 	};
 

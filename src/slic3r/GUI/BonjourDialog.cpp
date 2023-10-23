@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, David Kocík @kocikdav, Vojtěch Král @vojtechkral, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "slic3r/Utils/Bonjour.hpp"   // On Windows, boost needs to be included before wxWidgets headers
 
 #include "BonjourDialog.hpp"
@@ -224,14 +228,14 @@ void BonjourDialog::on_timer(wxTimerEvent &)
 // explicitly (wxTimerEvent should not be created by user code).
 void BonjourDialog::on_timer_process()
 {
-    const auto search_str = _utf8(L("Searching for devices"));
+    const auto search_str = _L("Searching for devices");
 
     if (timer_state > 0) {
         const std::string dots(timer_state, '.');
-        label->SetLabel(GUI::from_u8((boost::format("%1% %2%") % search_str % dots).str()));
+        label->SetLabel(search_str + dots);
         timer_state = (timer_state) % 3 + 1;
     } else {
-        label->SetLabel(GUI::from_u8((boost::format("%1%: %2%") % search_str % (_utf8(L("Finished"))+".")).str()));
+        label->SetLabel(search_str + ": " + _L("Finished") + ".");
         timer->Stop();
     }
 }

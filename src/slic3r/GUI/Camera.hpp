@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2022 Enrico Turri @enricoturri1966, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_Camera_hpp_
 #define slic3r_Camera_hpp_
 

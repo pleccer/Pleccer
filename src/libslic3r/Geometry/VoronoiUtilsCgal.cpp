@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Lukáš Matěna @lukasmatena, Lukáš Hejl @hejllukas, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <CGAL/Exact_predicates_exact_constructions_kernel.h>
 #include <CGAL/Arr_segment_traits_2.h>
 #include <CGAL/Surface_sweep_2_algorithms.h>
@@ -128,7 +132,7 @@ inline static Linef make_linef(const VD::edge_type &edge)
     return {Vec2d(v0->x(), v0->y()), Vec2d(v1->x(), v1->y())};
 }
 
-inline static bool is_equal(const VD::vertex_type &first, const VD::vertex_type &second) { return first.x() == second.x() && first.y() == second.y(); }
+[[maybe_unused]] inline static bool is_equal(const VD::vertex_type &first, const VD::vertex_type &second) { return first.x() == second.x() && first.y() == second.y(); }
 
 // FIXME Lukas H.: Also includes parabolic segments.
 bool VoronoiUtilsCgal::is_voronoi_diagram_planar_intersection(const VD &voronoi_diagram)

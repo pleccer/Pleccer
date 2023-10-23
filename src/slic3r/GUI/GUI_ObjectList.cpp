@@ -1,3 +1,9 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Lukáš Matěna @lukasmatena, Lukáš Hejl @hejllukas, Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv, Pavel Mikuš @Godrak, David Kocík @kocikdav, Filip Sykala @Jony01, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2021 Mathias Rasmussen
+///|/ Copyright (c) 2020 rongith
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/TextConfiguration.hpp"
@@ -85,6 +91,17 @@ ObjectList::ObjectList(wxWindow* parent) :
 
     // describe control behavior 
     Bind(wxEVT_DATAVIEW_SELECTION_CHANGED, [this](wxDataViewEvent& event) {
+        // do not allow to change selection while the sla support gizmo is in editing mode
+        const GLGizmosManager& gizmos = wxGetApp().plater()->canvas3D()->get_gizmos_manager();
+        if (gizmos.get_current_type() == GLGizmosManager::EType::SlaSupports && gizmos.is_in_editing_mode(true)) {
+            wxDataViewItemArray sels;
+            GetSelections(sels);
+            if (sels.size() > 1 || event.GetItem() != m_last_selected_item) {
+                select_item(m_last_selected_item);
+                return;
+            }
+        }
+
         // detect the current mouse position here, to pass it to list_manipulation() method
         // if we detect it later, the user may have moved the mouse pointer while calculations are performed, and this would mess-up the HitTest() call performed into list_manipulation()
         // see: https://github.com/prusa3d/PrusaSlicer/issues/3802
@@ -420,7 +437,7 @@ MeshErrorsInfo ObjectList::get_mesh_errors_info(const int obj_idx, const int vol
     const ModelObject* object = (*m_objects)[obj_idx];
     if (vol_idx != -1 && vol_idx >= int(object->volumes.size())) {
         if (sidebar_info)
-            *sidebar_info = _L("Wrong volume index ");
+            *sidebar_info = _L("Invalid object part index") + " ";
         return { {}, {} }; // hide tooltip
     }
 
@@ -466,7 +483,7 @@ MeshErrorsInfo ObjectList::get_mesh_errors_info(const int obj_idx, const int vol
         *sidebar_info = stats.manifold() ? auto_repaired_info : (remaining_info + (stats.repaired() ? ("\n" + auto_repaired_info) : ""));
 
     if (is_windows10() && !sidebar_info)
-        tooltip += "\n" + _L("Right button click the icon to fix STL through Netfabb");
+        tooltip += "\n" + _L("Right button click the icon to fix STL by Windows repair algorithm");
 
     return { tooltip, get_warning_icon_name(stats) };
 }
@@ -747,6 +764,10 @@ void ObjectList::selection_changed()
                 wxGetApp().obj_layers()->update_scene_from_editor_selection();
             }
         }
+        else if (type & itVolume) {
+            if (printer_technology() == ptSLA)
+                wxGetApp().plater()->canvas3D()->set_sla_view_type(scene_selection().get_first_volume()->composite_id, GLCanvas3D::ESLAViewType::Original);
+        }
     }
 
     part_selection_changed();
@@ -911,8 +932,8 @@ void ObjectList::OnContextMenu(wxDataViewEvent& evt)
     // Do not show the context menu if the user pressed the right mouse button on the 3D scene and released it on the objects list
     GLCanvas3D* canvas = wxGetApp().plater()->canvas3D();
     bool evt_context_menu = (canvas != nullptr) ? !canvas->is_mouse_dragging() : true;
-    if (!evt_context_menu)
-        canvas->mouse_up_cleanup();
+//    if (!evt_context_menu)
+//        canvas->mouse_up_cleanup();
 
     list_manipulation(mouse_pos, evt_context_menu);
 }
@@ -940,7 +961,7 @@ void ObjectList::list_manipulation(const wxPoint& mouse_pos, bool evt_context_me
 
     if (!item) {
         if (col == nullptr) {
-            if (wxOSX && !multiple_selection())
+            if (wxOSX)
                 UnselectAll();
             else if (!evt_context_menu) 
                 // Case, when last item was deleted and under GTK was called wxEVT_DATAVIEW_SELECTION_CHANGED,
@@ -957,11 +978,17 @@ void ObjectList::list_manipulation(const wxPoint& mouse_pos, bool evt_context_me
     if (wxOSX && item && col) {
         wxDataViewItemArray sels;
         GetSelections(sels);
-        UnselectAll();
-        if (sels.Count() > 1)
-            SetSelections(sels);
-        else
+        bool is_selection_changed = true;
+        for (const auto& sel_item : sels)
+            if (sel_item == item) {
+                // item is one oth the already selected items, so resection is no needed
+                is_selection_changed = false;
+                break;
+            }
+        if (is_selection_changed) {
+            UnselectAll();
             Select(item);
+        }
     }
 
     if (col != nullptr) 
@@ -975,7 +1002,7 @@ void ObjectList::list_manipulation(const wxPoint& mouse_pos, bool evt_context_me
         {
             if (is_windows10() && m_objects_model->HasWarningIcon(item) &&
                 mouse_pos.x > 2 * wxGetApp().em_unit() && mouse_pos.x < 4 * wxGetApp().em_unit())
-                fix_through_netfabb();
+                fix_through_winsdk();
             else if (evt_context_menu)
                 show_context_menu(evt_context_menu); // show context menu for "Name" column too
         }
@@ -1013,7 +1040,11 @@ void ObjectList::show_context_menu(const bool evt_context_menu)
                 get_selected_item_indexes(obj_idx, vol_idx, item);
                 if (obj_idx < 0 || vol_idx < 0)
                     return;
-                menu = object(obj_idx)->volumes[vol_idx]->text_configuration.has_value() ? plater->text_part_menu() : plater->part_menu();
+                const ModelVolume *volume = object(obj_idx)->volumes[vol_idx];
+
+                menu = volume->is_text() ? plater->text_part_menu() :
+                       volume->is_svg() ? plater->svg_part_menu() :
+                    plater->part_menu();
             }
             else
                 menu = type & itInstance             ? plater->instance_menu() :
@@ -1177,6 +1208,13 @@ void ObjectList::key_event(wxKeyEvent& event)
 
 void ObjectList::OnBeginDrag(wxDataViewEvent &event)
 {
+    if (m_is_editing_started)
+        m_is_editing_started = false;
+#ifdef __WXGTK__
+    const auto renderer = dynamic_cast<BitmapTextRenderer*>(GetColumn(colName)->GetRenderer());
+    renderer->FinishEditing();
+#endif
+
     const wxDataViewItem item(event.GetItem());
 
     const bool mult_sel = multiple_selection();
@@ -1210,18 +1248,11 @@ void ObjectList::OnBeginDrag(wxDataViewEvent &event)
                                         m_objects_model->GetInstanceIdByItem(item), 
                             type);
 
-    /* Under MSW or OSX, DnD moves an item to the place of another selected item
-    * But under GTK, DnD moves an item between another two items.
-    * And as a result - call EVT_CHANGE_SELECTION to unselect all items.
-    * To prevent such behavior use m_prevent_list_events
-    **/
-    m_prevent_list_events = true;//it's needed for GTK
-
     /* Under GTK, DnD requires to the wxTextDataObject been initialized with some valid value,
      * so set some nonempty string
      */
     wxTextDataObject* obj = new wxTextDataObject;
-    obj->SetText("Some text");//it's needed for GTK
+    obj->SetText(mult_sel ? "SomeText" : m_objects_model->GetItemName(item));//it's needed for GTK
 
     event.SetDataObject(obj);
     event.SetDragFlags(wxDrag_DefaultMove); // allows both copy and move;
@@ -1285,10 +1316,8 @@ void ObjectList::OnDropPossible(wxDataViewEvent &event)
 {
     const wxDataViewItem& item = event.GetItem();
 
-    if (!can_drop(item)) {
+    if (!can_drop(item))
         event.Veto();
-        m_prevent_list_events = false;
-    }
 }
 
 void ObjectList::OnDrop(wxDataViewEvent &event)
@@ -1301,6 +1330,13 @@ void ObjectList::OnDrop(wxDataViewEvent &event)
         m_dragged_data.clear();
         return;
     }
+
+    /* Under MSW or OSX, DnD moves an item to the place of another selected item
+    * But under GTK, DnD moves an item between another two items.
+    * And as a result - call EVT_CHANGE_SELECTION to unselect all items.
+    * To prevent such behavior use m_prevent_list_events
+    **/
+    m_prevent_list_events = true;//it's needed for GTK
 
     if (m_dragged_data.type() == itInstance)
     {
@@ -1486,12 +1522,7 @@ void ObjectList::load_subobject(ModelVolumeType type, bool from_galery/* = false
     take_snapshot((type == ModelVolumeType::MODEL_PART) ? _L("Load Part") : _L("Load Modifier"));
 
     std::vector<ModelVolume*> volumes;
-    // ! ysFIXME - delete commented code after testing and rename "load_modifier" to something common
-    /*
-    if (type == ModelVolumeType::MODEL_PART)
-        load_part(*(*m_objects)[obj_idx], volumes, type, from_galery);
-    else*/
-        load_modifier(input_files, *(*m_objects)[obj_idx], volumes, type, from_galery);
+    load_from_files(input_files, *(*m_objects)[obj_idx], volumes, type, from_galery);
 
     if (volumes.empty())
         return;
@@ -1511,72 +1542,9 @@ void ObjectList::load_subobject(ModelVolumeType type, bool from_galery/* = false
 
     selection_changed();
 }
-/*
-void ObjectList::load_part(ModelObject& model_object, std::vector<ModelVolume*>& added_volumes, ModelVolumeType type, bool from_galery = false)
+
+void ObjectList::load_from_files(const wxArrayString& input_files, ModelObject& model_object, std::vector<ModelVolume*>& added_volumes, ModelVolumeType type, bool from_galery)
 {
-    if (type != ModelVolumeType::MODEL_PART)
-        return;
-
-    wxWindow* parent = wxGetApp().tab_panel()->GetPage(0);
-
-    wxArrayString input_files;
-
-    if (from_galery) {
-        GalleryDialog dlg(this);
-        if (dlg.ShowModal() == wxID_CLOSE)
-            return;
-        dlg.get_input_files(input_files);
-        if (input_files.IsEmpty())
-            return;
-    }
-    else
-        wxGetApp().import_model(parent, input_files);
-
-    wxProgressDialog dlg(_L("Loading") + dots, "", 100, wxGetApp().mainframe wxPD_AUTO_HIDE);
-    wxBusyCursor busy;
-
-    for (size_t i = 0; i < input_files.size(); ++i) {
-        std::string input_file = input_files.Item(i).ToUTF8().data();
-
-        dlg.Update(static_cast<int>(100.0f * static_cast<float>(i) / static_cast<float>(input_files.size())),
-            _L("Loading file") + ": " + from_path(boost::filesystem::path(input_file).filename()));
-        dlg.Fit();
-
-        Model model;
-        try {
-            model = Model::read_from_file(input_file);
-        }
-        catch (std::exception &e) {
-            auto msg = _L("Error!") + " " + input_file + " : " + e.what() + ".";
-            show_error(parent, msg);
-            exit(1);
-        }
-
-        for (auto object : model.objects) {
-            Vec3d delta = Vec3d::Zero();
-            if (model_object.origin_translation != Vec3d::Zero()) {
-                object->center_around_origin();
-                delta = model_object.origin_translation - object->origin_translation;
-            }
-            for (auto volume : object->volumes) {
-                volume->translate(delta);
-                auto new_volume = model_object.add_volume(*volume, type);
-                new_volume->name = boost::filesystem::path(input_file).filename().string();
-                // set a default extruder value, since user can't add it manually
-                new_volume->config.set_key_value("extruder", new ConfigOptionInt(0));
-
-                added_volumes.push_back(new_volume);
-            }
-        }
-    }
-}
-*/
-void ObjectList::load_modifier(const wxArrayString& input_files, ModelObject& model_object, std::vector<ModelVolume*>& added_volumes, ModelVolumeType type, bool from_galery)
-{
-    // ! ysFIXME - delete commented code after testing and rename "load_modifier" to something common
-    //if (type == ModelVolumeType::MODEL_PART)
-    //    return;
-
     wxWindow* parent = wxGetApp().tab_panel()->GetPage(0);
 
     wxProgressDialog dlg(_L("Loading") + dots, "", 100, wxGetApp().mainframe, wxPD_AUTO_HIDE);
@@ -1603,11 +1571,7 @@ void ObjectList::load_modifier(const wxArrayString& input_files, ModelObject& mo
     // First (any) GLVolume of the selected instance. They all share the same instance matrix.
     const GLVolume* v = selection.get_first_volume();
     const Geometry::Transformation inst_transform = v->get_instance_transformation();
-#if ENABLE_WORLD_COORDINATE
     const Transform3d inv_inst_transform = inst_transform.get_matrix_no_offset().inverse();
-#else
-    const Transform3d inv_inst_transform = inst_transform.get_matrix(true).inverse();
-#endif // ENABLE_WORLD_COORDINATE
     const Vec3d instance_offset = v->get_instance_offset();
 
     for (size_t i = 0; i < input_files.size(); ++i) {
@@ -1655,20 +1619,16 @@ void ObjectList::load_modifier(const wxArrayString& input_files, ModelObject& mo
             new_volume->source.mesh_offset = model.objects.front()->volumes.front()->source.mesh_offset;
 
         if (from_galery) {
-#if ENABLE_WORLD_COORDINATE
             // Transform the new modifier to be aligned with the print bed.
             new_volume->set_transformation(v->get_instance_transformation().get_matrix_no_offset().inverse());
             const BoundingBoxf3 mesh_bb = new_volume->mesh().bounding_box();
-#else
-            // Transform the new modifier to be aligned with the print bed.
-            const BoundingBoxf3 mesh_bb = new_volume->mesh().bounding_box();
-            new_volume->set_transformation(Geometry::Transformation::volume_to_bed_transformation(inst_transform, mesh_bb));
-#endif // ENABLE_WORLD_COORDINATE
             // Set the modifier position.
             // Translate the new modifier to be pickable: move to the left front corner of the instance's bounding box, lift to print bed.
             const Vec3d offset = Vec3d(instance_bb.max.x(), instance_bb.min.y(), instance_bb.min.z()) + 0.5 * mesh_bb.size() - instance_offset;
             new_volume->set_offset(inv_inst_transform * offset);
         }
+        else
+            new_volume->set_offset(new_volume->source.mesh_offset - model_object.volumes.front()->source.mesh_offset);
 
         added_volumes.push_back(new_volume);
     }
@@ -1732,15 +1692,9 @@ void ObjectList::load_generic_subobject(const std::string& type_name, const Mode
 
     // First (any) GLVolume of the selected instance. They all share the same instance matrix.
     const GLVolume* v = selection.get_first_volume();
-#if ENABLE_WORLD_COORDINATE
     // Transform the new modifier to be aligned with the print bed.
     new_volume->set_transformation(v->get_instance_transformation().get_matrix_no_offset().inverse());
     const BoundingBoxf3 mesh_bb = new_volume->mesh().bounding_box();
-#else
-    // Transform the new modifier to be aligned with the print bed.
-    const BoundingBoxf3 mesh_bb = new_volume->mesh().bounding_box();
-    new_volume->set_transformation(Geometry::Transformation::volume_to_bed_transformation(v->get_instance_transformation(), mesh_bb));
-#endif // ENABLE_WORLD_COORDINATE
     // Set the modifier position.
     Vec3d offset;
     if (type_name == "Slab") {
@@ -1752,11 +1706,7 @@ void ObjectList::load_generic_subobject(const std::string& type_name, const Mode
         // Translate the new modifier to be pickable: move to the left front corner of the instance's bounding box, lift to print bed.
         offset = Vec3d(instance_bb.max.x(), instance_bb.min.y(), instance_bb.min.z()) + 0.5 * mesh_bb.size() - v->get_instance_offset();
     }
-#if ENABLE_WORLD_COORDINATE
     new_volume->set_offset(v->get_instance_transformation().get_matrix_no_offset().inverse() * offset);
-#else
-    new_volume->set_offset(v->get_instance_transformation().get_matrix(true).inverse() * offset);
-#endif // ENABLE_WORLD_COORDINATE
 
     const wxString name = _L("Generic") + "-" + _(type_name);
     new_volume->name = into_u8(name);
@@ -1795,11 +1745,9 @@ void ObjectList::load_shape_object(const std::string& type_name)
     // Create mesh
     BoundingBoxf3 bb;
     TriangleMesh mesh = create_mesh(type_name, bb);
-    load_mesh_object(mesh, _u8L("Shape") + "-" + type_name);
-#if ENABLE_RELOAD_FROM_DISK_REWORK
+    load_mesh_object(mesh, _u8L("Shape") + "-" + into_u8(_(type_name)));
     if (!m_objects->empty())
         m_objects->back()->volumes.front()->source.is_from_builtin_objects = true;
-#endif // ENABLE_RELOAD_FROM_DISK_REWORK
     wxGetApp().mainframe->update_title();
 }
 
@@ -1835,21 +1783,16 @@ void ObjectList::load_shape_object_from_gallery(const wxArrayString& input_files
         wxGetApp().mainframe->update_title();
 }
 
-void ObjectList::load_mesh_object(
-    const TriangleMesh &     mesh,
-    const std::string &      name,
-    bool                     center,
-    const TextConfiguration *text_config /* = nullptr*/,
-    const Transform3d *      transformation /* = nullptr*/)
+void ObjectList::load_mesh_object(const TriangleMesh &mesh, const std::string &name, bool center)
 {   
+    PlaterAfterLoadAutoArrange plater_after_load_auto_arrange;
     // Add mesh to model as a new object
     Model& model = wxGetApp().plater()->model();
 
 #ifdef _DEBUG
     check_model_ids_validity(model);
 #endif /* _DEBUG */
-    
-    std::vector<size_t> object_idxs;
+
     ModelObject* new_object = model.add_object();
     new_object->name = name;
     new_object->add_instance(); // each object should have at list one instance
@@ -1857,31 +1800,24 @@ void ObjectList::load_mesh_object(
     ModelVolume* new_volume = new_object->add_volume(mesh);
     new_object->sort_volumes(wxGetApp().app_config->get_bool("order_volumes"));
     new_volume->name = name;
-    if (text_config)
-        new_volume->text_configuration = *text_config;
+
     // set a default extruder value, since user can't add it manually
     new_volume->config.set_key_value("extruder", new ConfigOptionInt(0));
     new_object->invalidate_bounding_box();
-    if (transformation) {
-        assert(!center);
-        Slic3r::Geometry::Transformation tr(*transformation);
-        new_object->instances[0]->set_transformation(tr);
-    } else {
-        auto bb = mesh.bounding_box();
-        new_object->translate(-bb.center());
-        new_object->instances[0]->set_offset(
-            center ? to_3d(wxGetApp().plater()->build_volume().bounding_volume2d().center(), -new_object->origin_translation.z()) :
-        bb.center());
-    }
+
+    auto bb = mesh.bounding_box();
+    new_object->translate(-bb.center());
+    new_object->instances[0]->set_offset(
+        center ? to_3d(wxGetApp().plater()->build_volume().bounding_volume2d().center(), -new_object->origin_translation.z()) :
+    bb.center());
 
     new_object->ensure_on_bed();
 
-    object_idxs.push_back(model.objects.size() - 1);
 #ifdef _DEBUG
     check_model_ids_validity(model);
 #endif /* _DEBUG */
-    
-    paste_objects_into_list(object_idxs);
+
+    paste_objects_into_list({model.objects.size() - 1});
 
 #ifdef _DEBUG
     check_model_ids_validity(model);
@@ -2060,13 +1996,12 @@ bool ObjectList::del_from_cut_object(bool is_cut_connector, bool is_model_part/*
                                is_model_part      ? _L("Delete solid part from object which is a part of cut") :
                                is_negative_volume ? _L("Delete negative volume from object which is a part of cut") : "";
                              
-    const wxString msg_end   = is_cut_connector   ? ("\n" + _L("To save cut correspondence you can delete all connectors from all related objects.")) : "";
+    const wxString msg_end   = is_cut_connector   ? ("\n" + _L("To save cut information you can delete all connectors from all related objects.")) : "";
 
     InfoDialog dialog(wxGetApp().plater(), title,
-                      _L("This action will break a cut correspondence.\n"
-                         "After that PrusaSlicer can't guarantee model consistency.\n"
-                         "\n"
-                         "To manipulate with solid parts or negative volumes you have to invalidate cut infornation first." + msg_end ),
+                      _L("This action will break a cut information.\n"
+                         "After that PrusaSlicer can't guarantee model consistency.") + "\n\n" +
+                      _L("To manipulate with solid parts or negative volumes you have to invalidate cut information first.") + msg_end,
                       false, buttons_style | wxCANCEL_DEFAULT | wxICON_WARNING);
 
     dialog.SetButtonLabel(wxID_YES, _L("Invalidate cut info"));
@@ -2175,6 +2110,10 @@ void ObjectList::split()
 
     take_snapshot(_(L("Split to Parts")));
 
+    // Before splitting volume we have to remove all custom supports, seams, and multimaterial painting.
+    wxGetApp().plater()->clear_before_change_mesh(obj_idx, _u8L("Custom supports, seams and multimaterial painting were "
+                                                                "removed after splitting the object."));
+
     volume->split(nozzle_dmrs_cnt);
 
     (*m_objects)[obj_idx]->input_file.clear();
@@ -2186,6 +2125,10 @@ void ObjectList::split()
     changed_object(obj_idx);
     // update printable state for new volumes on canvas3D
     wxGetApp().plater()->canvas3D()->update_instance_printable_state_for_object(obj_idx);
+
+    // After removing custom supports, seams, and multimaterial painting, we have to update info about the object to remove information about
+    // custom supports, seams, and multimaterial painting in the right panel.
+    wxGetApp().obj_list()->update_info_items(obj_idx);
 }
 
 void ObjectList::merge(bool to_multipart_object)
@@ -2294,38 +2237,18 @@ void ObjectList::merge(bool to_multipart_object)
         for (int obj_idx : obj_idxs) {
             ModelObject* object = (*m_objects)[obj_idx];
 
-            const Geometry::Transformation& transformation = object->instances[0]->get_transformation();
-            const Vec3d scale     = transformation.get_scaling_factor();
-            const Vec3d mirror    = transformation.get_mirror();
-            const Vec3d rotation  = transformation.get_rotation();
-
             if (object->id() == (*m_objects)[obj_idxs.front()]->id()) {
                 new_object->add_instance();
                 new_object->instances[0]->printable = false;
             }
             new_object->instances[0]->printable |= object->instances[0]->printable;
 
-            const Transform3d& volume_offset_correction = transformation.get_matrix();
+            const Transform3d new_inst_trafo = new_object->instances[0]->get_matrix().inverse() * object->instances[0]->get_matrix();
 
             // merge volumes
             for (const ModelVolume* volume : object->volumes) {
                 ModelVolume* new_volume = new_object->add_volume(*volume);
-
-                //set rotation
-                const Vec3d vol_rot = new_volume->get_rotation() + rotation;
-                new_volume->set_rotation(vol_rot);
-
-                // set scale
-                const Vec3d vol_sc_fact = new_volume->get_scaling_factor().cwiseProduct(scale);
-                new_volume->set_scaling_factor(vol_sc_fact);
-
-                // set mirror
-                const Vec3d vol_mirror = new_volume->get_mirror().cwiseProduct(mirror);
-                new_volume->set_mirror(vol_mirror);
-
-                // set offset
-                const Vec3d vol_offset = volume_offset_correction* new_volume->get_offset();
-                new_volume->set_offset(vol_offset);
+                new_volume->set_transformation(new_inst_trafo * new_volume->get_matrix());
             }
             new_object->sort_volumes(wxGetApp().app_config->get_bool("order_volumes"));
 
@@ -2681,12 +2604,14 @@ void ObjectList::part_selection_changed()
     bool disable_ss_manipulation {false};
     bool disable_ununiform_scale {false};
 
+    ECoordinatesType coordinates_type = wxGetApp().obj_manipul()->get_coordinates_type();
+
     const auto item = GetSelection();
 
     GLGizmosManager& gizmos_mgr = wxGetApp().plater()->canvas3D()->get_gizmos_manager();
 
     if (item && m_objects_model->GetItemType(item) == itInfo && m_objects_model->GetInfoItemType(item) == InfoItemType::CutConnectors) {
-        og_name = _L("Cut Connectors information");
+        og_name = _L("Connectors information");
 
         update_and_show_manipulations = true;
         enable_manipulation = false;
@@ -2697,6 +2622,7 @@ void ObjectList::part_selection_changed()
 
         if (selection.is_single_full_object()) {
             og_name = _L("Object manipulation");
+            coordinates_type = ECoordinatesType::World;
             update_and_show_manipulations = true;
 
             obj_idx             = selection.get_object_idx();
@@ -2706,6 +2632,7 @@ void ObjectList::part_selection_changed()
         }
         else {
             og_name = _L("Group manipulation");
+            coordinates_type = ECoordinatesType::World;
 
             // don't show manipulation panel for case of all Object's parts selection 
             update_and_show_manipulations = !selection.is_single_full_instance();
@@ -2761,6 +2688,8 @@ void ObjectList::part_selection_changed()
              || type == itInfo) {
                 og_name = _L("Object manipulation");
                 m_config = &object->config;
+                if (!scene_selection().is_single_full_instance() || coordinates_type > ECoordinatesType::Instance)
+                    coordinates_type = ECoordinatesType::World;
                 update_and_show_manipulations = true;
 
                 if (type == itInfo) {
@@ -2838,6 +2767,8 @@ void ObjectList::part_selection_changed()
 
     if (update_and_show_manipulations) {
         wxGetApp().obj_manipul()->get_og()->set_name(" " + og_name + " ");
+        if (wxGetApp().obj_manipul()->get_coordinates_type() != coordinates_type)
+            wxGetApp().obj_manipul()->set_coordinates_type(coordinates_type);
 
         if (item) {
             wxGetApp().obj_manipul()->update_item_name(m_objects_model->GetName(item));
@@ -2869,7 +2800,6 @@ void ObjectList::part_selection_changed()
     Sidebar& panel = wxGetApp().sidebar();
     panel.Freeze();
 
-#if ENABLE_WORLD_COORDINATE
     std::string opt_key;
     if (m_selected_object_id >= 0) {
         const ManipulationEditor* const editor = wxGetApp().obj_manipul()->get_focused_editor();
@@ -2877,9 +2807,6 @@ void ObjectList::part_selection_changed()
             opt_key = editor->get_full_opt_name();
     }
     wxGetApp().plater()->canvas3D()->handle_sidebar_focus_event(opt_key, !opt_key.empty());
-#else
-    wxGetApp().plater()->canvas3D()->handle_sidebar_focus_event("", false);
-#endif // ENABLE_WORLD_COORDINATE
     wxGetApp().plater()->canvas3D()->enable_moving(enable_manipulation); // ysFIXME
     wxGetApp().obj_manipul() ->UpdateAndShow(update_and_show_manipulations);
     wxGetApp().obj_settings()->UpdateAndShow(update_and_show_settings);
@@ -2933,6 +2860,16 @@ void ObjectList::update_info_items(size_t obj_idx, wxDataViewItemArray* selectio
     if (obj_idx >= m_objects->size())
         return;
 
+    wxDataViewItemArray sels;
+    if (!selections) {
+        GetSelections(sels);
+        for (wxDataViewItem item : sels)
+            if (item.IsOk() && m_objects_model->GetItemType(item) == itVolume) {
+                selections = &sels;
+                break;
+            }
+    }
+
     const ModelObject* model_object = (*m_objects)[obj_idx];
     wxDataViewItem item_obj = m_objects_model->GetItemById(obj_idx);
     assert(item_obj.IsOk());
@@ -2983,21 +2920,19 @@ void ObjectList::update_info_items(size_t obj_idx, wxDataViewItemArray* selectio
                 wxGetApp().notification_manager()->push_updated_item_info_notification(type); 
         }
         else if (shows && ! should_show) {
-            if (!selections)
+            if (!selections && IsSelected(item)) {
                 Unselect(item);
-            m_objects_model->Delete(item);
-            if (selections) {
-                if (selections->Index(item) != wxNOT_FOUND) {
-                    // If info item was deleted from the list, 
-                    // it's need to be deleted from selection array, if it was there
-                    selections->Remove(item);
-                    // Select item_obj, if info_item doesn't exist for item anymore, but was selected
-                    if (selections->Index(item_obj) == wxNOT_FOUND)
-                        selections->Add(item_obj);
-                }
-            }
-            else
                 Select(item_obj);
+            }
+            m_objects_model->Delete(item);
+            if (selections && selections->Index(item) != wxNOT_FOUND) {
+                // If info item was deleted from the list,
+                // it's need to be deleted from selection array, if it was there
+                selections->Remove(item);
+                // Select item_obj, if info_item doesn't exist for item anymore, but was selected
+                if (selections->Index(item_obj) == wxNOT_FOUND)
+                    selections->Add(item_obj);
+            }
         }
     }
 }
@@ -3055,6 +2990,7 @@ wxDataViewItemArray ObjectList::add_volumes_to_object_in_list(size_t obj_idx, st
                 volume_idx,
                 volume->type(),
                 volume->is_text(),
+                volume->is_svg(),
                 get_warning_icon_name(volume->mesh().stats()),
                 extruder2str(volume->config.has("extruder") ? volume->config.extruder() : 0));
             add_settings_item(vol_item, &volume->config.get());
@@ -3698,11 +3634,7 @@ void ObjectList::update_selections()
                 return;
             sels.Add(m_objects_model->GetItemById(selection.get_object_idx()));
         }
-#if ENABLE_WORLD_COORDINATE
         else if (selection.is_single_volume_or_modifier()) {
-#else
-        else if (selection.is_single_volume() || selection.is_any_modifier()) {
-#endif // ENABLE_WORLD_COORDINATE
             const auto gl_vol = selection.get_first_volume();
             if (m_objects_model->GetVolumeIdByItem(m_objects_model->GetParent(item)) == gl_vol->volume_idx())
                 return;
@@ -3996,8 +3928,10 @@ void ObjectList::update_selections_on_canvas()
         selection.add_volumes(mode, volume_idxs, single_selection);
     }
 
-    wxGetApp().plater()->canvas3D()->update_gizmos_on_off_state();
-    wxGetApp().plater()->canvas3D()->render();
+    GLCanvas3D* canvas = wxGetApp().plater()->canvas3D();
+    canvas->update_gizmos_on_off_state();
+    canvas->check_volumes_outside_state();
+    canvas->render();
 }
 
 void ObjectList::select_item(const wxDataViewItem& item)
@@ -4333,7 +4267,8 @@ void ObjectList::change_part_type()
         types.emplace_back(ModelVolumeType::PARAMETER_MODIFIER);
     }
 
-    if (!volume->text_configuration.has_value()) {
+    // is not embossed(SVG or Text)
+    if (!volume->emboss_shape.has_value()) {
         for (const wxString&        name    : { _L("Support Blocker"),          _L("Support Enforcer") })
             names.Add(name);
         for (const ModelVolumeType  type_id : { ModelVolumeType::SUPPORT_BLOCKER, ModelVolumeType::SUPPORT_ENFORCER })
@@ -4378,7 +4313,8 @@ void ObjectList::update_and_show_object_settings_item()
     const wxDataViewItem item = GetSelection();
     if (!item) return;
 
-    const wxDataViewItem& obj_item = m_objects_model->IsSettingsItem(item) ? m_objects_model->GetParent(item) : item;
+    // To get object item use GetTopParent(item). This function guarantees return of item with itObject type
+    const wxDataViewItem obj_item = m_objects_model->GetTopParent(item);
     select_item([this, obj_item](){ return add_settings_item(obj_item, &get_item_config(obj_item).get()); });
 }
 
@@ -4624,7 +4560,7 @@ void ObjectList::rename_item()
         update_name_in_model(item);
 }
 
-void ObjectList::fix_through_netfabb() 
+void ObjectList::fix_through_winsdk()
 {
     // Do not fix anything when a gizmo is open. There might be issues with updates
     // and what is worse, the snapshot time would refer to the internal stack.
@@ -4644,21 +4580,21 @@ void ObjectList::fix_through_netfabb()
     // clear selections from the non-broken models if any exists
     // and than fill names of models to repairing 
     if (vol_idxs.empty()) {
-#if !FIX_THROUGH_NETFABB_ALWAYS
+#if !FIX_THROUGH_WINSDK_ALWAYS
         for (int i = int(obj_idxs.size())-1; i >= 0; --i)
                 if (object(obj_idxs[i])->get_repaired_errors_count() == 0)
                     obj_idxs.erase(obj_idxs.begin()+i);
-#endif // FIX_THROUGH_NETFABB_ALWAYS
+#endif // FIX_THROUGH_WINSDK_ALWAYS
         for (int obj_idx : obj_idxs)
             model_names.push_back(object(obj_idx)->name);
     }
     else {
         ModelObject* obj = object(obj_idxs.front());
-#if !FIX_THROUGH_NETFABB_ALWAYS
+#if !FIX_THROUGH_WINSDK_ALWAYS
         for (int i = int(vol_idxs.size()) - 1; i >= 0; --i)
             if (obj->get_repaired_errors_count(vol_idxs[i]) == 0)
                 vol_idxs.erase(vol_idxs.begin() + i);
-#endif // FIX_THROUGH_NETFABB_ALWAYS
+#endif // FIX_THROUGH_WINSDK_ALWAYS
         for (int vol_idx : vol_idxs)
             model_names.push_back(obj->volumes[vol_idx]->name);
     }
@@ -4682,7 +4618,8 @@ void ObjectList::fix_through_netfabb()
             msg += "\n";
         }
 
-        plater->clear_before_change_mesh(obj_idx);
+        plater->clear_before_change_mesh(obj_idx, _u8L("Custom supports, seams and multimaterial painting were "
+                                                       "removed after repairing the mesh."));
         std::string res;
         if (!fix_model_by_win10_sdk_gui(*(object(obj_idx)), vol_idx, progress_dlg, msg, res))
             return false;
@@ -4701,19 +4638,19 @@ void ObjectList::fix_through_netfabb()
         return true;
     };
 
-    Plater::TakeSnapshot snapshot(plater, _L("Fix through NetFabb"));
+    Plater::TakeSnapshot snapshot(plater, _L("Fix by Windows repair algorithm"));
 
     // Open a progress dialog.
-    wxProgressDialog progress_dlg(_L("Fixing through NetFabb"), "", 100, find_toplevel_parent(plater),
+    wxProgressDialog progress_dlg(_L("Fixing by Windows repair algorithm"), "", 100, find_toplevel_parent(plater),
                                     wxPD_AUTO_HIDE | wxPD_APP_MODAL | wxPD_CAN_ABORT);
     int model_idx{ 0 };
     if (vol_idxs.empty()) {
         int vol_idx{ -1 };
         for (int obj_idx : obj_idxs) {
-#if !FIX_THROUGH_NETFABB_ALWAYS
+#if !FIX_THROUGH_WINSDK_ALWAYS
             if (object(obj_idx)->get_repaired_errors_count(vol_idx) == 0)
                 continue;
-#endif // FIX_THROUGH_NETFABB_ALWAYS
+#endif // FIX_THROUGH_WINSDK_ALWAYS
             if (!fix_and_update_progress(obj_idx, vol_idx, model_idx, progress_dlg, succes_models, failed_models))
                 break;
             model_idx++;
@@ -4746,7 +4683,7 @@ void ObjectList::fix_through_netfabb()
     }
     if (msg.IsEmpty())
         msg = _L("Repairing was canceled");
-    plater->get_notification_manager()->push_notification(NotificationType::NetfabbFinished, NotificationManager::NotificationLevel::PrintInfoShortNotificationLevel, boost::nowide::narrow(msg));
+    plater->get_notification_manager()->push_notification(NotificationType::RepairFinished, NotificationManager::NotificationLevel::PrintInfoShortNotificationLevel, boost::nowide::narrow(msg));
 }
 
 void ObjectList::simplify()
@@ -4831,6 +4768,9 @@ void ObjectList::OnEditingStarted(wxDataViewEvent &event)
 
 void ObjectList::OnEditingDone(wxDataViewEvent &event)
 {
+    if (!m_is_editing_started)
+        return;
+
     m_is_editing_started = false;
     if (event.GetColumn() != colName)
         return;
@@ -4963,6 +4903,11 @@ void ObjectList::update_printable_state(int obj_idx, int instance_idx)
 
 void ObjectList::toggle_printable_state()
 {
+    // do not allow to toggle the printable state while the sla support gizmo is in editing mode
+    const GLGizmosManager& gizmos = wxGetApp().plater()->canvas3D()->get_gizmos_manager();
+    if (gizmos.get_current_type() == GLGizmosManager::EType::SlaSupports && gizmos.is_in_editing_mode(true))
+        return;
+
     wxDataViewItemArray sels;
     GetSelections(sels);
     if (sels.IsEmpty())

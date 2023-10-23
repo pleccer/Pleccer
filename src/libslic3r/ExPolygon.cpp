@@ -1,3 +1,15 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Lukáš Hejl @hejllukas
+///|/ Copyright (c) Slic3r 2013 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2015 Maksim Derbasov @ntfshard
+///|/ Copyright (c) 2014 Petr Ledvina @ledvinap
+///|/
+///|/ ported from lib/Slic3r/ExPolygon.pm:
+///|/ Copyright (c) Prusa Research 2017 - 2022 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2011 - 2014 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2012 Mark Hindess
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "BoundingBox.hpp"
 #include "ExPolygon.hpp"
 #include "Exception.hpp"
@@ -9,6 +21,8 @@
 #include <algorithm>
 #include <cassert>
 #include <list>
+
+#include <ankerl/unordered_dense.h>
 
 namespace Slic3r {
 
@@ -189,14 +203,14 @@ Polygons ExPolygon::simplify_p(double tolerance) const
     {
         Polygon p = this->contour;
         p.points.push_back(p.points.front());
-        p.points = MultiPoint::_douglas_peucker(p.points, tolerance);
+        p.points = MultiPoint::douglas_peucker(p.points, tolerance);
         p.points.pop_back();
         pp.emplace_back(std::move(p));
     }
     // holes
     for (Polygon p : this->holes) {
         p.points.push_back(p.points.front());
-        p.points = MultiPoint::_douglas_peucker(p.points, tolerance);
+        p.points = MultiPoint::douglas_peucker(p.points, tolerance);
         p.points.pop_back();
         pp.emplace_back(std::move(p));
     }
@@ -402,7 +416,7 @@ bool has_duplicate_points(const ExPolygon &expoly)
     size_t cnt = expoly.contour.points.size();
     for (const Polygon &hole : expoly.holes)
         cnt += hole.points.size();
-    std::vector<Point> allpts;
+    Points allpts;
     allpts.reserve(cnt);
     allpts.insert(allpts.begin(), expoly.contour.points.begin(), expoly.contour.points.end());
     for (const Polygon &hole : expoly.holes)
@@ -423,14 +437,10 @@ bool has_duplicate_points(const ExPolygons &expolys)
 {
 #if 1
     // Check globally.
-    size_t cnt = 0;
-    for (const ExPolygon &expoly : expolys) {
-        cnt += expoly.contour.points.size();
-        for (const Polygon &hole : expoly.holes)
-            cnt += hole.points.size();
-    }
-    std::vector<Point> allpts;
-    allpts.reserve(cnt);
+#if 0
+    // Detect duplicates by sorting with quicksort. It is quite fast, but ankerl::unordered_dense is around 1/4 faster.
+    Points allpts;
+    allpts.reserve(count_points(expolys));
     for (const ExPolygon &expoly : expolys) {
         allpts.insert(allpts.begin(), expoly.contour.points.begin(), expoly.contour.points.end());
         for (const Polygon &hole : expoly.holes)
@@ -438,12 +448,50 @@ bool has_duplicate_points(const ExPolygons &expolys)
     }
     return has_duplicate_points(std::move(allpts));
 #else
+    // Detect duplicates by inserting into an ankerl::unordered_dense hash set, which is is around 1/4 faster than qsort.
+    struct PointHash {
+        uint64_t operator()(const Point &p) const noexcept {
+            uint64_t h;
+            static_assert(sizeof(h) == sizeof(p));
+            memcpy(&h, &p, sizeof(p));
+            return ankerl::unordered_dense::detail::wyhash::hash(h);
+        }
+    };
+    ankerl::unordered_dense::set<Point, PointHash> allpts;
+    allpts.reserve(count_points(expolys));
+    for (const ExPolygon &expoly : expolys)
+        for (size_t icontour = 0; icontour < expoly.num_contours(); ++ icontour)
+            for (const Point &pt : expoly.contour_or_hole(icontour).points)
+                if (! allpts.insert(pt).second)
+                    // Duplicate point was discovered.
+                    return true;
+    return false;
+#endif
+#else
     // Check per contour.
     for (const ExPolygon &expoly : expolys)
         if (has_duplicate_points(expoly))
             return true;
     return false;
 #endif
+}
+
+bool remove_same_neighbor(ExPolygons &expolygons)
+{
+    if (expolygons.empty())
+        return false;
+    bool remove_from_holes   = false;
+    bool remove_from_contour = false;
+    for (ExPolygon &expoly : expolygons) {
+        remove_from_contour |= remove_same_neighbor(expoly.contour);
+        remove_from_holes |= remove_same_neighbor(expoly.holes);
+    }
+    // Removing of expolygons without contour
+    if (remove_from_contour)
+        expolygons.erase(std::remove_if(expolygons.begin(), expolygons.end(),
+                                        [](const ExPolygon &p) { return p.contour.points.size() <= 2; }),
+                         expolygons.end());
+    return remove_from_holes || remove_from_contour;
 }
 
 bool remove_sticks(ExPolygon &poly)

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Enrico Turri @enricoturri1966, Vojtěch Bubník @bubnikv, Filip Sykala @Jony01, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GLModel_hpp_
 #define slic3r_GLModel_hpp_
 
@@ -14,7 +18,7 @@ namespace Slic3r {
 
 class TriangleMesh;
 class Polygon;
-using Polygons = std::vector<Polygon>;
+using Polygons = std::vector<Polygon, PointsAllocator<Polygon>>;
 class BuildVolume;
 
 namespace GUI {
@@ -227,6 +231,7 @@ namespace GUI {
         void init_from(const TriangleMesh& mesh);
 #endif // ENABLE_SMOOTH_NORMALS
         void init_from(const indexed_triangle_set& its);
+        void init_from(const Polygon& polygon, float z);
         void init_from(const Polygons& polygons, float z);
         bool init_from_file(const std::string& filename);
 

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Tomáš Mészáros @tamasmeszaros, David Kocík @kocikdav
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "ZipperArchiveImport.hpp"
 
 #include "libslic3r/miniz_extension.hpp"
@@ -18,7 +22,7 @@ boost::property_tree::ptree read_ini(const mz_zip_archive_file_stat &entry,
 {
     std::string buf(size_t(entry.m_uncomp_size), '\0');
 
-    if (!mz_zip_reader_extract_file_to_mem(&zip.arch, entry.m_filename,
+    if (!mz_zip_reader_extract_to_mem(&zip.arch, entry.m_file_index,
                                            buf.data(), buf.size(), 0))
         throw Slic3r::FileIOError(zip.get_errorstr());
 
@@ -35,7 +39,7 @@ EntryBuffer read_entry(const mz_zip_archive_file_stat &entry,
 {
     std::vector<uint8_t> buf(entry.m_uncomp_size);
 
-    if (!mz_zip_reader_extract_file_to_mem(&zip.arch, entry.m_filename,
+    if (!mz_zip_reader_extract_to_mem(&zip.arch, entry.m_file_index,
                                            buf.data(), buf.size(), 0))
         throw Slic3r::FileIOError(zip.get_errorstr());
 
@@ -83,8 +87,15 @@ ZipperArchive read_zipper_archive(const std::string &zipfname,
                             }))
                 continue;
 
-            if (name == CONFIG_FNAME)  { arch.config = read_ini(entry, zip); continue; }
-            if (name == PROFILE_FNAME) { arch.profile = read_ini(entry, zip); continue; }
+            if (name == CONFIG_FNAME)  {
+                arch.config = read_ini(entry, zip);
+                continue;
+            }
+
+            if (name == PROFILE_FNAME) {
+                arch.profile = read_ini(entry, zip);
+                continue;
+            }
 
             auto it = std::lower_bound(
                 arch.entries.begin(), arch.entries.end(),

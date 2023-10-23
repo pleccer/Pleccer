@@ -77,6 +77,7 @@
     #undef accept
     #undef wait
     #undef abort
+    #undef pause
 
 	// Breaks compilation with Eigen matrices embedded into Slic3r::Point.
 	#undef malloc

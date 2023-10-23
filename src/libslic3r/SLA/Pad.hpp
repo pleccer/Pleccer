@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef SLA_PAD_HPP
 #define SLA_PAD_HPP
 
@@ -6,6 +10,8 @@
 #include <cmath>
 #include <string>
 
+#include <libslic3r/Point.hpp>
+
 struct indexed_triangle_set;
 
 namespace Slic3r {
@@ -13,7 +19,7 @@ namespace Slic3r {
 class ExPolygon;
 class Polygon;
 using ExPolygons = std::vector<ExPolygon>;
-using Polygons = std::vector<Polygon>;
+using Polygons = std::vector<Polygon, PointsAllocator<Polygon>>;
 
 namespace sla {
 

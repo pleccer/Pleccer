@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2021 Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 // Polygon offsetting using Voronoi diagram prodiced by boost::polygon.
 
 #include "Geometry.hpp"

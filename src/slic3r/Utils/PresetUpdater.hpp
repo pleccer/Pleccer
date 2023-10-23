@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 David Kocík @kocikdav, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_PresetUpdate_hpp_
 #define slic3r_PresetUpdate_hpp_
 
@@ -26,7 +30,7 @@ public:
 	~PresetUpdater();
 
 	// If either version check or config updating is enabled, get the appropriate data in the background and cache it.
-	void sync(const PresetBundle *preset_bundle);
+	void sync(const PresetBundle *preset_bundle, wxEvtHandler* evt_handler);
 	void cancel_sync();
 
 	// If version check is enabled, check if chaced online slic3r version is newer, notify if so.
@@ -70,5 +74,6 @@ private:
 
 //wxDECLARE_EVENT(EVT_SLIC3R_VERSION_ONLINE, wxCommandEvent);
 //wxDECLARE_EVENT(EVT_SLIC3R_EXPERIMENTAL_VERSION_ONLINE, wxCommandEvent);
+wxDECLARE_EVENT(EVT_CONFIG_UPDATER_SYNC_DONE, wxCommandEvent);
 }
 #endif

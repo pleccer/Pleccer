@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Tomáš Mészáros @tamasmeszaros, Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2018 Colin Gilgenbach @hexane360
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "PostProcessor.hpp"
 
 #include "libslic3r/Utils.hpp"
@@ -16,7 +21,9 @@
 
 // The standard Windows includes.
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <Windows.h>
 #include <shellapi.h>
 
@@ -185,11 +192,6 @@ static int run_script(const std::string &script, const std::string &gcode, std::
 
 namespace Slic3r {
 
-//! macro used to mark string used at localization,
-//! return same string
-#define L(s) (s)
-#define _(s) Slic3r::I18N::translate(s)
-
 // Run post processing script / scripts if defined.
 // Returns true if a post-processing script was executed.
 // Returns false if no post-processing script was defined.
@@ -285,10 +287,10 @@ bool run_post_process_scripts(std::string &src_path, bool make_copy, const std::
                     throw Slic3r::RuntimeError(msg);
                 }
                 if (! boost::filesystem::exists(gcode_file)) {
-                    const std::string msg = (boost::format(_(L(
+                    const std::string msg = (boost::format(_u8L(
                         "Post-processing script %1% failed.\n\n"
                         "The post-processing script is expected to change the G-code file %2% in place, but the G-code file was deleted and likely saved under a new name.\n"
-                        "Please adjust the post-processing script to change the G-code in place and consult the manual on how to optionally rename the post-processed G-code file.\n")))
+                        "Please adjust the post-processing script to change the G-code in place and consult the manual on how to optionally rename the post-processed G-code file.\n"))
                         % script % path).str();
                     BOOST_LOG_TRIVIAL(error) << msg;
                     throw Slic3r::RuntimeError(msg);

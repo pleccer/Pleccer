@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 David Kocík @kocikdav, Oleksandra Iushchenko @YuSanka, Lukáš Hejl @hejllukas
+///|/ Copyright (c) 2022 KARBOWSKI Piotr
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifdef __linux__
 #include "DesktopIntegrationDialog.hpp"
 #include "GUI_App.hpp"
@@ -254,7 +259,7 @@ void DesktopIntegrationDialog::perform_desktop_integration()
     // If $XDG_DATA_HOME is either not set or empty, a default equal to $HOME/.local/share should be used. 
     // $XDG_DATA_DIRS defines the preference-ordered set of base directories to search for data files in addition to the $XDG_DATA_HOME base directory.
     // The directories in $XDG_DATA_DIRS should be seperated with a colon ':'.
-    // If $XDG_DATA_DIRS is either not set or empty, a value equal to ././/local/share/:././/share/ should be used. 
+    // If $XDG_DATA_DIRS is either not set or empty, a value equal to ././/local/share/:././/share/ should be used.
     std::vector<std::string>target_candidates;
     resolve_path_from_var("XDG_DATA_HOME", target_candidates);
     resolve_path_from_var("XDG_DATA_DIRS", target_candidates);
@@ -495,7 +500,7 @@ void DesktopIntegrationDialog::perform_downloader_desktop_integration()
     // If $XDG_DATA_HOME is either not set or empty, a default equal to $HOME/.local/share should be used. 
     // $XDG_DATA_DIRS defines the preference-ordered set of base directories to search for data files in addition to the $XDG_DATA_HOME base directory.
     // The directories in $XDG_DATA_DIRS should be seperated with a colon ':'.
-    // If $XDG_DATA_DIRS is either not set or empty, a value equal to ././/local/share/:././/share/ should be used. 
+    // If $XDG_DATA_DIRS is either not set or empty, a value equal to ././/local/share/:././/share/ should be used.
     std::vector<std::string>target_candidates;
     resolve_path_from_var("XDG_DATA_HOME", target_candidates);
     resolve_path_from_var("XDG_DATA_DIRS", target_candidates);

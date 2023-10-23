@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Lukáš Matěna @lukasmatena, Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Tomáš Mészáros @tamasmeszaros, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "MeshUtils.hpp"
 
 #include "libslic3r/Tesselate.hpp"
@@ -94,7 +98,7 @@ void MeshClipper::set_transformation(const Geometry::Transformation& trafo)
     }
 }
 
-void MeshClipper::render_cut(const ColorRGBA& color)
+void MeshClipper::render_cut(const ColorRGBA& color, const std::vector<size_t>* ignore_idxs)
 {
     if (! m_result)
         recalculate_triangles();
@@ -108,7 +112,10 @@ void MeshClipper::render_cut(const ColorRGBA& color)
         const Camera& camera = wxGetApp().plater()->get_camera();
         shader->set_uniform("view_model_matrix", camera.get_view_matrix());
         shader->set_uniform("projection_matrix", camera.get_projection_matrix());
-        for (CutIsland& isl : m_result->cut_islands) {
+        for (size_t i=0; i<m_result->cut_islands.size(); ++i) {
+            if (ignore_idxs && std::binary_search(ignore_idxs->begin(), ignore_idxs->end(), i))
+                continue;
+            CutIsland& isl = m_result->cut_islands[i];
             isl.model.set_color(isl.disabled ? ColorRGBA(0.5f, 0.5f, 0.5f, 1.f) : color);
             isl.model.render();
         }
@@ -120,7 +127,7 @@ void MeshClipper::render_cut(const ColorRGBA& color)
 }
 
 
-void MeshClipper::render_contour(const ColorRGBA& color)
+void MeshClipper::render_contour(const ColorRGBA& color, const std::vector<size_t>* ignore_idxs)
 {
     if (! m_result)
         recalculate_triangles();
@@ -135,7 +142,10 @@ void MeshClipper::render_contour(const ColorRGBA& color)
         const Camera& camera = wxGetApp().plater()->get_camera();
         shader->set_uniform("view_model_matrix", camera.get_view_matrix());
         shader->set_uniform("projection_matrix", camera.get_projection_matrix());
-        for (CutIsland& isl : m_result->cut_islands) {
+        for (size_t i=0; i<m_result->cut_islands.size(); ++i) {
+            if (ignore_idxs && std::binary_search(ignore_idxs->begin(), ignore_idxs->end(), i))
+                continue;
+            CutIsland& isl = m_result->cut_islands[i];
             isl.model_expanded.set_color(isl.disabled ? ColorRGBA(1.f, 0.f, 0.f, 1.f) : color);
             isl.model_expanded.render();
         }
@@ -146,18 +156,19 @@ void MeshClipper::render_contour(const ColorRGBA& color)
         curr_shader->start_using();
 }
 
-bool MeshClipper::is_projection_inside_cut(const Vec3d& point_in) const
+int MeshClipper::is_projection_inside_cut(const Vec3d& point_in) const
 {
     if (!m_result || m_result->cut_islands.empty())
-        return false;
+        return -1;
     Vec3d point = m_result->trafo.inverse() * point_in;
     Point pt_2d = Point::new_scale(Vec2d(point.x(), point.y()));
 
-    for (const CutIsland& isl : m_result->cut_islands) {
+    for (int i=0; i<int(m_result->cut_islands.size()); ++i) {
+        const CutIsland& isl = m_result->cut_islands[i];
         if (isl.expoly_bb.contains(pt_2d) && isl.expoly.contains(pt_2d))
-            return !isl.disabled;
+            return i; // TODO: handle intersecting contours
     }
-    return false;
+    return -1;
 }
 
 bool MeshClipper::has_valid_contour() const
@@ -165,19 +176,47 @@ bool MeshClipper::has_valid_contour() const
     return m_result && std::any_of(m_result->cut_islands.begin(), m_result->cut_islands.end(), [](const CutIsland& isl) { return !isl.expoly.empty(); });
 }
 
-
-void MeshClipper::pass_mouse_click(const Vec3d& point_in)
+std::vector<Vec3d> MeshClipper::point_per_contour() const
 {
-    if (! m_result || m_result->cut_islands.empty())
-        return;
-    Vec3d point = m_result->trafo.inverse() * point_in;
-    Point pt_2d = Point::new_scale(Vec2d(point.x(), point.y()));
+    assert(m_result);
+    std::vector<Vec3d> out;
 
-    for (CutIsland& isl : m_result->cut_islands) {
-        if (isl.expoly_bb.contains(pt_2d) && isl.expoly.contains(pt_2d))
-            isl.disabled = ! isl.disabled;
+    for (const CutIsland& isl : m_result->cut_islands) {
+        assert(isl.expoly.contour.size() > 2);
+        // Now return a point lying inside the contour but not in a hole.
+        // We do this by taking a point lying close to the edge, repeating
+        // this several times for different edges and distances from them.
+        // (We prefer point not extremely close to the border.
+        bool done = false;
+        Vec2d p;
+        size_t i = 1;
+        while (i < isl.expoly.contour.size()) {
+            const Vec2d& a = unscale(isl.expoly.contour.points[i-1]);
+            const Vec2d& b = unscale(isl.expoly.contour.points[i]);
+            Vec2d n = (b-a).normalized();
+            std::swap(n.x(), n.y());
+            n.x() = -1 * n.x();
+            double f = 10.;
+            while (f > 0.05) {
+                p = (0.5*(b+a)) + f * n;
+                if (isl.expoly.contains(Point::new_scale(p))) {
+                    done = true;
+                    break;
+                }
+                f = f/10.;
+            }
+            if (done)
+                break;
+            i += std::max(size_t(2), isl.expoly.contour.size() / 5);
+        }
+        // If the above failed, just return the centroid, regardless of whether
+        // it is inside the contour or in a hole (we must return something).
+        Vec2d c = done ? p : unscale(isl.expoly.contour.centroid());
+        out.emplace_back(m_result->trafo * Vec3d(c.x(), c.y(), 0.));
     }
+    return out;
 }
+
 
 void MeshClipper::recalculate_triangles()
 {
@@ -357,8 +396,18 @@ void MeshClipper::recalculate_triangles()
         }
 
         isl.expoly = std::move(exp);
-        isl.expoly_bb = get_extents(exp);
+        isl.expoly_bb = get_extents(isl.expoly);
+
+        Point centroid_scaled = isl.expoly.contour.centroid();
+        Vec3d centroid_world = m_result->trafo * Vec3d(unscale(centroid_scaled).x(), unscale(centroid_scaled).y(), 0.);
+        isl.hash = isl.expoly.contour.size() + size_t(std::abs(100.*centroid_world.x())) + size_t(std::abs(100.*centroid_world.y())) + size_t(std::abs(100.*centroid_world.z()));
     }
+
+    // Now sort the islands so they are in defined order. This is a hack needed by cut gizmo, which sometimes
+    // flips the normal of the cut, in which case the contours stay the same but their order may change.
+    std::sort(m_result->cut_islands.begin(), m_result->cut_islands.end(), [](const CutIsland& a, const CutIsland& b) {
+        return a.hash < b.hash;
+    });
 }
 
 
@@ -420,14 +469,17 @@ bool MeshRaycaster::unproject_on_mesh(const Vec2d& mouse_pos, const Transform3d&
 
 
 
-bool MeshRaycaster::is_valid_intersection(Vec3d point, Vec3d direction, const Transform3d& trafo) const 
+bool MeshRaycaster::intersects_line(Vec3d point, Vec3d direction, const Transform3d& trafo) const
 {
-    point = trafo.inverse() * point;
+    Transform3d trafo_inv = trafo.inverse();
+    Vec3d to = trafo_inv * (point + direction);
+    point = trafo_inv * point;
+    direction = (to-point).normalized();
 
     std::vector<AABBMesh::hit_result> hits      = m_emesh.query_ray_hits(point, direction);
     std::vector<AABBMesh::hit_result> neg_hits  = m_emesh.query_ray_hits(point, -direction);
 
-    return !hits.empty() && !neg_hits.empty();
+    return !hits.empty() || !neg_hits.empty();
 }
 
 
@@ -436,11 +488,7 @@ std::vector<unsigned> MeshRaycaster::get_unobscured_idxs(const Geometry::Transfo
 {
     std::vector<unsigned> out;
 
-#if ENABLE_WORLD_COORDINATE
     const Transform3d instance_matrix_no_translation_no_scaling = trafo.get_rotation_matrix();
-#else
-    const Transform3d& instance_matrix_no_translation_no_scaling = trafo.get_matrix(true,false,true);
-#endif // ENABLE_WORLD_COORDINATE
     Vec3d direction_to_camera = -camera.get_dir_forward();
     Vec3d direction_to_camera_mesh = (instance_matrix_no_translation_no_scaling.inverse() * direction_to_camera).normalized().eval();
     direction_to_camera_mesh = direction_to_camera_mesh.cwiseProduct(trafo.get_scaling_factor());

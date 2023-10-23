@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 // Hackish wrapper around the ClipperLib library to compile the Clipper library using Slic3r's own Point type.
 
 #ifndef slic3r_clipper_hpp

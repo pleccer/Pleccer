@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Tomáš Mészáros @tamasmeszaros, David Kocík @kocikdav
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef FILLBEDJOB_HPP
 #define FILLBEDJOB_HPP
 
@@ -16,8 +20,9 @@ class FillBedJob : public Job
 
     ArrangePolygons m_selected;
     ArrangePolygons m_unselected;
+    coord_t m_min_bed_inset = 0.;
 
-    Points m_bedpts;
+    arrangement::ArrangeBed m_bed;
 
     int m_status_range = 0;
     Plater *m_plater;

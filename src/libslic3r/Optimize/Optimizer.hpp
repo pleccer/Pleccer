@@ -1,5 +1,9 @@
-#ifndef OPTIMIZER_HPP
-#define OPTIMIZER_HPP
+///|/ Copyright (c) Prusa Research 2020 - 2023 Tomáš Mészáros @tamasmeszaros, Lukáš Hejl @hejllukas
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
+#ifndef PRUSASLICER_OPTIMIZER_HPP
+#define PRUSASLICER_OPTIMIZER_HPP
 
 #include <utility>
 #include <tuple>
@@ -9,6 +13,11 @@
 #include <limits>
 #include <cassert>
 #include <optional>
+
+#ifdef WIN32
+#undef min
+#undef max
+#endif
 
 namespace Slic3r { namespace opt {
 

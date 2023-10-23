@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef MINAREABOUNDINGBOX_HPP
 #define MINAREABOUNDINGBOX_HPP
 
@@ -50,6 +54,8 @@ public:
     const Point& axis()  const { return m_axis; }
 };
 
-}
+double fit_into_box_rotation(const Polygon &shape, const BoundingBox &box);
+
+} // namespace Slic3r
 
 #endif // MINAREABOUNDINGBOX_HPP

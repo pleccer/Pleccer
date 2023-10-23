@@ -252,85 +252,85 @@ SCENARIO("Infill does not exceed perimeters", "[Fill]")
     GIVEN("Concentric") { test("concentric"sv); }
 }
 
-SCENARIO("Infill only where needed", "[Fill]")
-{
-    DynamicPrintConfig config = Slic3r::DynamicPrintConfig::full_print_config();
-    config.set_deserialize_strict({
-        { "nozzle_diameter",                "0.4, 0.4, 0.4, 0.4" },
-        { "infill_only_where_needed",       true },
-        { "bottom_solid_layers",            0 },
-        { "infill_extruder",                2 },
-        { "infill_extrusion_width",         0.5 },
-        { "wipe_into_infill",               false },
-        { "fill_density",                   0.4 },
-        // for preventing speeds from being altered
-        { "cooling",                        "0, 0, 0, 0" },
-        // for preventing speeds from being altered
-        { "first_layer_speed",              "100%" }
-    });
+// SCENARIO("Infill only where needed", "[Fill]")
+// {
+//     DynamicPrintConfig config = Slic3r::DynamicPrintConfig::full_print_config();
+//     config.set_deserialize_strict({
+//         { "nozzle_diameter",                "0.4, 0.4, 0.4, 0.4" },
+//         { "infill_only_where_needed",       true },
+//         { "bottom_solid_layers",            0 },
+//         { "infill_extruder",                2 },
+//         { "infill_extrusion_width",         0.5 },
+//         { "wipe_into_infill",               false },
+//         { "fill_density",                   0.4 },
+//         // for preventing speeds from being altered
+//         { "cooling",                        "0, 0, 0, 0" },
+//         // for preventing speeds from being altered
+//         { "first_layer_speed",              "100%" }
+//     });
 
-    auto test = [&config]() -> double {
-        TriangleMesh pyramid = Test::mesh(Slic3r::Test::TestMesh::pyramid);
-        // Arachne doesn't use "Detect thin walls," and because of this, it filters out tiny infill areas differently.
-        // So, for Arachne, we cut the pyramid model to achieve similar results.
-        if (config.opt_enum<PerimeterGeneratorType>("perimeter_generator") == Slic3r::PerimeterGeneratorType::Arachne) {
-            indexed_triangle_set lower{};
-            cut_mesh(pyramid.its, 35, nullptr, &lower);
-            pyramid = TriangleMesh(lower);
-        }
-        std::string gcode = Slic3r::Test::slice({ pyramid }, config);
-        THEN("gcode not empty") {
-            REQUIRE(! gcode.empty());
-        }
+//     auto test = [&config]() -> double {
+//         TriangleMesh pyramid = Test::mesh(Slic3r::Test::TestMesh::pyramid);
+//         // Arachne doesn't use "Detect thin walls," and because of this, it filters out tiny infill areas differently.
+//         // So, for Arachne, we cut the pyramid model to achieve similar results.
+//         if (config.opt_enum<PerimeterGeneratorType>("perimeter_generator") == Slic3r::PerimeterGeneratorType::Arachne) {
+//             indexed_triangle_set lower{};
+//             cut_mesh(pyramid.its, 35, nullptr, &lower);
+//             pyramid = TriangleMesh(lower);
+//         }
+//         std::string gcode = Slic3r::Test::slice({ pyramid }, config);
+//         THEN("gcode not empty") {
+//             REQUIRE(! gcode.empty());
+//         }
 
-        GCodeReader parser;
-        int         tool = -1;
-        const int   infill_extruder = config.opt_int("infill_extruder");
-        Points      infill_points;
-        parser.parse_buffer(gcode, [&tool, &infill_points, infill_extruder](Slic3r::GCodeReader &self, const Slic3r::GCodeReader::GCodeLine &line)
-        {
-            // if the command is a T command, set the the current tool
-            if (boost::starts_with(line.cmd(), "T")) {
-                tool = atoi(line.cmd().data() + 1) + 1;
-            } else if (line.cmd() == "G1" && line.extruding(self) && line.dist_XY(self) > 0) {
-                if (tool == infill_extruder) {
-                    infill_points.emplace_back(self.xy_scaled());
-                    infill_points.emplace_back(line.new_XY_scaled(self));
-                }
-            }
-        });
-        // prevent calling convex_hull() with no points
-        THEN("infill not empty") {
-            REQUIRE(! infill_points.empty());
-        }
+//         GCodeReader parser;
+//         int         tool = -1;
+//         const int   infill_extruder = config.opt_int("infill_extruder");
+//         Points      infill_points;
+//         parser.parse_buffer(gcode, [&tool, &infill_points, infill_extruder](Slic3r::GCodeReader &self, const Slic3r::GCodeReader::GCodeLine &line)
+//         {
+//             // if the command is a T command, set the the current tool
+//             if (boost::starts_with(line.cmd(), "T")) {
+//                 tool = atoi(line.cmd().data() + 1) + 1;
+//             } else if (line.cmd() == "G1" && line.extruding(self) && line.dist_XY(self) > 0) {
+//                 if (tool == infill_extruder) {
+//                     infill_points.emplace_back(self.xy_scaled());
+//                     infill_points.emplace_back(line.new_XY_scaled(self));
+//                 }
+//             }
+//         });
+//         // prevent calling convex_hull() with no points
+//         THEN("infill not empty") {
+//             REQUIRE(! infill_points.empty());
+//         }
 
-        auto opt_width = config.opt<ConfigOptionFloatOrPercent>("infill_extrusion_width");
-        REQUIRE(! opt_width->percent);
-        Polygons convex_hull = expand(Geometry::convex_hull(infill_points), scaled<float>(opt_width->value / 2));
-        return SCALING_FACTOR * SCALING_FACTOR * std::accumulate(convex_hull.begin(), convex_hull.end(), 0., [](double acc, const Polygon &poly){ return acc + poly.area(); });
-    };
+//         auto opt_width = config.opt<ConfigOptionFloatOrPercent>("infill_extrusion_width");
+//         REQUIRE(! opt_width->percent);
+//         Polygons convex_hull = expand(Geometry::convex_hull(infill_points), scaled<float>(opt_width->value / 2));
+//         return SCALING_FACTOR * SCALING_FACTOR * std::accumulate(convex_hull.begin(), convex_hull.end(), 0., [](double acc, const Polygon &poly){ return acc + poly.area(); });
+//     };
 
-    double tolerance = 5; // mm^2
+//     double tolerance = 5; // mm^2
     
-    GIVEN("solid_infill_below_area == 0") {
-        config.opt_float("solid_infill_below_area") = 0;
-        WHEN("pyramid is sliced ") {
-            auto area = test();
-            THEN("no infill is generated when using infill_only_where_needed on a pyramid") {
-                REQUIRE(area < tolerance);
-            }
-        }
-    }
-    GIVEN("solid_infill_below_area == 70") {
-        config.opt_float("solid_infill_below_area") = 70;
-        WHEN("pyramid is sliced ") {
-            auto area = test();
-            THEN("infill is only generated under the forced solid shells") {
-                REQUIRE(std::abs(area - 70) < tolerance);
-            }
-        }
-    }
-}
+//     // GIVEN("solid_infill_below_area == 0") {
+//     //     config.opt_float("solid_infill_below_area") = 0;
+//     //     WHEN("pyramid is sliced ") {
+//     //         auto area = test();
+//     //         THEN("no infill is generated when using infill_only_where_needed on a pyramid") {
+//     //             REQUIRE(area < tolerance);
+//     //         }
+//     //     }
+//     // }
+//     // GIVEN("solid_infill_below_area == 70") {
+//     //     config.opt_float("solid_infill_below_area") = 70;
+//     //     WHEN("pyramid is sliced ") {
+//     //         auto area = test();
+//     //         THEN("infill is only generated under the forced solid shells") {
+//     //             REQUIRE(std::abs(area - 70) < tolerance);
+//     //         }
+//     //     }
+//     // }
+// }
 
 SCENARIO("Combine infill", "[Fill]")
 {

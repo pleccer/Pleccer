@@ -1,3 +1,8 @@
+///|/ Copyright (c) 2022 Denis Itskovich @denis-itskovich
+///|/ Copyright (c) Prusa Research 2019 - 2021 Enrico Turri @enricoturri1966, Lukáš Matěna @lukasmatena, Roman Beránek @zavorka, Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/PresetBundle.hpp"
 #include "Mouse3DController.hpp"

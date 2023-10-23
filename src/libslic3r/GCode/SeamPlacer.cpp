@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Pavel Mikuš @Godrak
+///|/ Copyright (c) SuperSlicer 2023 Remi Durand @supermerill
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "SeamPlacer.hpp"
 
 #include "Color.hpp"
@@ -437,7 +442,7 @@ Polygons extract_perimeter_polygons(const Layer *layer, std::vector<const LayerR
 
     if (polygons.empty()) { // If there are no perimeter polygons for whatever reason (disabled perimeters .. ) insert dummy point
         // it is easier than checking everywhere if the layer is not emtpy, no seam will be placed to this layer anyway
-        polygons.emplace_back(std::vector { Point { 0, 0 } });
+        polygons.emplace_back(Points{ { 0, 0 } });
         corresponding_regions_out.push_back(nullptr);
     }
 
@@ -1484,7 +1489,7 @@ void SeamPlacer::init(const Print &print, std::function<void(void)> throw_if_can
     }
 }
 
-void SeamPlacer::place_seam(const Layer *layer, ExtrusionLoop &loop, bool external_first,
+Point SeamPlacer::place_seam(const Layer *layer, const ExtrusionLoop &loop, bool external_first,
         const Point &last_pos) const {
     using namespace SeamPlacerImpl;
     const PrintObject *po = layer->object();
@@ -1587,7 +1592,7 @@ void SeamPlacer::place_seam(const Layer *layer, ExtrusionLoop &loop, bool extern
         //lastly, for internal perimeters, do the staggering if requested
         if (po->config().staggered_inner_seams && loop.length() > 0.0) {
             //fix depth, it is sometimes strongly underestimated
-            depth = std::max(loop.paths[projected_point.path_idx].width, depth);
+            depth = std::max(loop.paths[projected_point.path_idx].width(), depth);
 
             while (depth > 0.0f) {
                 auto next_point = get_next_loop_point(projected_point);
@@ -1605,14 +1610,7 @@ void SeamPlacer::place_seam(const Layer *layer, ExtrusionLoop &loop, bool extern
         }
     }
 
-    // Because the G-code export has 1um resolution, don't generate segments shorter than 1.5 microns,
-    // thus empty path segments will not be produced by G-code export.
-    if (!loop.split_at_vertex(seam_point, scaled<double>(0.0015))) {
-        // The point is not in the original loop.
-        // Insert it.
-        loop.split_at(seam_point, true);
-    }
-
+    return seam_point;
 }
 
 } // namespace Slic3r

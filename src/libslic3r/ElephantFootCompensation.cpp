@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "clipper/clipper_z.hpp"
 
 #include "libslic3r.h"
@@ -597,7 +601,8 @@ ExPolygon elephant_foot_compensation(const ExPolygon &input_expoly, double min_c
 		}
 
 		ExPolygons out_vec = variable_offset_inner_ex(resampled, deltas, 2.);
-		if (out_vec.size() == 1)
+		if (out_vec.size() == 1 && out_vec.front().holes.size() == resampled.holes.size())
+			// No contour of the original compensated expolygon was lost.
 			out = std::move(out_vec.front());
 		else {
 			// Something went wrong, don't compensate.
@@ -610,6 +615,7 @@ ExPolygon elephant_foot_compensation(const ExPolygon &input_expoly, double min_c
 					  { { out_vec },		{ "gray", "black", "blue", coord_t(scale_(0.02)), 0.5f, "black", coord_t(scale_(0.05)) } } });
 			}
 #endif /* TESTS_EXPORT_SVGS */
+			// It may be that the source expolygons contained non-manifold vertices, for which the variable offset may not produce the same number of contours or holes.
 			assert(out_vec.size() == 1);
 		}
 	}

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 David Kocík @kocikdav, Lukáš Matěna @lukasmatena, Pavel Mikuš @Godrak, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros, Lukáš Hejl @hejllukas, Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GUI_NotificationManager_hpp_
 #define slic3r_GUI_NotificationManager_hpp_
 
@@ -60,6 +64,7 @@ enum class NotificationType
 	// Notification on the start of PrusaSlicer, when updates of system profiles are detected.
 	// Contains a hyperlink to execute installation of the new system profiles.
 	PresetUpdateAvailable,
+	PresetUpdateAvailableNewPrinter,
 //	LoadingFailed,
 	// Errors emmited by Print::validate
 	// difference from Slicing error is that they disappear not grey out at update_background_process
@@ -115,8 +120,8 @@ enum class NotificationType
 	SimplifySuggestion,
 	// Change of text will change font to similar one on.
 	UnknownFont,
-	// information about netfabb is finished repairing model (blocking proccess)
-	NetfabbFinished,
+	// information that repairing model finished (blocking proccess)
+	RepairFinished,
 	// Short meesage to fill space between start and finish of export
 	ExportOngoing,
 	// Progressbar of download from prusaslicer:// url
@@ -172,7 +177,7 @@ public:
 	// Creates Slicing Error notification with a custom text and no fade out.
 	void push_slicing_error_notification(const std::string& text);
 	// Creates Slicing Warning notification with a custom text and no fade out.
-	void push_slicing_warning_notification(const std::string& text, bool gray, ObjectID oid, int warning_step);
+	void push_slicing_warning_notification(const std::string& text, bool gray, ObjectID oid, int warning_step, const std::string& hypertext = "", std::function<bool(wxEvtHandler*)> callback = std::function<bool(wxEvtHandler*)>());
 	// marks slicing errors as gray
 	void set_all_slicing_errors_gray(bool g);
 	// marks slicing warings as gray
@@ -898,6 +903,13 @@ private:
 	const std::vector<NotificationData> basic_notifications = {
 	{NotificationType::Mouse3dDisconnected, NotificationLevel::RegularNotificationLevel, 10,  _u8L("3D Mouse disconnected.") },
 	{NotificationType::PresetUpdateAvailable, NotificationLevel::ImportantNotificationLevel, 20,  _u8L("Configuration update is available."),  _u8L("See more."),
+		[](wxEvtHandler* evnthndlr) {
+			if (evnthndlr != nullptr)
+				wxPostEvent(evnthndlr, PresetUpdateAvailableClickedEvent(EVT_PRESET_UPDATE_AVAILABLE_CLICKED));
+			return true;
+		}
+	},
+	{NotificationType::PresetUpdateAvailableNewPrinter, NotificationLevel::ImportantNotificationLevel, 20,  _u8L("Configuration update is available. Update contains new printer releases."),  _u8L("See more."),
 		[](wxEvtHandler* evnthndlr) {
 			if (evnthndlr != nullptr)
 				wxPostEvent(evnthndlr, PresetUpdateAvailableClickedEvent(EVT_PRESET_UPDATE_AVAILABLE_CLICKED));

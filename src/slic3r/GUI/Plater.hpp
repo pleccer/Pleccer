@@ -1,3 +1,19 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Tomáš Mészáros @tamasmeszaros, Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, David Kocík @kocikdav, Lukáš Hejl @hejllukas, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Pavel Mikuš @Godrak, Filip Sykala @Jony01, Vojtěch Král @vojtechkral
+///|/
+///|/ ported from lib/Slic3r/GUI/Plater.pm:
+///|/ Copyright (c) Prusa Research 2016 - 2019 Vojtěch Bubník @bubnikv, Vojtěch Král @vojtechkral, Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Tomáš Mészáros @tamasmeszaros
+///|/ Copyright (c) 2018 Martin Loidl @LoidlM
+///|/ Copyright (c) 2017 Matthias Gazzari @qtux
+///|/ Copyright (c) Slic3r 2012 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2017 Joseph Lenox @lordofhyphens
+///|/ Copyright (c) 2015 Daren Schwenke
+///|/ Copyright (c) 2014 Mark Hindess
+///|/ Copyright (c) 2012 Mike Sheldrake @mesheldrake
+///|/ Copyright (c) 2012 Henrik Brix Andersen @henrikbrixandersen
+///|/ Copyright (c) 2012 Sam Wong
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_Plater_hpp_
 #define slic3r_Plater_hpp_
 
@@ -27,8 +43,6 @@ namespace Slic3r {
 class BuildVolume;
 class Model;
 class ModelObject;
-enum class ModelObjectCutAttribute : int;
-using ModelObjectCutAttributes = enum_bitmask<ModelObjectCutAttribute>;
 class ModelInstance;
 class Print;
 class SLAPrint;
@@ -166,11 +180,14 @@ public:
     void load_project();
     void load_project(const wxString& filename);
     void add_model(bool imperial_units = false);
+    void import_zip_archive();
     void import_sl1_archive();
     void extract_config_from_project();
     void load_gcode();
     void load_gcode(const wxString& filename);
     void reload_gcode_from_disk();
+    void convert_gcode_to_ascii();
+    void convert_gcode_to_binary();
     void refresh_print();
 
     std::vector<size_t> load_files(const std::vector<boost::filesystem::path>& input_files, bool load_model = true, bool load_config = true, bool imperial_units = false);
@@ -184,7 +201,12 @@ public:
 
     const wxString& get_last_loaded_gcode() const { return m_last_loaded_gcode; }
 
-    void update();
+    enum class UpdateParams {
+        FORCE_FULL_SCREEN_REFRESH = 1,
+        FORCE_BACKGROUND_PROCESSING_UPDATE = 2,
+        POSTPONE_VALIDATION_ERROR_MESSAGE = 4,
+    };
+    void update(unsigned int flags = 0);
 
     // Get the worker handling the UI jobs (arrange, fill bed, etc...)
     // Here is an example of starting up an ad-hoc job:
@@ -249,7 +271,7 @@ public:
     void reset_with_confirm();
     bool delete_object_from_model(size_t obj_idx);
     void remove_selected();
-    void increase_instances(size_t num = 1, int obj_idx = -1);
+    void increase_instances(size_t num = 1, int obj_idx = -1, int inst_idx = -1);
     void decrease_instances(size_t num = 1, int obj_idx = -1);
     void set_number_of_copies();
     void fill_bed_with_instances();
@@ -258,7 +280,7 @@ public:
     void convert_unit(ConversionType conv_type);
     void toggle_layers_editing(bool enable);
 
-    void cut(size_t obj_idx, size_t instance_idx, const Transform3d& cut_matrix, ModelObjectCutAttributes attributes);
+    void apply_cut_object_to_model(size_t init_obj_idx, const ModelObjectPtrs& cut_objects);
 
     void export_gcode(bool prefer_removable);
     void export_stl_obj(bool extended = false, bool selection_only = false);
@@ -273,7 +295,7 @@ public:
     void reslice_FFF_until_step(PrintObjectStep step, const ModelObject &object, bool postpone_error_messages = false);
     void reslice_SLA_until_step(SLAPrintObjectStep step, const ModelObject &object, bool postpone_error_messages = false);
 
-    void clear_before_change_mesh(int obj_idx);
+    void clear_before_change_mesh(int obj_idx, const std::string &notification_msg);
     void changed_mesh(int obj_idx);
 
     void changed_object(int obj_idx);
@@ -307,6 +329,7 @@ public:
     bool update_filament_colors_in_full_config();
     void on_config_change(const DynamicPrintConfig &config);
     void force_filament_colors_update();
+    void force_filament_cb_update();
     void force_print_bed_update();
     // On activating the parent window.
     void on_activate();
@@ -330,6 +353,7 @@ public:
     GLCanvas3D* get_current_canvas3D();
     
     void arrange();
+    void arrange(Worker &w, bool selected);
 
     void set_current_canvas_as_dirty();
     void unbind_canvas_event_handlers();
@@ -351,7 +375,7 @@ public:
     bool can_increase_instances() const;
     bool can_decrease_instances(int obj_idx = -1) const;
     bool can_set_instance_to_object() const;
-    bool can_fix_through_netfabb() const;
+    bool can_fix_through_winsdk() const;
     bool can_simplify() const;
     bool can_split_to_objects() const;
     bool can_split_to_volumes() const;
@@ -390,6 +414,8 @@ public:
 
     const GLToolbar& get_collapse_toolbar() const;
     GLToolbar& get_collapse_toolbar();
+
+    void set_preview_layers_slider_values_range(int bottom, int top);
 
     void update_preview_moves_slider();
     void enable_preview_moves_slider(bool enable);
@@ -467,6 +493,7 @@ public:
     wxMenu* object_menu();
     wxMenu* part_menu();
     wxMenu* text_part_menu();
+    wxMenu* svg_part_menu();
     wxMenu* sla_object_menu();
     wxMenu* default_menu();
     wxMenu* instance_menu();
@@ -504,6 +531,16 @@ public:
     ~SuppressBackgroundProcessingUpdate();
 private:
     bool m_was_scheduled;
+};
+
+class PlaterAfterLoadAutoArrange
+{
+    bool m_enabled{ false };
+
+public:
+    PlaterAfterLoadAutoArrange();
+    ~PlaterAfterLoadAutoArrange();
+    void disable() { m_enabled = false; }
 };
 
 } // namespace GUI

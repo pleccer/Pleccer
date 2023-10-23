@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966, Lukáš Hejl @hejllukas, David Kocík @kocikdav, Tomáš Mészáros @tamasmeszaros, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2020 Gianni Ceccarelli @dakkar
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "ObjectDataViewModel.hpp"
 #include "wxExtensions.hpp"
 #include "BitmapCache.hpp"
@@ -65,7 +70,7 @@ const std::map<InfoItemType, InfoItemAtributes> INFO_ITEMS{
 //           info_item Type                         info_item Name              info_item BitmapName
             { InfoItemType::CustomSupports,      {L("Paint-on supports"),       "fdm_supports_" },     },
             { InfoItemType::CustomSeam,          {L("Paint-on seam"),           "seam_" },             },
-            { InfoItemType::CutConnectors,       {L("Cut connectors"),          "cut_connectors" },    },
+            { InfoItemType::CutConnectors,       {L("Connectors"),              "cut_connectors" },    },
             { InfoItemType::MmuSegmentation,     {L("Multimaterial painting"),  "mmu_segmentation_"},  },
             { InfoItemType::Sinking,             {L("Sinking"),                 "sinking"},            },
             { InfoItemType::VariableLayerHeight, {L("Variable layer height"),   "layers"},             },
@@ -75,6 +80,7 @@ ObjectDataViewModelNode::ObjectDataViewModelNode(ObjectDataViewModelNode*   pare
                                                  const wxString&            sub_obj_name,
                                                  Slic3r::ModelVolumeType    type,
                                                  const bool                 is_text_volume,
+                                                 const bool                 is_svg_volume,
                                                  const wxString&            extruder,
                                                  const int                  idx/* = -1*/) :
     m_parent(parent),
@@ -82,6 +88,7 @@ ObjectDataViewModelNode::ObjectDataViewModelNode(ObjectDataViewModelNode*   pare
     m_type(itVolume),
     m_volume_type(type),
     m_is_text_volume(is_text_volume),
+    m_is_svg_volume(is_svg_volume),
     m_idx(idx),
     m_extruder(type == Slic3r::ModelVolumeType::MODEL_PART || type == Slic3r::ModelVolumeType::PARAMETER_MODIFIER ? extruder : "")
 {
@@ -333,6 +340,7 @@ ObjectDataViewModel::ObjectDataViewModel()
 {
     m_volume_bmps = MenuFactory::get_volume_bitmaps();
     m_text_volume_bmps = MenuFactory::get_text_volume_bitmaps();
+    m_svg_volume_bmps = MenuFactory::get_svg_volume_bitmaps();
     m_warning_bmp = *get_bmp_bundle(WarningIcon);
     m_warning_manifold_bmp = *get_bmp_bundle(WarningManifoldIcon);
     m_lock_bmp    = *get_bmp_bundle(LockIcon);
@@ -355,7 +363,10 @@ void ObjectDataViewModel::UpdateBitmapForNode(ObjectDataViewModelNode* node)
     bool is_volume_node = vol_type >= 0;
 
     if (!node->has_warning_icon() && !node->has_lock()) {
-        node->SetBitmap(is_volume_node ? (node->is_text_volume() ? *m_text_volume_bmps.at(vol_type) : *m_volume_bmps.at(vol_type)) : m_empty_bmp);
+        node->SetBitmap(is_volume_node ? (
+            node->is_text_volume() ? *m_text_volume_bmps.at(vol_type) :
+            node->is_svg_volume() ? *m_svg_volume_bmps.at(vol_type) :
+            *m_volume_bmps.at(vol_type)) : m_empty_bmp);
         return;
     }
 
@@ -376,7 +387,10 @@ void ObjectDataViewModel::UpdateBitmapForNode(ObjectDataViewModelNode* node)
         if (node->has_lock())
             bmps.emplace_back(&m_lock_bmp);
         if (is_volume_node)
-            bmps.emplace_back(node->is_text_volume() ? m_text_volume_bmps[vol_type] : m_volume_bmps[vol_type]);
+            bmps.emplace_back(
+                node->is_text_volume() ? m_text_volume_bmps[vol_type] :
+                node->is_svg_volume() ? m_svg_volume_bmps[vol_type] :
+                m_volume_bmps[vol_type]);
         bmp = m_bitmap_cache->insert_bndl(scaled_bitmap_name, bmps);
     }
 
@@ -413,6 +427,7 @@ wxDataViewItem ObjectDataViewModel::AddVolumeChild( const wxDataViewItem &parent
                                                     const int volume_idx,
                                                     const Slic3r::ModelVolumeType volume_type,
                                                     const bool is_text_volume,
+                                                    const bool is_svg_volume,
                                                     const std::string& warning_icon_name,
                                                     const wxString& extruder)
 {
@@ -424,7 +439,7 @@ wxDataViewItem ObjectDataViewModel::AddVolumeChild( const wxDataViewItem &parent
     if (insert_position < 0)
         insert_position = get_root_idx(root, itInstanceRoot);
 
-    const auto node = new ObjectDataViewModelNode(root, name, volume_type, is_text_volume, extruder, volume_idx);
+    const auto node = new ObjectDataViewModelNode(root, name, volume_type, is_text_volume, is_svg_volume, extruder, volume_idx);
     UpdateBitmapForNode(node, warning_icon_name, root->has_lock() && volume_type < ModelVolumeType::PARAMETER_MODIFIER);
     insert_position < 0 ? root->Append(node) : root->Insert(node, insert_position);
 
@@ -1040,6 +1055,16 @@ int  ObjectDataViewModel::GetItemIdByLayerRange(const int obj_idx, const t_layer
         return -1;
 
     return GetLayerIdByItem(item);
+}
+
+wxString ObjectDataViewModel::GetItemName(const wxDataViewItem& item) const
+{
+    if (!item.IsOk())
+        return wxEmptyString;
+    ObjectDataViewModelNode* node = static_cast<ObjectDataViewModelNode*>(item.GetID());
+    if (!node)
+        return wxEmptyString;
+    return node->GetName();
 }
 
 int ObjectDataViewModel::GetIdByItem(const wxDataViewItem& item) const
@@ -1673,6 +1698,7 @@ void ObjectDataViewModel::UpdateBitmaps()
 {
     m_volume_bmps = MenuFactory::get_volume_bitmaps();
     m_text_volume_bmps = MenuFactory::get_text_volume_bitmaps();
+    m_svg_volume_bmps = MenuFactory::get_svg_volume_bitmaps();
     m_warning_bmp = *get_bmp_bundle(WarningIcon);
     m_warning_manifold_bmp = *get_bmp_bundle(WarningManifoldIcon);
     m_lock_bmp    = *get_bmp_bundle(LockIcon);

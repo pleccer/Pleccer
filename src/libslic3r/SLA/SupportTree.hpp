@@ -1,9 +1,14 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef SLA_SUPPORTTREE_HPP
 #define SLA_SUPPORTTREE_HPP
 
 #include <vector>
 #include <memory>
 
+#include <libslic3r/Polygon.hpp>
 #include <libslic3r/ExPolygon.hpp>
 #include <libslic3r/AABBMesh.hpp>
 
@@ -13,9 +18,6 @@
 #include <libslic3r/SLA/SupportTreeStrategies.hpp>
 
 namespace Slic3r {
-
-using Polygons = std::vector<Polygon>;
-using ExPolygons = std::vector<ExPolygon>;
 
 namespace sla {
 

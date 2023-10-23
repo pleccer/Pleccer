@@ -1,3 +1,8 @@
+///|/ Copyright (c) 2023 Robert Schiele @schiele
+///|/ Copyright (c) Prusa Research 2023 Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_ExtrusionRole_hpp_
 #define slic3r_ExtrusionRole_hpp_
 
@@ -5,6 +10,7 @@
 
 #include <string>
 #include <string_view>
+#include <cstdint>
 
 namespace Slic3r {
 
@@ -81,6 +87,7 @@ struct ExtrusionRole : public ExtrusionRoleModifiers
     bool is_external_perimeter() const { return this->is_perimeter() && this->is_external(); }
     bool is_infill() const { return this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::Infill); }
     bool is_solid_infill() const { return this->is_infill() && this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::Solid); }
+    bool is_sparse_infill() const { return this->is_infill() && ! this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::Solid); }
     bool is_external() const { return this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::External); }
     bool is_bridge() const { return this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::Bridge); }
 
@@ -88,6 +95,9 @@ struct ExtrusionRole : public ExtrusionRoleModifiers
     bool is_support_base() const { return this->is_support() && ! this->is_external(); }
     bool is_support_interface() const { return this->is_support() && this->is_external(); }
     bool is_mixed() const { return this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::Mixed); }
+
+    // Brim is currently marked as skirt.
+    bool is_skirt() const { return this->ExtrusionRoleModifiers::has(ExtrusionRoleModifier::Skirt); }
 };
 
 // Special flags describing loop

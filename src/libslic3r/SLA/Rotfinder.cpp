@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Enrico Turri @enricoturri1966, Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <limits>
 
 #include <libslic3r/SLA/Rotfinder.hpp>
@@ -300,18 +304,8 @@ struct RotfinderBoilerplate {
         TriangleMesh mesh = mo.raw_mesh();
 
         ModelInstance *mi = mo.instances[0];
-#if ENABLE_WORLD_COORDINATE
         const Geometry::Transformation trafo = mi->get_transformation();
         Transform3d trafo_instance = trafo.get_scaling_factor_matrix() * trafo.get_mirror_matrix();
-#else
-        auto rotation = Vec3d::Zero();
-        auto offset = Vec3d::Zero();
-        Transform3d trafo_instance =
-            Geometry::assemble_transform(offset, rotation,
-                                         mi->get_scaling_factor(),
-                                         mi->get_mirror());
-#endif // ENABLE_WORLD_COORDINATE
-
         mesh.transform(trafo_instance);
 
         return mesh;

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "libslic3r/libslic3r.h"
 #include "GLGizmoSlaBase.hpp"
 #include "slic3r/GUI/Camera.hpp"
@@ -20,8 +24,15 @@ GLGizmoSlaBase::GLGizmoSlaBase(GLCanvas3D& parent, const std::string& icon_filen
 void GLGizmoSlaBase::reslice_until_step(SLAPrintObjectStep step, bool postpone_error_messages)
 {
     wxGetApp().CallAfter([this, step, postpone_error_messages]() {
-        wxGetApp().plater()->reslice_SLA_until_step(step, *m_c->selection_info()->model_object(), postpone_error_messages);
-        });
+        if (m_c->selection_info())
+            wxGetApp().plater()->reslice_SLA_until_step(step, *m_c->selection_info()->model_object(), postpone_error_messages);
+        else {
+            const Selection& selection = m_parent.get_selection();
+            const int object_idx = selection.get_object_idx();
+            if (object_idx >= 0 && !selection.is_wipe_tower())
+                wxGetApp().plater()->reslice_SLA_until_step(step, *wxGetApp().plater()->model().objects[object_idx], postpone_error_messages);
+        }
+    });
 }
 
 CommonGizmosDataID GLGizmoSlaBase::on_get_requirements() const
@@ -30,7 +41,8 @@ CommonGizmosDataID GLGizmoSlaBase::on_get_requirements() const
                 int(CommonGizmosDataID::SelectionInfo)
               | int(CommonGizmosDataID::InstancesHider)
               | int(CommonGizmosDataID::Raycaster)
-              | int(CommonGizmosDataID::ObjectClipper));
+              | int(CommonGizmosDataID::ObjectClipper)
+              | int(CommonGizmosDataID::SupportsClipper));
 }
 
 void GLGizmoSlaBase::update_volumes()
@@ -50,27 +62,54 @@ void GLGizmoSlaBase::update_volumes()
 
     TriangleMesh backend_mesh;
     std::shared_ptr<const indexed_triangle_set> preview_mesh_ptr = po->get_mesh_to_print();
-    if (preview_mesh_ptr)
-        backend_mesh = TriangleMesh{*preview_mesh_ptr};
+    if (preview_mesh_ptr != nullptr)
+        backend_mesh = TriangleMesh(*preview_mesh_ptr);
 
     if (!backend_mesh.empty()) {
-        // The backend has generated a valid mesh. Use it
-        backend_mesh.transform(po->trafo().inverse());
-        m_volumes.volumes.emplace_back(new GLVolume());
-        GLVolume* new_volume = m_volumes.volumes.back();
-        new_volume->model.init_from(backend_mesh);
-        new_volume->set_instance_transformation(po->model_object()->instances[m_parent.get_selection().get_instance_idx()]->get_transformation());
-        new_volume->set_sla_shift_z(po->get_current_elevation());
-        new_volume->mesh_raycaster = std::make_unique<GUI::MeshRaycaster>(backend_mesh);
         auto last_comp_step = static_cast<int>(po->last_completed_step());
         if (last_comp_step == slaposCount)
             last_comp_step = -1;
 
-        m_input_enabled = last_comp_step >= m_min_sla_print_object_step;
-        if (m_input_enabled)
-            new_volume->selected = true; // to set the proper color
-        else
-            new_volume->set_color(DISABLED_COLOR);
+        m_input_enabled = last_comp_step >= m_min_sla_print_object_step || po->model_object()->sla_points_status == sla::PointsStatus::UserModified;
+
+        const int object_idx   = m_parent.get_selection().get_object_idx();
+        const int instance_idx = m_parent.get_selection().get_instance_idx();
+        const Geometry::Transformation& inst_trafo = po->model_object()->instances[instance_idx]->get_transformation();
+        const double current_elevation = po->get_current_elevation();
+
+        auto add_volume = [this, object_idx, instance_idx, &inst_trafo, current_elevation](const TriangleMesh& mesh, int volume_id, bool add_mesh_raycaster = false) {
+            GLVolume* volume = m_volumes.volumes.emplace_back(new GLVolume());
+            volume->model.init_from(mesh);
+            volume->set_instance_transformation(inst_trafo);
+            volume->set_sla_shift_z(current_elevation);
+            if (add_mesh_raycaster)
+                volume->mesh_raycaster = std::make_unique<GUI::MeshRaycaster>(mesh);
+            if (m_input_enabled)
+                volume->selected = true; // to set the proper color
+            else
+                volume->set_color(DISABLED_COLOR);
+            volume->composite_id = GLVolume::CompositeID(object_idx, volume_id, instance_idx);
+        };
+
+        const Transform3d po_trafo_inverse = po->trafo().inverse();
+
+        // main mesh
+        backend_mesh.transform(po_trafo_inverse);
+        add_volume(backend_mesh, 0, true);
+
+        // supports mesh
+        TriangleMesh supports_mesh = po->support_mesh();
+        if (!supports_mesh.empty()) {
+            supports_mesh.transform(po_trafo_inverse);
+            add_volume(supports_mesh, -int(slaposSupportTree));
+        }
+
+        // pad mesh
+        TriangleMesh pad_mesh = po->pad_mesh();
+        if (!pad_mesh.empty()) {
+            pad_mesh.transform(po_trafo_inverse);
+            add_volume(pad_mesh, -int(slaposPad));
+        }
     }
 
     if (m_volumes.volumes.empty()) {
@@ -107,19 +146,27 @@ void GLGizmoSlaBase::render_volumes()
     const Camera& camera = wxGetApp().plater()->get_camera();
 
     ClippingPlane clipping_plane = (m_c->object_clipper()->get_position() == 0.0) ? ClippingPlane::ClipsNothing() : *m_c->object_clipper()->get_clipping_plane();
-    clipping_plane.set_normal(-clipping_plane.get_normal());
+    if (m_c->object_clipper()->get_position() != 0.0)
+        clipping_plane.set_normal(-clipping_plane.get_normal());
+    else
+        // on Linux the clipping plane does not work when using DBL_MAX
+        clipping_plane.set_offset(FLT_MAX);
     m_volumes.set_clipping_plane(clipping_plane.get_data());
 
-    m_volumes.render(GLVolumeCollection::ERenderType::Opaque, false, camera.get_view_matrix(), camera.get_projection_matrix());
-    shader->stop_using();
+    for (GLVolume* v : m_volumes.volumes) {
+        v->is_active = m_show_sla_supports || (!v->is_sla_pad() && !v->is_sla_support());
+    }
 
+    m_volumes.render(GLVolumeCollection::ERenderType::Opaque, true, camera.get_view_matrix(), camera.get_projection_matrix());
+    shader->stop_using();
 }
 
 void GLGizmoSlaBase::register_volume_raycasters_for_picking()
 {
     for (size_t i = 0; i < m_volumes.volumes.size(); ++i) {
         const GLVolume* v = m_volumes.volumes[i];
-        m_volume_raycasters.emplace_back(m_parent.add_raycaster_for_picking(SceneRaycaster::EType::Gizmo, VOLUME_RAYCASTERS_BASE_ID + (int)i, *v->mesh_raycaster, v->world_matrix()));
+        if (!v->is_sla_pad() && !v->is_sla_support())
+            m_volume_raycasters.emplace_back(m_parent.add_raycaster_for_picking(SceneRaycaster::EType::Gizmo, VOLUME_RAYCASTERS_BASE_ID + (int)i, *v->mesh_raycaster, v->world_matrix()));
     }
 }
 

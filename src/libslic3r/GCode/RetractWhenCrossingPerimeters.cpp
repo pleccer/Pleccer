@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "../ClipperUtils.hpp"
 #include "../Layer.hpp"
 #include "../Polyline.hpp"
@@ -19,20 +23,7 @@ bool RetractWhenCrossingPerimeters::travel_inside_internal_regions(const Layer &
                 if (surface.is_internal())
                     m_internal_islands.emplace_back(&surface.expolygon);
         // Calculate bounding boxes of internal slices.
-        class BBoxWrapper {
-        public:
-            BBoxWrapper(const size_t idx, const BoundingBox &bbox) : 
-                m_idx(idx),
-                // Inflate the bounding box a bit to account for numerical issues.
-                m_bbox(bbox.min - Point(SCALED_EPSILON, SCALED_EPSILON), bbox.max + Point(SCALED_EPSILON, SCALED_EPSILON)) {}
-            size_t                       idx() const { return m_idx; }
-            const AABBTree::BoundingBox& bbox() const { return m_bbox; }
-            Point                        centroid() const { return ((m_bbox.min().cast<int64_t>() + m_bbox.max().cast<int64_t>()) / 2).cast<int32_t>(); }
-        private:
-            size_t                m_idx;
-            AABBTree::BoundingBox m_bbox;
-        };
-        std::vector<BBoxWrapper> bboxes;
+        std::vector<AABBTreeIndirect::BoundingBoxWrapper> bboxes;
         bboxes.reserve(m_internal_islands.size());
         for (size_t i = 0; i < m_internal_islands.size(); ++ i)
             bboxes.emplace_back(i, get_extents(*m_internal_islands[i]));

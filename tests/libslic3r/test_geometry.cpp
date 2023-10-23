@@ -15,7 +15,7 @@
 //#include "libnest2d/tools/benchmark.h"
 #include "libslic3r/SVG.hpp"
 
-#include "../libnest2d/printer_parts.hpp"
+#include "../data/prusaparts.hpp"
 
 #include <unordered_set>
 
@@ -83,17 +83,17 @@ TEST_CASE("Line::perpendicular_to", "[Geometry]") {
 
 TEST_CASE("Polygon::contains works properly", "[Geometry]"){
    // this test was failing on Windows (GH #1950)
-    Slic3r::Polygon polygon(std::vector<Point>({
-        Point(207802834,-57084522),
-        Point(196528149,-37556190),
-        Point(173626821,-25420928),
-        Point(171285751,-21366123),
-        Point(118673592,-21366123),
-        Point(116332562,-25420928),
-        Point(93431208,-37556191),
-        Point(82156517,-57084523),
-        Point(129714478,-84542120),
-        Point(160244873,-84542120)
+    Slic3r::Polygon polygon(Points({
+        {207802834,-57084522},
+        {196528149,-37556190},
+        {173626821,-25420928},
+        {171285751,-21366123},
+        {118673592,-21366123},
+        {116332562,-25420928},
+        {93431208,-37556191},
+        {82156517,-57084523},
+        {129714478,-84542120},
+        {160244873,-84542120}
     }));
     Point point(95706562, -57294774);
     REQUIRE(polygon.contains(point));
@@ -145,7 +145,7 @@ SCENARIO("polygon_is_convex works") {
 
 TEST_CASE("Creating a polyline generates the obvious lines", "[Geometry]"){
     Slic3r::Polyline polyline;
-    polyline.points = std::vector<Point>({Point(0, 0), Point(10, 0), Point(20, 0)});
+    polyline.points = Points({Point(0, 0), Point(10, 0), Point(20, 0)});
     REQUIRE(polyline.lines().at(0).a == Point(0,0));
     REQUIRE(polyline.lines().at(0).b == Point(10,0));
     REQUIRE(polyline.lines().at(1).a == Point(10,0));
@@ -153,7 +153,7 @@ TEST_CASE("Creating a polyline generates the obvious lines", "[Geometry]"){
 }
 
 TEST_CASE("Splitting a Polygon generates a polyline correctly", "[Geometry]"){
-    Slic3r::Polygon polygon(std::vector<Point>({Point(0, 0), Point(10, 0), Point(5, 5)}));
+    Slic3r::Polygon polygon(Points({Point(0, 0), Point(10, 0), Point(5, 5)}));
     Slic3r::Polyline split = polygon.split_at_index(1);
     REQUIRE(split.points[0]==Point(10,0));
     REQUIRE(split.points[1]==Point(5,5));
@@ -164,7 +164,7 @@ TEST_CASE("Splitting a Polygon generates a polyline correctly", "[Geometry]"){
 
 SCENARIO("BoundingBox", "[Geometry]") {
     WHEN("Bounding boxes are scaled") {
-        BoundingBox bb(std::vector<Point>({Point(0, 1), Point(10, 2), Point(20, 2)}));
+        BoundingBox bb(Points({Point(0, 1), Point(10, 2), Point(20, 2)}));
         bb.scale(2);
         REQUIRE(bb.min == Point(0,2));
         REQUIRE(bb.max == Point(40,4));
@@ -193,7 +193,42 @@ SCENARIO("BoundingBox", "[Geometry]") {
 TEST_CASE("Offseting a line generates a polygon correctly", "[Geometry]"){
 	Slic3r::Polyline tmp = { Point(10,10), Point(20,10) };
     Slic3r::Polygon area = offset(tmp,5).at(0);
-    REQUIRE(area.area() == Slic3r::Polygon(std::vector<Point>({Point(10,5),Point(20,5),Point(20,15),Point(10,15)})).area());
+    REQUIRE(area.area() == Slic3r::Polygon(Points({Point(10,5),Point(20,5),Point(20,15),Point(10,15)})).area());
+}
+
+SCENARIO("Circle Fit, 3 points", "[Geometry]") {
+    WHEN("Three points make a circle") {
+        double s1 = scaled<double>(1.);
+        THEN("circle_center(): A center point { 0, 0 } is returned") {
+            Vec2d center = Geometry::circle_center(Vec2d{ s1, 0. }, Vec2d{ 0, s1 }, Vec2d{ -s1, 0. }, SCALED_EPSILON);
+            REQUIRE(is_approx(center, Vec2d(0, 0)));
+        }
+        THEN("circle_center(): A center point { 0, 0 } is returned for points in reverse") {
+            Vec2d center = Geometry::circle_center(Vec2d{ -s1, 0. }, Vec2d{ 0, s1 }, Vec2d{ s1, 0. }, SCALED_EPSILON);
+            REQUIRE(is_approx(center, Vec2d(0, 0)));
+        }
+        THEN("try_circle_center(): A center point { 0, 0 } is returned") {
+            std::optional<Vec2d> center = Geometry::try_circle_center(Vec2d{ s1, 0. }, Vec2d{ 0, s1 }, Vec2d{ -s1, 0. }, SCALED_EPSILON);
+            REQUIRE(center);
+            REQUIRE(is_approx(*center, Vec2d(0, 0)));
+        }
+        THEN("try_circle_center(): A center point { 0, 0 } is returned for points in reverse") {
+            std::optional<Vec2d> center = Geometry::try_circle_center(Vec2d{ -s1, 0. }, Vec2d{ 0, s1 }, Vec2d{ s1, 0. }, SCALED_EPSILON);
+            REQUIRE(center);
+            REQUIRE(is_approx(*center, Vec2d(0, 0)));
+        }
+    }
+    WHEN("Three points are collinear") {
+        double s1 = scaled<double>(1.);
+        THEN("circle_center(): A center point { 2, 0 } is returned") {
+            Vec2d center = Geometry::circle_center(Vec2d{ s1, 0. }, Vec2d{ 2. * s1, 0. }, Vec2d{ 3. * s1, 0. }, SCALED_EPSILON);
+            REQUIRE(is_approx(center, Vec2d(2. * s1, 0)));
+        }
+        THEN("try_circle_center(): Fails for collinear points") {
+            std::optional<Vec2d> center = Geometry::try_circle_center(Vec2d{ s1, 0. }, Vec2d{ 2. * s1, 0. }, Vec2d{ 3. * s1, 0. }, SCALED_EPSILON);
+            REQUIRE(! center);
+        }
+    }
 }
 
 SCENARIO("Circle Fit, TaubinFit with Newton's method", "[Geometry]") {
@@ -288,6 +323,54 @@ SCENARIO("Circle Fit, TaubinFit with Newton's method", "[Geometry]") {
     }
 }
 
+SCENARIO("Circle Fit, least squares by decomposition or by solving normal equation", "[Geometry]") {
+    auto test_circle_fit = [](const Geometry::Circled &circle, const Vec2d &center, const double radius) {
+        THEN("A center point matches.") {
+            REQUIRE(is_approx(circle.center, center));
+        }
+        THEN("Radius matches") {
+            REQUIRE(is_approx(circle.radius, radius));
+        }
+    };
+
+    GIVEN("A vector of Vec2ds arranged in a half-circle with approximately the same distance R from some point") {
+        const Vec2d  expected_center(-6., 0.);
+        const double expected_radius = 6.;
+        Vec2ds sample{Vec2d(6.0, 0), Vec2d(5.1961524, 3), Vec2d(3 ,5.1961524), Vec2d(0, 6.0), Vec2d(3, 5.1961524), Vec2d(-5.1961524, 3), Vec2d(-6.0, 0)};
+        std::transform(sample.begin(), sample.end(), sample.begin(), [expected_center] (const Vec2d &a) { return a + expected_center; });
+
+        WHEN("Circle fit is called on the entire array, least squares SVD") {
+            test_circle_fit(Geometry::circle_linear_least_squares_svd(sample), expected_center, expected_radius);
+        }
+        WHEN("Circle fit is called on the first four points, least squares SVD") {
+            test_circle_fit(Geometry::circle_linear_least_squares_svd(Vec2ds(sample.cbegin(), sample.cbegin() + 4)), expected_center, expected_radius);
+        }
+        WHEN("Circle fit is called on the middle four points, least squares SVD") {
+            test_circle_fit(Geometry::circle_linear_least_squares_svd(Vec2ds(sample.cbegin() + 2, sample.cbegin() + 6)), expected_center, expected_radius);
+        }
+
+        WHEN("Circle fit is called on the entire array, least squares QR decomposition") {
+            test_circle_fit(Geometry::circle_linear_least_squares_qr(sample), expected_center, expected_radius);
+        }
+        WHEN("Circle fit is called on the first four points, least squares QR decomposition") {
+            test_circle_fit(Geometry::circle_linear_least_squares_qr(Vec2ds(sample.cbegin(), sample.cbegin() + 4)), expected_center, expected_radius);
+        }
+        WHEN("Circle fit is called on the middle four points, least squares QR decomposition") {
+            test_circle_fit(Geometry::circle_linear_least_squares_qr(Vec2ds(sample.cbegin() + 2, sample.cbegin() + 6)), expected_center, expected_radius);
+        }
+
+        WHEN("Circle fit is called on the entire array, least squares by normal equations") {
+            test_circle_fit(Geometry::circle_linear_least_squares_normal(sample), expected_center, expected_radius);
+        }
+        WHEN("Circle fit is called on the first four points, least squares by normal equations") {
+            test_circle_fit(Geometry::circle_linear_least_squares_normal(Vec2ds(sample.cbegin(), sample.cbegin() + 4)), expected_center, expected_radius);
+        }
+        WHEN("Circle fit is called on the middle four points, least squares by normal equations") {
+            test_circle_fit(Geometry::circle_linear_least_squares_normal(Vec2ds(sample.cbegin() + 2, sample.cbegin() + 6)), expected_center, expected_radius);
+        }
+    }
+}
+
 TEST_CASE("smallest_enclosing_circle_welzl", "[Geometry]") {
     // Some random points in plane.
     Points pts { 
@@ -308,8 +391,9 @@ TEST_CASE("smallest_enclosing_circle_welzl", "[Geometry]") {
 
 SCENARIO("Path chaining", "[Geometry]") {
 	GIVEN("A path") {
-		std::vector<Point> points = { Point(26,26),Point(52,26),Point(0,26),Point(26,52),Point(26,0),Point(0,52),Point(52,52),Point(52,0) };
+		Points points = { Point(26,26),Point(52,26),Point(0,26),Point(26,52),Point(26,0),Point(0,52),Point(52,52),Point(52,0) };
 		THEN("Chained with no diagonals (thus 26 units long)") {
+            // if chain_points() works correctly, these points should be joined with no diagonal paths
 			std::vector<Points::size_type> indices = chain_points(points);
 			for (Points::size_type i = 0; i + 1 < indices.size(); ++ i) {
 				double dist = (points.at(indices.at(i)).cast<double>() - points.at(indices.at(i+1)).cast<double>()).norm();
@@ -431,7 +515,7 @@ SCENARIO("Calculating angles", "[Geometry]")
 SCENARIO("Polygon convex/concave detection", "[Geometry]"){
     static constexpr const double angle_threshold = M_PI / 3.;
     GIVEN(("A Square with dimension 100")){
-        auto square = Slic3r::Polygon /*new_scale*/(std::vector<Point>({
+        auto square = Slic3r::Polygon /*new_scale*/(Points({
             Point(100,100),
             Point(200,100),
             Point(200,200),
@@ -447,7 +531,7 @@ SCENARIO("Polygon convex/concave detection", "[Geometry]"){
         }
     }
     GIVEN("A Square with an extra colinearvertex"){
-        auto square = Slic3r::Polygon /*new_scale*/(std::vector<Point>({
+        auto square = Slic3r::Polygon /*new_scale*/(Points({
             Point(150,100),
             Point(200,100),
             Point(200,200),
@@ -459,7 +543,7 @@ SCENARIO("Polygon convex/concave detection", "[Geometry]"){
         }
     }
     GIVEN("A Square with an extra collinear vertex in different order"){
-        auto square = Slic3r::Polygon /*new_scale*/(std::vector<Point>({
+        auto square = Slic3r::Polygon /*new_scale*/(Points({
             Point(200,200),
             Point(100,200),
             Point(100,100),
@@ -472,7 +556,7 @@ SCENARIO("Polygon convex/concave detection", "[Geometry]"){
     }
 
     GIVEN("A triangle"){
-        auto triangle = Slic3r::Polygon(std::vector<Point>({
+        auto triangle = Slic3r::Polygon(Points({
             Point(16000170,26257364),
             Point(714223,461012),
             Point(31286371,461008)
@@ -484,7 +568,7 @@ SCENARIO("Polygon convex/concave detection", "[Geometry]"){
     }
 
     GIVEN("A triangle with an extra collinear point"){
-        auto triangle = Slic3r::Polygon(std::vector<Point>({
+        auto triangle = Slic3r::Polygon(Points({
             Point(16000170,26257364),
             Point(714223,461012),
             Point(20000000,461012),
@@ -498,7 +582,7 @@ SCENARIO("Polygon convex/concave detection", "[Geometry]"){
     GIVEN("A polygon with concave vertices with angles of specifically 4/3pi"){
         // Two concave vertices of this polygon have angle = PI*4/3, so this test fails
         // if epsilon is not used.
-        auto polygon = Slic3r::Polygon(std::vector<Point>({
+        auto polygon = Slic3r::Polygon(Points({
             Point(60246458,14802768),Point(64477191,12360001),
             Point(63727343,11060995),Point(64086449,10853608),
             Point(66393722,14850069),Point(66034704,15057334),
@@ -516,7 +600,7 @@ SCENARIO("Polygon convex/concave detection", "[Geometry]"){
 }
 
 TEST_CASE("Triangle Simplification does not result in less than 3 points", "[Geometry]"){
-    auto triangle = Slic3r::Polygon(std::vector<Point>({
+    auto triangle = Slic3r::Polygon(Points({
         Point(16000170,26257364), Point(714223,461012), Point(31286371,461008)
     }));
     REQUIRE(triangle.simplify(250000).at(0).points.size() == 3);
@@ -683,15 +767,15 @@ struct Pair
 template<> struct std::hash<Pair> {
     size_t operator()(const Pair &c) const
     {
-        return c.first * PRINTER_PART_POLYGONS.size() + c.second;
+        return c.first * PRUSA_PART_POLYGONS.size() + c.second;
     }
 };
 
 TEST_CASE("Convex polygon intersection test prusa polygons", "[Geometry][Rotcalip]") {
 
     // Overlap of the same polygon should always be an intersection
-    for (size_t i = 0; i < PRINTER_PART_POLYGONS.size(); ++i) {
-        Polygon P = PRINTER_PART_POLYGONS[i];
+    for (size_t i = 0; i < PRUSA_PART_POLYGONS.size(); ++i) {
+        Polygon P = PRUSA_PART_POLYGONS[i];
         P = Geometry::convex_hull(P.points);
         bool res = Geometry::convex_polygons_intersect(P, P);
         if (!res) {
@@ -703,8 +787,8 @@ TEST_CASE("Convex polygon intersection test prusa polygons", "[Geometry][Rotcali
     }
 
     std::unordered_set<Pair> combos;
-    for (size_t i = 0; i < PRINTER_PART_POLYGONS.size(); ++i) {
-        for (size_t j = 0; j < PRINTER_PART_POLYGONS.size(); ++j) {
+    for (size_t i = 0; i < PRUSA_PART_POLYGONS.size(); ++i) {
+        for (size_t j = 0; j < PRUSA_PART_POLYGONS.size(); ++j) {
             if (i != j) {
                 size_t a = std::min(i, j), b = std::max(i, j);
                 combos.insert(Pair{a, b});
@@ -714,7 +798,7 @@ TEST_CASE("Convex polygon intersection test prusa polygons", "[Geometry][Rotcali
 
     // All disjoint
     for (const auto &combo : combos) {
-        Polygon A = PRINTER_PART_POLYGONS[combo.first], B = PRINTER_PART_POLYGONS[combo.second];
+        Polygon A = PRUSA_PART_POLYGONS[combo.first], B = PRUSA_PART_POLYGONS[combo.second];
         A = Geometry::convex_hull(A.points);
         B = Geometry::convex_hull(B.points);
 
@@ -741,7 +825,7 @@ TEST_CASE("Convex polygon intersection test prusa polygons", "[Geometry][Rotcali
 
     // All intersecting
     for (const auto &combo : combos) {
-        Polygon A = PRINTER_PART_POLYGONS[combo.first], B = PRINTER_PART_POLYGONS[combo.second];
+        Polygon A = PRUSA_PART_POLYGONS[combo.first], B = PRUSA_PART_POLYGONS[combo.second];
         A = Geometry::convex_hull(A.points);
         B = Geometry::convex_hull(B.points);
 

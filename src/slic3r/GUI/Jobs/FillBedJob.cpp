@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "FillBedJob.hpp"
 
 #include "libslic3r/Model.hpp"
@@ -17,31 +21,33 @@ void FillBedJob::prepare()
 {
     m_selected.clear();
     m_unselected.clear();
-    m_bedpts.clear();
+    m_min_bed_inset = 0.;
 
     m_object_idx = m_plater->get_selected_object_idx();
     if (m_object_idx == -1)
         return;
 
     ModelObject *model_object = m_plater->model().objects[m_object_idx];
-    if (model_object->instances.empty()) return;
+    if (model_object->instances.empty())
+        return;
 
     m_selected.reserve(model_object->instances.size());
     for (ModelInstance *inst : model_object->instances)
         if (inst->printable) {
-            ArrangePolygon ap = get_arrange_poly(PtrWrapper{inst}, m_plater);
+            ArrangePolygon ap = get_arrange_poly(inst, m_plater);
             // Existing objects need to be included in the result. Only
             // the needed amount of object will be added, no more.
             ++ap.priority;
             m_selected.emplace_back(ap);
         }
 
-    if (m_selected.empty()) return;
+    if (m_selected.empty())
+        return;
 
-    m_bedpts = get_bed_shape(*m_plater->config());
+    Points bedpts = get_bed_shape(*m_plater->config());
 
     auto &objects = m_plater->model().objects;
-    BoundingBox bedbb = get_extents(m_bedpts);
+    BoundingBox bedbb = get_extents(bedpts);
 
     for (size_t idx = 0; idx < objects.size(); ++idx)
         if (int(idx) != m_object_idx)
@@ -69,7 +75,7 @@ void FillBedJob::prepare()
                                         }) / sc;
 
     double fixed_area = unsel_area + m_selected.size() * poly_area;
-    double bed_area   = Polygon{m_bedpts}.area() / sc;
+    double bed_area   = Polygon{bedpts}.area() / sc;
 
     // This is the maximum number of items, the real number will always be close but less.
     int needed_items = (bed_area - fixed_area) / poly_area;
@@ -82,11 +88,11 @@ void FillBedJob::prepare()
 
     for (int i = 0; i < needed_items; ++i) {
         ArrangePolygon ap = template_ap;
-        ap.poly = m_selected.front().poly;
         ap.bed_idx = arrangement::UNARRANGED;
-        ap.setter = [this, mi](const ArrangePolygon &p) {
+        auto m = mi->get_transformation();
+        ap.setter = [this, m](const ArrangePolygon &p) {
             ModelObject *mo = m_plater->model().objects[m_object_idx];
-            ModelInstance *inst = mo->add_instance(*mi);
+            ModelInstance *inst = mo->add_instance(m);
             inst->apply_arrange_result(p.translation.cast<double>(), p.rotation);
         };
         m_selected.emplace_back(ap);
@@ -94,30 +100,46 @@ void FillBedJob::prepare()
 
     m_status_range = m_selected.size();
 
+    coord_t min_offset = 0;
+    for (auto &ap : m_selected) {
+        min_offset = std::max(ap.inflation, min_offset);
+    }
+
+    if (m_plater->printer_technology() == ptSLA) {
+        // Apply the max offset for all the objects
+        for (auto &ap : m_selected) {
+            ap.inflation = min_offset;
+        }
+    } else { // it's fff, brims only need to be minded from bed edges
+        for (auto &ap : m_selected) {
+            ap.inflation = 0;
+        }
+        m_min_bed_inset = min_offset;
+    }
+
     // The strides have to be removed from the fixed items. For the
     // arrangeable (selected) items bed_idx is ignored and the
     // translation is irrelevant.
     double stride = bed_stride(m_plater);
-    for (auto &p : m_unselected)
-        if (p.bed_idx > 0)
-            p.translation(X) -= p.bed_idx * stride;
+
+    m_bed = arrangement::to_arrange_bed(bedpts);
+    assign_logical_beds(m_unselected, m_bed, stride);
 }
 
 void FillBedJob::process(Ctl &ctl)
 {
     auto statustxt = _u8L("Filling bed");
-    ctl.call_on_main_thread([this] { prepare(); }).wait();
+    arrangement::ArrangeParams params;
+    ctl.call_on_main_thread([this, &params] {
+           prepare();
+           params = get_arrange_params(m_plater);
+           coord_t min_inset = get_skirt_offset(m_plater) + m_min_bed_inset;
+           params.min_bed_distance = std::max(params.min_bed_distance, min_inset);
+    }).wait();
     ctl.update_status(0, statustxt);
 
-    if (m_object_idx == -1 || m_selected.empty()) return;
-
-    const GLCanvas3D::ArrangeSettings &settings =
-        static_cast<const GLCanvas3D*>(m_plater->canvas3D())->get_arrange_settings();
-
-    arrangement::ArrangeParams params;
-    params.allow_rotations  = settings.enable_rotation;
-    params.min_obj_distance = scaled(settings.distance);
-    params.min_bed_distance = scaled(settings.distance_from_bed);
+    if (m_object_idx == -1 || m_selected.empty())
+        return;
 
     bool do_stop = false;
     params.stopcondition = [&ctl, &do_stop]() {
@@ -133,7 +155,7 @@ void FillBedJob::process(Ctl &ctl)
         do_stop = ap.bed_idx > 0 && ap.priority == 0;
     };
 
-    arrangement::arrange(m_selected, m_unselected, m_bedpts, params);
+    arrangement::arrange(m_selected, m_unselected, m_bed, params);
 
     // finalize just here.
     ctl.update_status(100, ctl.was_canceled() ?
@@ -149,10 +171,12 @@ void FillBedJob::finalize(bool canceled, std::exception_ptr &eptr)
     if (canceled || eptr)
         return;
 
-    if (m_object_idx == -1) return;
+    if (m_object_idx == -1)
+        return;
 
     ModelObject *model_object = m_plater->model().objects[m_object_idx];
-    if (model_object->instances.empty()) return;
+    if (model_object->instances.empty())
+        return;
 
     size_t inst_cnt = model_object->instances.size();
 
@@ -168,10 +192,12 @@ void FillBedJob::finalize(bool canceled, std::exception_ptr &eptr)
 
         model_object->ensure_on_bed();
 
-        m_plater->update();
+        m_plater->update(static_cast<unsigned int>(
+            Plater::UpdateParams::FORCE_FULL_SCREEN_REFRESH));
 
         // FIXME: somebody explain why this is needed for increase_object_instances
-        if (inst_cnt == 1) added_cnt++;
+        if (inst_cnt == 1)
+            added_cnt++;
 
         m_plater->sidebar()
             .obj_list()->increase_object_instances(m_object_idx, size_t(added_cnt));

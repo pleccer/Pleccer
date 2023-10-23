@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_OG_CustomCtrl_hpp_
 #define slic3r_OG_CustomCtrl_hpp_
 
@@ -11,7 +15,6 @@
 #include "libslic3r/PrintConfig.hpp"
 
 #include "OptionsGroup.hpp"
-#include "I18N.hpp"
 
 // Translate the ifdef 
 #ifdef __WXOSX__
@@ -63,12 +66,14 @@ class OG_CustomCtrl :public wxPanel
         wxCoord draw_mode_bmp(wxDC& dc, wxCoord v_pos);
         wxCoord draw_text      (wxDC& dc, wxPoint pos, const wxString& text, const wxColour* color, int width, bool is_url = false);
         wxPoint draw_blinking_bmp(wxDC& dc, wxPoint pos, bool is_blinking);
-        wxCoord draw_act_bmps(wxDC& dc, wxPoint pos, const wxBitmapBundle& bmp_undo_to_sys, const wxBitmapBundle& bmp_undo, bool is_blinking, size_t rect_id = 0);
+        wxPoint draw_act_bmps(wxDC& dc, wxPoint pos, const wxBitmapBundle& bmp_undo_to_sys, const wxBitmapBundle& bmp_undo, bool is_blinking, size_t rect_id = 0);
+        wxCoord draw_edit_bmp(wxDC& dc, wxPoint pos, const wxBitmapBundle* bmp_edit);
         bool    launch_browser() const;
         bool    is_separator() const { return og_line.is_separator(); }
 
         std::vector<wxRect> rects_undo_icon;
         std::vector<wxRect> rects_undo_to_sys_icon;
+        std::vector<wxRect> rects_edit_icon;
         wxRect              rect_label;
     };
 

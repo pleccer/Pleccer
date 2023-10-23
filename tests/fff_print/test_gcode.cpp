@@ -7,7 +7,7 @@
 using namespace Slic3r;
 
 SCENARIO("Origin manipulation", "[GCode]") {
-	Slic3r::GCode gcodegen;
+	Slic3r::GCodeGenerator gcodegen;
 	WHEN("set_origin to (10,0)") {
     	gcodegen.set_origin(Vec2d(10,0));
     	REQUIRE(gcodegen.origin() == Vec2d(10, 0));

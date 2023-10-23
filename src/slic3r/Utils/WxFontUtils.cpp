@@ -1,6 +1,11 @@
+///|/ Copyright (c) Prusa Research 2021 - 2022 Filip Sykala @Jony01, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "WxFontUtils.hpp"
 #include <boost/assign.hpp>
 #include <boost/log/trivial.hpp>
+#include "libslic3r/Utils.hpp"
 
 #if defined(__APPLE__)
 #include <CoreText/CTFont.h>
@@ -14,10 +19,9 @@
 using namespace Slic3r;
 using namespace Slic3r::GUI;
 
-namespace {
-
 #ifdef __APPLE__
-static bool is_valid_ttf(std::string_view file_path)
+namespace {
+bool is_valid_ttf(std::string_view file_path)
 {
     if (file_path.empty()) return false;
     auto const pos_point = file_path.find_last_of('.');
@@ -34,8 +38,7 @@ static bool is_valid_ttf(std::string_view file_path)
     if (extension_size >= 5) return false; // a lot of symbols for extension
     if (extension_size <= 1) return false; // few letters for extension
 
-    std::string_view extension = file_path.substr(pos_point + 1,
-                                                  extension_size);
+    std::string_view extension = file_path.substr(pos_point + 1, extension_size);
 
     // Because of MacOs - Courier, Geneva, Monaco
     if (extension == std::string_view("dfont")) return false;
@@ -44,31 +47,30 @@ static bool is_valid_ttf(std::string_view file_path)
 }
 
 // get filepath from wxFont on Mac OsX
-static std::string get_file_path(const wxFont& font) {
+std::string get_file_path(const wxFont& font) {
     const wxNativeFontInfo *info = font.GetNativeFontInfo();
     if (info == nullptr) return {};
     CTFontDescriptorRef descriptor = info->GetCTFontDescriptor();
-    CFURLRef            typeref    = (CFURLRef)
-        CTFontDescriptorCopyAttribute(descriptor, kCTFontURLAttribute);
+    CFURLRef typeref = (CFURLRef)CTFontDescriptorCopyAttribute(descriptor, kCTFontURLAttribute);
     if (typeref == NULL) return {};
+    ScopeGuard sg([&typeref]() { CFRelease(typeref); });
     CFStringRef url = CFURLGetString(typeref);
     if (url == NULL) return {};
-    wxString file_uri;
-    wxCFTypeRef(url).GetValue(file_uri);
-    std::string file_path(wxURI::Unescape(file_uri).c_str());
-    size_t start = std::string("file://").size();
-    if (file_path.empty() || file_path.size() <= start)
-        return {};
-    // remove prefix file://
-    file_path = file_path.substr(start, file_path.size() - start);
-    return file_path;
-}    
-#endif // __APPLE__
+    wxString file_uri(wxCFStringRef::AsString(url));
+    wxURI uri(file_uri);
+    const wxString &path = uri.GetPath();
+    wxString path_unescaped = wxURI::Unescape(path);
+    std::string path_str = path_unescaped.ToUTF8().data();
+    BOOST_LOG_TRIVIAL(trace) << "input uri(" << file_uri.c_str() << ") convert to path(" << path.c_str() << ") string(" << path_str << ").";
+    return path_str;
+}
 } // namespace
+#endif // __APPLE__
 
 bool WxFontUtils::can_load(const wxFont &font)
 {
-    if (!font.IsOk()) return false;    
+
+    if (!font.IsOk()) return false;
 #ifdef _WIN32
     return Emboss::can_load(font.GetHFONT()) != nullptr;
 #elif defined(__APPLE__)
@@ -110,7 +112,7 @@ std::unique_ptr<Emboss::FontFile> WxFontUtils::create_font_file(const wxFont &fo
 #endif
 }
 
-EmbossStyle::Type WxFontUtils::get_actual_type()
+EmbossStyle::Type WxFontUtils::get_current_type()
 {
 #ifdef _WIN32
     return EmbossStyle::Type::wx_win_font_descr;
@@ -127,7 +129,7 @@ EmbossStyle WxFontUtils::create_emboss_style(const wxFont &font, const std::stri
 {
     std::string name_item = name.empty()? get_human_readable_name(font) : name;
     std::string fontDesc = store_wxFont(font);
-    EmbossStyle::Type type     = get_actual_type();
+    EmbossStyle::Type type = get_current_type();
 
     // synchronize font property with actual font
     FontProp font_prop; 
@@ -136,7 +138,6 @@ EmbossStyle WxFontUtils::create_emboss_style(const wxFont &font, const std::stri
     // is approximately 0.0139 inch or 352.8 um. But it is too small, so I
     // decide use point size as mm for emboss
     font_prop.size_in_mm = font.GetPointSize(); // *0.3528f;
-    font_prop.emboss     = font_prop.size_in_mm / 2.f;
 
     WxFontUtils::update_property(font_prop, font);
     return { name_item, fontDesc, type, font_prop };
@@ -171,13 +172,23 @@ std::string WxFontUtils::store_wxFont(const wxFont &font)
 {
     // wxString os = wxPlatformInfo::Get().GetOperatingSystemIdName();
     wxString font_descriptor = font.GetNativeFontInfoDesc();
+    BOOST_LOG_TRIVIAL(trace) << "'" << font_descriptor << "' wx string get from GetNativeFontInfoDesc. wxFont " <<
+        "IsOk(" << font.IsOk() << "), " <<
+        "isNull(" << font.IsNull() << ")" <<
+        // "IsFree(" << font.IsFree() << "), " << // on MacOs is no function is free
+        "IsFixedWidth(" << font.IsFixedWidth() << "), " <<
+        "IsUsingSizeInPixels(" << font.IsUsingSizeInPixels() << "), " <<
+        "Encoding(" << (int)font.GetEncoding() << "), " ;
     return std::string(font_descriptor.c_str());
 }
 
 wxFont WxFontUtils::load_wxFont(const std::string &font_descriptor)
 {
+    BOOST_LOG_TRIVIAL(trace) << "'" << font_descriptor << "'font descriptor string param of load_wxFont()";
     wxString font_descriptor_wx(font_descriptor);
+    BOOST_LOG_TRIVIAL(trace) << "'" << font_descriptor_wx.c_str() << "' wx string descriptor";
     wxFont wx_font(font_descriptor_wx);
+    BOOST_LOG_TRIVIAL(trace) << "loaded font is '" << get_human_readable_name(wx_font) << "'.";
     return wx_font;
 }
 

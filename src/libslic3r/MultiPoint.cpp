@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Lukáš Hejl @hejllukas, Enrico Turri @enricoturri1966
+///|/ Copyright (c) Slic3r 2013 - 2016 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "MultiPoint.hpp"
 #include "BoundingBox.hpp"
 
@@ -103,74 +108,6 @@ bool MultiPoint::remove_duplicate_points()
     return false;
 }
 
-std::vector<Point> MultiPoint::_douglas_peucker(const std::vector<Point>& pts, const double tolerance)
-{
-    std::vector<Point> result_pts;
-	double tolerance_sq = tolerance * tolerance;
-    if (! pts.empty()) {
-        const Point  *anchor      = &pts.front();
-        size_t        anchor_idx  = 0;
-        const Point  *floater     = &pts.back();
-        size_t        floater_idx = pts.size() - 1;
-        result_pts.reserve(pts.size());
-        result_pts.emplace_back(*anchor);
-        if (anchor_idx != floater_idx) {
-            assert(pts.size() > 1);
-            std::vector<size_t> dpStack;
-            dpStack.reserve(pts.size());
-            dpStack.emplace_back(floater_idx);
-            for (;;) {
-                double max_dist_sq  = 0.0;
-                size_t furthest_idx = anchor_idx;
-                // find point furthest from line seg created by (anchor, floater) and note it
-                for (size_t i = anchor_idx + 1; i < floater_idx; ++ i) {
-                    double dist_sq = Line::distance_to_squared(pts[i], *anchor, *floater);
-                    if (dist_sq > max_dist_sq) {
-                        max_dist_sq  = dist_sq;
-                        furthest_idx = i;
-                    }
-                }
-                // remove point if less than tolerance
-                if (max_dist_sq <= tolerance_sq) {
-                    result_pts.emplace_back(*floater);
-                    anchor_idx = floater_idx;
-                    anchor     = floater;
-                    assert(dpStack.back() == floater_idx);
-                    dpStack.pop_back();
-                    if (dpStack.empty())
-                        break;
-                    floater_idx = dpStack.back();
-                } else {
-                    floater_idx = furthest_idx;
-                    dpStack.emplace_back(floater_idx);
-                }
-                floater = &pts[floater_idx];
-            }
-        }
-        assert(result_pts.front() == pts.front());
-        assert(result_pts.back()  == pts.back());
-
-#if 0
-        {
-            static int iRun = 0;
-			BoundingBox bbox(pts);
-			BoundingBox bbox2(result_pts);
-			bbox.merge(bbox2);
-            SVG svg(debug_out_path("douglas_peucker_%d.svg", iRun ++).c_str(), bbox);
-            if (pts.front() == pts.back())
-                svg.draw(Polygon(pts), "black");
-            else
-                svg.draw(Polyline(pts), "black");
-            if (result_pts.front() == result_pts.back())
-                svg.draw(Polygon(result_pts), "green", scale_(0.1));
-            else
-                svg.draw(Polyline(result_pts), "green", scale_(0.1));
-        }
-#endif
-    }
-    return result_pts;
-}
-
 // Visivalingam simplification algorithm https://github.com/slic3r/Slic3r/pull/3825
 // thanks to @fuchstraumer
 /*
@@ -193,7 +130,7 @@ struct vis_node{
     // other node if it's area is less than the other node's area
     bool operator<(const vis_node& other) { return (this->area < other.area); }
 };
-Points MultiPoint::visivalingam(const Points& pts, const double& tolerance)
+Points MultiPoint::visivalingam(const Points &pts, const double tolerance)
 {
     // Make sure there's enough points in "pts" to bother with simplification.
     assert(pts.size() >= 2);

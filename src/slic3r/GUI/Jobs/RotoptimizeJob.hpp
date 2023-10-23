@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, David Kocík @kocikdav
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef ROTOPTIMIZEJOB_HPP
 #define ROTOPTIMIZEJOB_HPP
 
@@ -58,15 +62,9 @@ public:
 
     static constexpr size_t get_methods_count() { return std::size(Methods); }
 
-    static std::string get_method_name(size_t i)
-    {
-        return _utf8(Methods[i].name);
-    }
+    static std::string get_method_name(size_t i);
 
-    static std::string get_method_description(size_t i)
-    {
-        return _utf8(Methods[i].descr);
-    }
+    static std::string get_method_description(size_t i);
 };
 
 }} // namespace Slic3r::GUI

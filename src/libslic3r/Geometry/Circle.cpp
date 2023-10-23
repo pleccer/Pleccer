@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2022 Lukáš Matěna @lukasmatena, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Circle.hpp"
 
 #include "../Polygon.hpp"
@@ -17,9 +21,14 @@ Point circle_center_taubin_newton(const Points::const_iterator& input_begin, con
 	return Point::new_scale(center.x(), center.y());
 }
 
-/// Adapted from work in "Circular and Linear Regression: Fitting circles and lines by least squares", pg 126
-/// Returns a point corresponding to the center of a circle for which all of the points from input_begin to input_end
-/// lie on.
+// Robust and accurate algebraic circle fit, which works well even if data points are observed only within a small arc.
+// The method was proposed by G. Taubin in
+//      "Estimation Of Planar Curves, Surfaces And Nonplanar Space Curves Defined By Implicit Equations,
+//       With Applications To Edge And Range Image Segmentation", IEEE Trans. PAMI, Vol. 13, pages 1115-1138, (1991)."
+// This particular implementation was adapted from
+//      "Circular and Linear Regression: Fitting circles and lines by least squares", pg 126"
+// Returns a point corresponding to the center of a circle for which all of the points from input_begin to input_end
+// lie on.
 Vec2d circle_center_taubin_newton(const Vec2ds::const_iterator& input_begin, const Vec2ds::const_iterator& input_end, size_t cycles)
 {
     // calculate the centroid of the data set
@@ -135,6 +144,85 @@ Circled circle_ransac(const Vec2ds& input, size_t iterations, double* min_error)
     if (min_error)
         *min_error = err_min;
     return circle_best;
+}
+
+template<typename Solver>
+Circled circle_linear_least_squares_by_solver(const Vec2ds &input, Solver solver)
+{
+    Circled out;
+    if (input.size() < 3) {
+        out = Circled::make_invalid();
+    } else {
+        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic /* 3 */> A(input.size(), 3);
+        Eigen::VectorXd b(input.size());
+        for (size_t r = 0; r < input.size(); ++ r) {
+            const Vec2d &p = input[r];
+            A.row(r) = Vec3d(2. * p.x(), 2. * p.y(), - 1.);
+            b(r) = p.squaredNorm();
+        }
+        auto result = solver(A, b);
+        out.center = result.template head<2>();
+        double r2 = out.center.squaredNorm() - result(2);
+        if (r2 <= EPSILON)
+            out.make_invalid();
+        else
+            out.radius = sqrt(r2);
+    }
+
+    return out;
+}
+
+Circled circle_linear_least_squares_svd(const Vec2ds &input)
+{
+    return circle_linear_least_squares_by_solver(input,
+        [](const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic /* 3 */> &A, const Eigen::VectorXd &b)
+        { return A.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b).eval(); });
+}
+
+Circled circle_linear_least_squares_qr(const Vec2ds &input)
+{
+    return circle_linear_least_squares_by_solver(input,
+        [](const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> &A, const Eigen::VectorXd &b)
+        { return A.colPivHouseholderQr().solve(b).eval(); });
+}
+
+Circled circle_linear_least_squares_normal(const Vec2ds &input)
+{
+    Circled out;
+    if (input.size() < 3) {
+        out = Circled::make_invalid();
+    } else {
+        Eigen::Matrix<double, 3, 3> A = Eigen::Matrix<double, 3, 3>::Zero();
+        Eigen::Matrix<double, 3, 1> b = Eigen::Matrix<double, 3, 1>::Zero();
+        for (size_t i = 0; i < input.size(); ++ i) {
+            const Vec2d &p = input[i];
+            // Calculate right hand side of a normal equation.
+            b += p.squaredNorm() * Vec3d(2. * p.x(), 2. * p.y(), -1.);
+            // Calculate normal matrix (correlation matrix).
+            // Diagonal:
+            A(0, 0) += 4. * p.x() * p.x();
+            A(1, 1) += 4. * p.y() * p.y();
+            A(2, 2) += 1.;
+            // Off diagonal elements:
+            const double a = 4. * p.x() * p.y();
+            A(0, 1) += a;
+            A(1, 0) += a;
+            const double b = -2. * p.x();
+            A(0, 2) += b;
+            A(2, 0) += b;
+            const double c = -2. * p.y();
+            A(1, 2) += c;
+            A(2, 1) += c;
+        }
+        auto result = A.ldlt().solve(b).eval();
+        out.center = result.head<2>();
+        double r2 = out.center.squaredNorm() - result(2);
+        if (r2 <= EPSILON)
+            out.make_invalid();
+        else
+            out.radius = sqrt(r2);
+    }
+    return out;
 }
 
 } } // namespace Slic3r::Geometry

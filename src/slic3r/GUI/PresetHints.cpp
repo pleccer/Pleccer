@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2017 - 2023 Oleksandra Iushchenko @YuSanka, Pavel Mikuš @Godrak, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv
+///|/ Copyright (c) 2021 Ilya @xorza
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <cassert>
 
 #include "libslic3r/Flow.hpp"
@@ -75,9 +80,9 @@ std::string PresetHints::maximum_volumetric_flow_description(const PresetBundle 
 {
     // Find out, to which nozzle index is the current filament profile assigned.
     int idx_extruder  = 0;
-	int num_extruders = (int)preset_bundle.filament_presets.size();
+    int num_extruders = (int)preset_bundle.extruders_filaments.size();
     for (; idx_extruder < num_extruders; ++ idx_extruder)
-        if (preset_bundle.filament_presets[idx_extruder] == preset_bundle.filaments.get_selected_preset_name())
+        if (preset_bundle.extruders_filaments[idx_extruder].get_selected_preset_name() == preset_bundle.filaments.get_selected_preset_name())
             break;
     if (idx_extruder == num_extruders)
         // The current filament preset is not active for any extruder.
@@ -163,7 +168,7 @@ std::string PresetHints::maximum_volumetric_flow_description(const PresetBundle 
             double volumetric_flow = flow.mm3_per_mm() * (bridging ? bridge_speed : limit_by_first_layer_speed(speed, max_print_speed));
             if (max_flow < volumetric_flow) {
                 max_flow = volumetric_flow;
-                max_flow_extrusion_type = _utf8(err_msg);
+                max_flow_extrusion_type = GUI::into_u8(_(err_msg));
             }
         };
         if (perimeter_extruder_active) {
@@ -184,17 +189,17 @@ std::string PresetHints::maximum_volumetric_flow_description(const PresetBundle 
         //FIXME handle gap_fill_speed
         if (! out.empty())
             out += "\n";
-        out += (first_layer ? _utf8(L("First layer volumetric")) : (bridging ? _utf8(L("Bridging volumetric")) : _utf8(L("Volumetric"))));
-        out += " " + _utf8(L("flow rate is maximized")) + " ";
+        out += (first_layer ? _u8L("First layer volumetric") : (bridging ? _u8L("Bridging volumetric") : _u8L("Volumetric")));
+        out += " " + _u8L("flow rate is maximized") + " ";
         bool limited_by_max_volumetric_speed = max_volumetric_speed > 0 && max_volumetric_speed < max_flow;
         out += (limited_by_max_volumetric_speed ? 
-            _utf8(L("by the print profile maximum")) :
-            (_utf8(L("when printing"))+ " " + max_flow_extrusion_type))
-            + " " + _utf8(L("with a volumetric rate"))+ " ";
+            _u8L("by the print profile maximum") :
+            (_u8L("when printing")+ " " + max_flow_extrusion_type))
+            + " " + _u8L("with a volumetric rate")+ " ";
         if (limited_by_max_volumetric_speed)
             max_flow = max_volumetric_speed;
 
-        out += (boost::format(_utf8(L("%3.2f mm³/s at filament speed %3.2f mm/s."))) % max_flow % (max_flow / filament_crossection)).str();
+        out += format(_u8L("%3.2f mm³/s at filament speed %3.2f mm/s."), max_flow, (max_flow / filament_crossection));
     }
 
  	return out;
@@ -212,13 +217,13 @@ std::string PresetHints::recommended_thin_wall_thickness(const PresetBundle &pre
     
     std::string out;
 	if (layer_height <= 0.f) {
-		out += _utf8(L("Recommended object thin wall thickness: Not available due to invalid layer height."));
+		out += _u8L("Recommended object thin wall thickness: Not available due to invalid layer height.");
 		return out;
 	}
     
     if (num_perimeters > 0) {
         int num_lines = std::min(num_perimeters * 2, 10);
-        out += (boost::format(_utf8(L("Recommended object thin wall thickness for layer height %.2f and"))) % layer_height).str() + " ";
+        out += (boost::format(_u8L("Recommended object thin wall thickness for layer height %.2f and")) % layer_height).str() + " ";
         // Start with the width of two closely spaced 
         try {
             Flow external_perimeter_flow = Flow::new_from_config_width(
@@ -233,11 +238,11 @@ std::string PresetHints::recommended_thin_wall_thickness(const PresetBundle &pre
 	        for (int i = 2; i <= num_lines; thin_walls ? ++ i : i += 2) {
 	            if (i > 2)
 	                out += ", ";
-	            out += (boost::format(_utf8(L("%d lines: %.2f mm"))) % i %  width).str() + " ";
+	            out += (boost::format(_u8L("%d lines: %.2f mm")) % i %  width).str() + " ";
 	            width += perimeter_flow.spacing() * (thin_walls ? 1.f : 2.f);
 	        }
 	    } catch (const FlowErrorNegativeSpacing &) {
-            out = _utf8(L("Recommended object thin wall thickness: Not available due to excessively small extrusion width."));
+            out = _u8L("Recommended object thin wall thickness: Not available due to excessively small extrusion width.");
         }
     }
     return out;
@@ -266,7 +271,7 @@ std::string PresetHints::top_bottom_shell_thickness_explanation(const PresetBund
     double  min_layer_height				= variable_layer_height ? Slicing::min_layer_height_from_nozzle(printer_config, 1) : layer_height;
 
 	if (layer_height <= 0.f) {
-		out += _utf8(L("Top / bottom shell thickness hint: Not available due to invalid layer height."));
+		out += _u8L("Top / bottom shell thickness hint: Not available due to invalid layer height.");
 		return out;
 	}
 
@@ -279,13 +284,13 @@ std::string PresetHints::top_bottom_shell_thickness_explanation(const PresetBund
     		top_shell_thickness = n * layer_height;
     	}
     	double top_shell_thickness_minimum = std::max(top_solid_min_thickness, top_solid_layers * min_layer_height);
-        out += (boost::format(_utf8(L("Top shell is %1% mm thick for layer height %2% mm."))) % top_shell_thickness % layer_height).str();
+        out += (boost::format(_u8L("Top shell is %1% mm thick for layer height %2% mm.")) % top_shell_thickness % layer_height).str();
         if (variable_layer_height && top_shell_thickness_minimum < top_shell_thickness) {
         	out += " ";
-	        out += (boost::format(_utf8(L("Minimum top shell thickness is %1% mm."))) % top_shell_thickness_minimum).str();        	
+	        out += (boost::format(_u8L("Minimum top shell thickness is %1% mm.")) % top_shell_thickness_minimum).str();
         }
     } else
-        out += _utf8(L("Top is open."));
+        out += _u8L("Top is open.");
 
     out += "\n";
 
@@ -298,13 +303,13 @@ std::string PresetHints::top_bottom_shell_thickness_explanation(const PresetBund
     		bottom_shell_thickness = n * layer_height;
     	}
     	double bottom_shell_thickness_minimum = std::max(bottom_solid_min_thickness, bottom_solid_layers * min_layer_height);
-        out += (boost::format(_utf8(L("Bottom shell is %1% mm thick for layer height %2% mm."))) % bottom_shell_thickness % layer_height).str();
+        out += (boost::format(_u8L("Bottom shell is %1% mm thick for layer height %2% mm.")) % bottom_shell_thickness % layer_height).str();
         if (variable_layer_height && bottom_shell_thickness_minimum < bottom_shell_thickness) {
         	out += " ";
-	        out += (boost::format(_utf8(L("Minimum bottom shell thickness is %1% mm."))) % bottom_shell_thickness_minimum).str();        	
+	        out += (boost::format(_u8L("Minimum bottom shell thickness is %1% mm.")) % bottom_shell_thickness_minimum).str();
         }
     } else 
-        out += _utf8(L("Bottom is open."));
+        out += _u8L("Bottom is open.");
 
     return out;
 }

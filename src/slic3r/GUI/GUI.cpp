@@ -1,3 +1,9 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Tomáš Mészáros @tamasmeszaros, Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Lukáš Hejl @hejllukas, David Kocík @kocikdav, Enrico Turri @enricoturri1966, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2018 Martin Loidl @LoidlM
+///|/ Copyright (c) Slic3r 2015 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "GUI.hpp"
 #include "GUI_App.hpp"
 #include "format.hpp"
@@ -16,7 +22,9 @@
 #import <IOKit/pwr_mgt/IOPMLib.h>
 #elif _WIN32
 #define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
+#ifndef NOMINMAX
+    #define NOMINMAX
+#endif
 #include <Windows.h>
 #include "boost/nowide/convert.hpp"
 #endif
@@ -201,7 +209,7 @@ void change_opt_value(DynamicPrintConfig& config, const t_config_option_key& opt
 			}
 			break;
 		case coPoints:{
-			if (opt_key == "bed_shape" || opt_key == "thumbnails") {
+			if (opt_key == "bed_shape") {
 				config.option<ConfigOptionPoints>(opt_key)->values = boost::any_cast<std::vector<Vec2d>>(value);
 				break;
 			}
@@ -336,7 +344,7 @@ void show_substitutions_info(const PresetsConfigSubstitutions& presets_config_su
 	};
 
 	for (const PresetConfigSubstitutions& substitution : presets_config_substitutions) {
-		changes += "\n\n" + format_wxstr("%1% : %2%", preset_type_name(substitution.preset_type), bold_string(substitution.preset_name));
+		changes += "\n\n" + format_wxstr("%1% : %2%", preset_type_name(substitution.preset_type), bold_string(from_u8(substitution.preset_name)));
 		if (!substitution.preset_file.empty())
 			changes += format_wxstr(" (%1%)", substitution.preset_file);
 

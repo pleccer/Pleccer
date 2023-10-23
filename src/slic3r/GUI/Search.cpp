@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Pavel Mikuš @Godrak, Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Search.hpp"
 
 #include <cstddef>
@@ -483,7 +487,11 @@ SearchDialog::SearchDialog(OptionsSearcher* searcher)
     searcher(searcher)
 {
     SetFont(GUI::wxGetApp().normal_font());
+#if _WIN32
     GUI::wxGetApp().UpdateDarkUI(this);
+#elif __WXGTK__
+    SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
+#endif
 
     default_string = _L("Enter a search term");
     int border = 10;
@@ -521,9 +529,9 @@ SearchDialog::SearchDialog(OptionsSearcher* searcher)
 
     wxBoxSizer* check_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    check_category  = new wxCheckBox(this, wxID_ANY, _L("Category"));
+    check_category  = new ::CheckBox(this, _L("Category"));
     if (GUI::wxGetApp().is_localized())
-        check_english   = new wxCheckBox(this, wxID_ANY, _L("Search in English"));
+        check_english   = new ::CheckBox(this, _L("Search in English"));
 
     wxStdDialogButtonSizer* cancel_btn = this->CreateStdDialogButtonSizer(wxCANCEL);
     GUI::wxGetApp().UpdateDarkUI(static_cast<wxButton*>(this->FindWindowById(wxID_CANCEL, this)));
@@ -569,6 +577,12 @@ SearchDialog::SearchDialog(OptionsSearcher* searcher)
 
     SetSizer(topSizer);
     topSizer->SetSizeHints(this);
+}
+
+SearchDialog::~SearchDialog()
+{
+    if (search_list_model)
+        search_list_model->DecRef();
 }
 
 void SearchDialog::Popup(wxPoint position /*= wxDefaultPosition*/)

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <libslic3r/SLA/Pad.hpp>
 #include <libslic3r/SLA/SpatIndex.hpp>
 #include <libslic3r/BoostAdapter.hpp>
@@ -21,9 +25,6 @@
 #include "I18N.hpp"
 #include <boost/log/trivial.hpp>
 
-//! macro used to mark string used at localization,
-//! return same string
-#define L(s) Slic3r::I18N::translate(s)
 
 namespace Slic3r { namespace sla {
 
@@ -530,7 +531,7 @@ std::string PadConfig::validate() const
     if (brim_size_mm < MIN_BRIM_SIZE_MM ||
         bottom_offset() > brim_size_mm + wing_distance() ||
         get_waffle_offset(*this) <= MIN_BRIM_SIZE_MM)
-        return L("Pad brim size is too small for the current configuration.");
+        return _u8L("Pad brim size is too small for the current configuration.");
 
     return "";
 }

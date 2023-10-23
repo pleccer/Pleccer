@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966, Lukáš Matěna @lukasmatena
+///|/ Copyright (c) 2022 KARBOWSKI Piotr
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "AppUpdater.hpp"
 
 #include <atomic>
@@ -39,7 +44,7 @@ namespace {
 		std::string msg;
 		bool res = GUI::create_process(path, std::wstring(), msg);
 		if (!res) {
-			std::string full_message = GUI::format(_utf8("Running downloaded instaler of %1% has failed:\n%2%"), SLIC3R_APP_NAME, msg);
+			std::string full_message = GUI::format(_u8L("Running downloaded instaler of %1% has failed:\n%2%"), SLIC3R_APP_NAME, msg);
 			BOOST_LOG_TRIVIAL(error) << full_message; // lm: maybe UI error msg?  // dk: bellow. (maybe some general show error evt would be better?)
 			wxCommandEvent* evt = new wxCommandEvent(EVT_SLIC3R_APP_DOWNLOAD_FAILED);
 			evt->SetString(full_message);
@@ -174,9 +179,7 @@ bool  AppUpdater::priv::http_get_file(const std::string& url, size_t size_limit,
 			cancel = (m_cancel ? true : !progress_fn(std::move(progress)));
 			if (cancel) {
 				// Lets keep error_message empty here - if there is need to show error dialog, the message will be probably shown by whatever caused the cancel.
-				/*
-				error_message = GUI::format(_utf8("Error getting: `%1%`: Download was canceled."), url);
-				*/
+				//error_message = GUI::format(_u8L("Error getting: `%1%`: Download was canceled."), url);
 				BOOST_LOG_TRIVIAL(debug) << "AppUpdater::priv::http_get_file message: "<< error_message;
 			}
 		})
@@ -205,8 +208,8 @@ boost::filesystem::path AppUpdater::priv::download_file(const DownloadAppData& d
 	assert(!dest_path.empty());
 	if (dest_path.empty())
 	{
-		std::string line1 = GUI::format(_utf8("Internal download error for url %1%:"), data.url);
-		std::string line2 = _utf8("Destination path is empty.");
+		std::string line1 = GUI::format(_u8L("Internal download error for url %1%:"), data.url);
+		std::string line2 = _u8L("Destination path is empty.");
 		std::string message = GUI::format("%1%\n%2%", line1, line2);
 		BOOST_LOG_TRIVIAL(error) << message;
 		wxCommandEvent* evt = new wxCommandEvent(EVT_SLIC3R_APP_DOWNLOAD_FAILED);
@@ -222,8 +225,8 @@ boost::filesystem::path AppUpdater::priv::download_file(const DownloadAppData& d
 	file = fopen(temp_path_wstring.c_str(), "wb");
 	assert(file != NULL);
 	if (file == NULL) {
-	    std::string line1 = GUI::format(_utf8("Download from %1% couldn't start:"), data.url);
-		std::string line2 = GUI::format(_utf8("Can't create file at %1%."), tmp_path.string());
+	    std::string line1 = GUI::format(_u8L("Download from %1% couldn't start:"), data.url);
+		std::string line2 = GUI::format(_u8L("Can't create file at %1%"), tmp_path.string());
 		std::string message = GUI::format("%1%\n%2%", line1, line2);
 		BOOST_LOG_TRIVIAL(error) << message;
 		wxCommandEvent* evt = new wxCommandEvent(EVT_SLIC3R_APP_DOWNLOAD_FAILED);
@@ -264,11 +267,11 @@ boost::filesystem::path AppUpdater::priv::download_file(const DownloadAppData& d
 			// Size check. Does always 1 char == 1 byte?
 			size_t body_size = body.size(); 
 			if (body_size != expected_size) {
-				error_message = GUI::format(_utf8("Downloaded file has wrong size. Expected size: %1% Downloaded size: %2%"), expected_size, body_size);
+				error_message = GUI::format(_u8L("Downloaded file has wrong size. Expected size: %1% Downloaded size: %2%"), expected_size, body_size);
 				return false;
 			}
 			if (file == NULL) {
-				error_message = GUI::format(_utf8("Can't create file at %1%."), tmp_path.string());
+				error_message = GUI::format(_u8L("Can't create file at %1%"), tmp_path.string());
 				return false;
 			}
 			try
@@ -279,7 +282,7 @@ boost::filesystem::path AppUpdater::priv::download_file(const DownloadAppData& d
 			}
 			catch (const std::exception& e)
 			{
-				error_message = GUI::format(_utf8("Failed to write to file or to move %1% to %2%:\n%3%"), tmp_path, dest_path, e.what());
+				error_message = GUI::format(_u8L("Failed to write to file or to move %1% to %2%:\n%3%"), tmp_path, dest_path, e.what());
 				return false;
 			}
 			return true;
@@ -295,7 +298,7 @@ boost::filesystem::path AppUpdater::priv::download_file(const DownloadAppData& d
 		} else {
 			std::string message = (error_message.empty() 
 				? std::string()
-				: GUI::format(_utf8("Downloading new %1% has failed:\n%2%"), SLIC3R_APP_NAME, error_message));
+				: GUI::format(_u8L("Downloading new %1% has failed:\n%2%"), SLIC3R_APP_NAME, error_message));
 			wxCommandEvent* evt = new wxCommandEvent(EVT_SLIC3R_APP_DOWNLOAD_FAILED);
 			if (!message.empty()) {
 				BOOST_LOG_TRIVIAL(error) << message;

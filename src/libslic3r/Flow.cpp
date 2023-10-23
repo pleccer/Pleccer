@@ -1,3 +1,13 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Pavel Mikuš @Godrak, Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros
+///|/ Copyright (c) Slic3r 2014 - 2015 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2014 Petr Ledvina @ledvinap
+///|/
+///|/ ported from lib/Slic3r/Flow.pm:
+///|/ Copyright (c) Prusa Research 2022 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2012 - 2014 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Flow.hpp"
 #include "I18N.hpp"
 #include "Print.hpp"
@@ -5,9 +15,6 @@
 #include <assert.h>
 
 #include <boost/algorithm/string/predicate.hpp>
-
-// Mark string for localization and translate.
-#define L(s) Slic3r::I18N::translate(s)
 
 namespace Slic3r {
 
@@ -58,7 +65,7 @@ static inline FlowRole opt_key_to_flow_role(const std::string &opt_key)
 
 static inline void throw_on_missing_variable(const std::string &opt_key, const char *dependent_opt_key) 
 {
-	throw FlowErrorMissingVariable((boost::format(L("Cannot calculate extrusion width for %1%: Variable \"%2%\" not accessible.")) % opt_key % dependent_opt_key).str());
+	throw FlowErrorMissingVariable((boost::format(_u8L("Cannot calculate extrusion width for %1%: Variable \"%2%\" not accessible.")) % opt_key % dependent_opt_key).str());
 }
 
 // Used to provide hints to the user on default extrusion width values, and to provide reasonable values to the PlaceholderParser.
@@ -179,7 +186,7 @@ Flow Flow::with_cross_section(float area_new) const
             return this->with_width(width_new);
         } else {
             // Create a rounded extrusion.
-            auto dmr = float(sqrt(area_new / M_PI));
+            auto dmr = 2.0 * float(sqrt(area_new / M_PI));
             return Flow(dmr, dmr, m_spacing, m_nozzle_diameter, false);
         }
     } else

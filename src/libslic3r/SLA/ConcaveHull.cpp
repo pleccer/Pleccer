@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <libslic3r/SLA/ConcaveHull.hpp>
 #include <libslic3r/SLA/SpatIndex.hpp>
 
@@ -43,7 +47,8 @@ Point ConcaveHull::centroid(const Points &pp)
 Points ConcaveHull::calculate_centroids() const
 {
     // We get the centroids of all the islands in the 2D slice
-    Points centroids = reserve_vector<Point>(m_polys.size());
+    Points centroids;
+    centroids.reserve(m_polys.size());
     std::transform(m_polys.begin(), m_polys.end(),
                    std::back_inserter(centroids),
                    [](const Polygon &poly) { return centroid(poly); });

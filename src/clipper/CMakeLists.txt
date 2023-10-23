@@ -8,3 +8,5 @@ add_library(clipper STATIC
     clipper_z.cpp
     clipper_z.hpp
 )
+
+target_link_libraries(clipper TBB::tbb TBB::tbbmalloc)

@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2019 - 2022 Tomáš Mészáros @tamasmeszaros, Filip Sykala @Jony01
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 # We have to check for OpenGL to compile GLEW
 set(OpenGL_GL_PREFERENCE "LEGACY") # to prevent a nasty warning by cmake
 find_package(OpenGL QUIET REQUIRED)

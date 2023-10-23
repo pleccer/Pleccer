@@ -7,7 +7,6 @@
 #include "SparsePointGrid.hpp"
 #include "PolygonsPointIndex.hpp"
 #include "../../Polygon.hpp"
-#include <unordered_set>
 #include <cassert>
 
 namespace Slic3r::Arachne

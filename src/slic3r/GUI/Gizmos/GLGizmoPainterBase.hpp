@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Pavel Mikuš @Godrak, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas, Filip Sykala @Jony01
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GLGizmoPainterBase_hpp_
 #define slic3r_GLGizmoPainterBase_hpp_
 
@@ -13,6 +17,7 @@
 #include <GL/glew.h>
 
 #include <memory>
+#include <wx/string.h>
 
 
 namespace Slic3r::GUI {
@@ -82,7 +87,7 @@ private:
 public:
     GLGizmoPainterBase(GLCanvas3D& parent, const std::string& icon_filename, unsigned int sprite_id);
     ~GLGizmoPainterBase() override;
-    void data_changed() override;
+    void data_changed(bool is_serializing) override;
     virtual bool gizmo_event(SLAGizmoEventType action, const Vec2d& mouse_position, bool shift_down, bool alt_down, bool control_down);
 
     // Following function renders the triangles and cursor. Having this separated

@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2018 - 2021 Tomáš Mészáros @tamasmeszaros, Vojtěch Král @vojtechkral, Vojtěch Bubník @bubnikv
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 
 # The unix common part expects DEP_CMAKE_OPTS to be set
 

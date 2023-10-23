@@ -2,8 +2,12 @@
     // Why?
     #define _WIN32_WINNT 0x0502
     // The standard Windows includes.
-    #define WIN32_LEAN_AND_MEAN
-    #define NOMINMAX
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif // WIN32_LEAN_AND_MEAN
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif // NOMINMAX
     #include <Windows.h>
     #include <wchar.h>
     #ifdef SLIC3R_GUI
@@ -40,6 +44,7 @@
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/GCode/PostProcessor.hpp"
 #include "libslic3r/Model.hpp"
+#include "libslic3r/CutUtils.hpp"
 #include "libslic3r/ModelArrange.hpp"
 #include "libslic3r/Platform.hpp"
 #include "libslic3r/Print.hpp"
@@ -271,6 +276,21 @@ int CLI::run(int argc, char **argv)
         }
     }
 
+    if (!start_gui) {
+        const auto* post_process = m_print_config.opt<ConfigOptionStrings>("post_process");
+        if (post_process != nullptr && !post_process->values.empty()) {
+            boost::nowide::cout << "\nA post-processing script has been detected in the config data:\n\n";
+            for (const auto& s : post_process->values) {
+                boost::nowide::cout << "> " << s << "\n";
+            }
+            boost::nowide::cout << "\nContinue(Y/N) ? ";
+            char in;
+            boost::nowide::cin >> in;
+            if (in != 'Y' && in != 'y')
+                return 0;
+        }
+    }
+
     // Apply command line options to a more specific DynamicPrintConfig which provides normalize()
     // (command line options override --load files)
     m_print_config.apply(m_extra_config, true);
@@ -313,10 +333,10 @@ int CLI::run(int argc, char **argv)
     
     // Loop through transform options.
     bool user_center_specified = false;
-    Points bed = get_bed_shape(m_print_config);
-    ArrangeParams arrange_cfg;
-    arrange_cfg.min_obj_distance = scaled(min_object_distance(m_print_config));
-    
+    arr2::ArrangeBed bed = arr2::to_arrange_bed(get_bed_shape(m_print_config));
+    arr2::ArrangeSettings arrange_cfg;
+    arrange_cfg.set_distance_from_objects(min_object_distance(m_print_config));
+
     for (auto const &opt_key : m_transforms) {
         if (opt_key == "merge") {
             Model m;
@@ -329,7 +349,7 @@ int CLI::run(int argc, char **argv)
                 if (this->has_print_action())
                     arrange_objects(m, bed, arrange_cfg);
                 else
-                    arrange_objects(m, InfiniteBed{}, arrange_cfg);
+                    arrange_objects(m, arr2::InfiniteBed{}, arrange_cfg);
             }
             m_models.clear();
             m_models.emplace_back(std::move(m));
@@ -382,7 +402,7 @@ int CLI::run(int argc, char **argv)
         } else if (opt_key == "align_xy") {
             const Vec2d &p = m_config.option<ConfigOptionPoint>("align_xy")->value;
             for (auto &model : m_models) {
-                BoundingBoxf3 bb = model.bounding_box();
+                BoundingBoxf3 bb = model.bounding_box_exact();
                 // this affects volumes:
                 model.translate(-(bb.min.x() - p.x()), -(bb.min.y() - p.y()), -bb.min.z());
             }
@@ -423,7 +443,7 @@ int CLI::run(int argc, char **argv)
         } else if (opt_key == "cut" || opt_key == "cut_x" || opt_key == "cut_y") {
             std::vector<Model> new_models;
             for (auto &model : m_models) {
-                model.translate(0, 0, -model.bounding_box().min.z());  // align to z = 0
+                model.translate(0, 0, -model.bounding_box_exact().min.z());  // align to z = 0
                 size_t num_objects = model.objects.size();
                 for (size_t i = 0; i < num_objects; ++ i) {
 
@@ -437,8 +457,11 @@ int CLI::run(int argc, char **argv)
                     }
 #else
 //                    model.objects.front()->cut(0, m_config.opt_float("cut"), ModelObjectCutAttribute::KeepLower | ModelObjectCutAttribute::KeepUpper | ModelObjectCutAttribute::FlipLower);
-                    model.objects.front()->cut(0, Geometry::translation_transform(m_config.opt_float("cut") * Vec3d::UnitZ()),
+                    Cut cut(model.objects.front(), 0, Geometry::translation_transform(m_config.opt_float("cut") * Vec3d::UnitZ()),
                                                ModelObjectCutAttribute::KeepLower | ModelObjectCutAttribute::KeepUpper | ModelObjectCutAttribute::PlaceOnCutUpper);
+                    auto cut_objects = cut.perform_with_plane();
+                    for (ModelObject* obj : cut_objects)
+                        model.add_object(*obj);
 #endif
                     model.delete_object(size_t(0));
                 }
@@ -572,7 +595,7 @@ int CLI::run(int argc, char **argv)
                 if (! m_config.opt_bool("dont_arrange")) {
                     if (user_center_specified) {
                         Vec2d c = m_config.option<ConfigOptionPoint>("center")->value;
-                        arrange_objects(model, InfiniteBed{scaled(c)}, arrange_cfg);
+                        arrange_objects(model, arr2::InfiniteBed{scaled(c)}, arrange_cfg);
                     } else
                         arrange_objects(model, bed, arrange_cfg);
                 }
@@ -759,6 +782,7 @@ bool CLI::setup(int argc, char **argv)
     set_var_dir((path_resources / "icons").string());
     set_local_dir((path_resources / "localization").string());
     set_sys_shapes_dir((path_resources / "shapes").string());
+    set_custom_gcodes_dir((path_resources / "custom_gcodes").string());
 
     // Parse all command line options into a DynamicConfig.
     // If any option is unsupported, print usage and abort immediately.

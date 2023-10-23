@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Lukáš Matěna @lukasmatena, David Kocík @kocikdav, Vojtěch Král @vojtechkral, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Bonjour.hpp"
 
 #include <cstdint>
@@ -11,7 +15,7 @@
 #include <boost/date_time/posix_time/posix_time_duration.hpp>
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 
 using boost::optional;
 using boost::system::error_code;

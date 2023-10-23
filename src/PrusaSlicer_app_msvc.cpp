@@ -1,13 +1,15 @@
 // Why?
 #define _WIN32_WINNT 0x0502
 // The standard Windows includes.
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
+#ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+#endif // WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+    #define NOMINMAX
+#endif // NOMINMAX
 #include <Windows.h>
 #include <shellapi.h>
 #include <wchar.h>
-
-
 
 #ifdef SLIC3R_GUI
 extern "C"

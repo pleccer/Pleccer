@@ -1,5 +1,10 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Pavel Mikuš @Godrak, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "JumpPointSearch.hpp"
 #include "BoundingBox.hpp"
+#include "ExPolygon.hpp"
 #include "Point.hpp"
 #include "libslic3r/AStar.hpp"
 #include "libslic3r/KDTreeIndirect.hpp"
@@ -17,6 +22,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <oneapi/tbb/scalable_allocator.h>
 
 //#define DEBUG_FILES
 #ifdef DEBUG_FILES
@@ -181,17 +188,18 @@ public:
 void JPSPathFinder::clear()
 {
     inpassable.clear();
-    obstacle_max = Pixel(std::numeric_limits<coord_t>::min(), std::numeric_limits<coord_t>::min());
-    obstacle_min = Pixel(std::numeric_limits<coord_t>::max(), std::numeric_limits<coord_t>::max());
+    max_search_box.max = Pixel(std::numeric_limits<coord_t>::min(), std::numeric_limits<coord_t>::min());
+    max_search_box.min = Pixel(std::numeric_limits<coord_t>::max(), std::numeric_limits<coord_t>::max());
+    add_obstacles(bed_shape);
 }
 
 void JPSPathFinder::add_obstacles(const Lines &obstacles)
 {
     auto store_obstacle = [&](coord_t x, coord_t y) {
-        obstacle_max.x() = std::max(obstacle_max.x(), x);
-        obstacle_max.y() = std::max(obstacle_max.y(), y);
-        obstacle_min.x() = std::min(obstacle_min.x(), x);
-        obstacle_min.y() = std::min(obstacle_min.y(), y);
+        max_search_box.max.x() = std::max(max_search_box.max.x(), x);
+        max_search_box.max.y() = std::max(max_search_box.max.y(), y);
+        max_search_box.min.x() = std::min(max_search_box.min.x(), x);
+        max_search_box.min.y() = std::min(max_search_box.min.y(), y);
         inpassable.insert(Pixel{x, y});
         return true;
     };
@@ -209,8 +217,8 @@ void JPSPathFinder::add_obstacles(const Layer *layer, const Point &global_origin
 
     this->print_z = layer->print_z;
     Lines obstacles;
-    obstacles.reserve(layer->malformed_lines.size());
-    for (const Line &l : layer->malformed_lines) { obstacles.push_back(Line{l.a + global_origin, l.b + global_origin}); }
+    obstacles.reserve(layer->curled_lines.size());
+    for (const Line &l : layer->curled_lines) { obstacles.push_back(Line{l.a + global_origin, l.b + global_origin}); }
     add_obstacles(obstacles);
 }
 
@@ -240,9 +248,9 @@ Polyline JPSPathFinder::find_path(const Point &p0, const Point &p1)
         });
     }
 
-    BoundingBox search_box({start, end, obstacle_max, obstacle_min});
-    search_box.max += Pixel(1, 1);
-    search_box.min -= Pixel(1, 1);
+    BoundingBox search_box = max_search_box;
+    search_box.max -= Pixel(1, 1);
+    search_box.min += Pixel(1, 1);
 
     BoundingBox bounding_square(Points{start, end});
     bounding_square.max += Pixel(5, 5);
@@ -265,7 +273,7 @@ Polyline JPSPathFinder::find_path(const Point &p0, const Point &p1)
     using QNode = astar::QNode<JPSTracer<Pixel, decltype(cell_query)>>;
 
     std::unordered_map<size_t, QNode>   astar_cache{};
-    std::vector<Pixel>                  out_path;
+    std::vector<Pixel, PointsAllocator<Pixel>> out_path;
     std::vector<decltype(tracer)::Node> out_nodes;
 
     if (!astar::search_route(tracer, {start, {0, 0}}, std::back_inserter(out_nodes), astar_cache)) {
@@ -304,7 +312,7 @@ Polyline JPSPathFinder::find_path(const Point &p0, const Point &p1)
     svg.draw(scaled_point(start), "green", scale_(0.4));
 #endif
 
-    std::vector<Pixel> tmp_path;
+    std::vector<Pixel, PointsAllocator<Pixel>> tmp_path;
     tmp_path.reserve(out_path.size());
     // Some path found, reverse and remove points that do not change direction
     std::reverse(out_path.begin(), out_path.end());

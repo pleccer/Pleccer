@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Oleksandra Iushchenko @YuSanka
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "FindReplace.hpp"
 #include "../Utils.hpp"
 

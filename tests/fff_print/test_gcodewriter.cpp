@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "libslic3r/GCodeWriter.hpp"
+#include "libslic3r/GCode/GCodeWriter.hpp"
 
 using namespace Slic3r;
 

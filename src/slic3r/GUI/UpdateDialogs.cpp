@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Lukáš Matěna @lukasmatena, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral, Vojtěch Bubník @bubnikv
+///|/ Copyright (c) 2020 Ondřej Nový @onovy
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "UpdateDialogs.hpp"
 
 #include <cstring>
@@ -135,10 +140,10 @@ bool AppUpdateAvailableDialog::disable_version_check() const
 
 // AppUpdateDownloadDialog
 AppUpdateDownloadDialog::AppUpdateDownloadDialog( const Semver& ver_online, boost::filesystem::path& path)
-	: MsgDialog(nullptr, _(L("App Update download")), wxString::Format(_(L("New version of %s is available.")), SLIC3R_APP_NAME))
+	: MsgDialog(nullptr, _L("App Update download"), format_wxstr(_L("New version of %1% is available."), SLIC3R_APP_NAME))
 {
 	auto* versions = new wxFlexGridSizer(2, 0, VERT_SPACING);
-	versions->Add(new wxStaticText(this, wxID_ANY, _(L("New version:"))));
+	versions->Add(new wxStaticText(this, wxID_ANY, _L("New version") + ":"));
 	versions->Add(new wxStaticText(this, wxID_ANY, ver_online.to_string()));
 	content_sizer->Add(versions);
 	content_sizer->AddSpacer(VERT_SPACING);
@@ -148,7 +153,7 @@ AppUpdateDownloadDialog::AppUpdateDownloadDialog( const Semver& ver_online, boos
 #endif
 	content_sizer->AddSpacer(VERT_SPACING);
 	content_sizer->AddSpacer(VERT_SPACING);
-	content_sizer->Add(new wxStaticText(this, wxID_ANY, _(L("Target directory:"))));
+	content_sizer->Add(new wxStaticText(this, wxID_ANY, _L("Target directory") + ":"));
 	content_sizer->AddSpacer(VERT_SPACING);
 	txtctrl_path = new wxTextCtrl(this, wxID_ANY, GUI::format_wxstr(path.parent_path().string()));
 	filename = GUI::format_wxstr(path.filename().string());
@@ -173,7 +178,7 @@ AppUpdateDownloadDialog::AppUpdateDownloadDialog( const Semver& ver_online, boos
 			dir = GUI::format(txtctrl_path->GetValue());
 		wxDirDialog save_dlg(
 			this
-			, _L("Select directory:")
+			, _L("Select directory") + ":"
 			, GUI::format_wxstr(dir.string())
 			/*
 			, filename //boost::nowide::widen(AppUpdater::get_filename_from_url(txtctrl_path->GetValue().ToUTF8().data()))
@@ -300,6 +305,13 @@ MsgUpdateConfig::MsgUpdateConfig(const std::vector<Update> &updates, bool force_
 			flex->Add(update_comment);
 		}
 
+		if (! update.new_printers.empty()) {
+			flex->Add(new wxStaticText(this, wxID_ANY, _L_PLURAL("New printer", "New printers", update.new_printers.find(',') == std::string::npos ? 1 : 2) + ":"), 0, wxALIGN_RIGHT);
+			auto* update_printer = new wxStaticText(this, wxID_ANY, from_u8(update.new_printers));
+			update_printer->Wrap(CONTENT_WIDTH * wxGetApp().em_unit());
+			flex->Add(update_printer);
+		}
+
 		versions->Add(flex);
 
 		if (! update.changelog_url.empty() && update.version.prerelease() == nullptr) {
@@ -358,6 +370,13 @@ MsgUpdateForced::MsgUpdateForced(const std::vector<Update>& updates) :
 			auto* update_comment = new wxStaticText(this, wxID_ANY, from_u8(update.comment));
 			update_comment->Wrap(CONTENT_WIDTH * wxGetApp().em_unit());
 			versions->Add(update_comment);
+		}
+
+		if (!update.new_printers.empty()) {
+			versions->Add(new wxStaticText(this, wxID_ANY, _L_PLURAL("New printer", "New printers", update.new_printers.find(',') == std::string::npos ? 1 : 2)+":")/*, 0, wxALIGN_RIGHT*/);
+			auto* update_printer = new wxStaticText(this, wxID_ANY, from_u8(update.new_printers));
+			update_printer->Wrap(CONTENT_WIDTH * wxGetApp().em_unit());
+			versions->Add(update_printer);
 		}
 
 		if (!update.changelog_url.empty() && update.version.prerelease() == nullptr) {
@@ -436,8 +455,7 @@ MsgDataIncompatible::~MsgDataIncompatible() {}
 MsgDataLegacy::MsgDataLegacy() :
 	MsgDialog(nullptr, _(L("Configuration update")), _(L("Configuration update")))
 {
-    auto *text = new wxStaticText(this, wxID_ANY, from_u8((boost::format(
-        _utf8(L(
+    auto *text = new wxStaticText(this, wxID_ANY, format_wxstr( _L(
 			"%s now uses an updated configuration structure.\n\n"
 
 			"So called 'System presets' have been introduced, which hold the built-in default settings for various "
@@ -447,10 +465,8 @@ MsgDataLegacy::MsgDataLegacy() :
 
 			"Please proceed with the %s that follows to set up the new presets "
 			"and to choose whether to enable automatic preset updates."
-        )))
-        % SLIC3R_APP_NAME
-        % _utf8(ConfigWizard::name())).str()
-	));
+        )
+        , SLIC3R_APP_NAME, ConfigWizard::name()));
 	text->Wrap(CONTENT_WIDTH * wxGetApp().em_unit());
 	content_sizer->Add(text);
 	content_sizer->AddSpacer(VERT_SPACING);
@@ -458,7 +474,8 @@ MsgDataLegacy::MsgDataLegacy() :
 	auto *text2 = new wxStaticText(this, wxID_ANY, _(L("For more information please visit our wiki page:")));
 	static const wxString url("https://github.com/prusa3d/PrusaSlicer/wiki/Slic3r-PE-1.40-configuration-update");
 	// The wiki page name is intentionally not localized:
-	auto *link = new wxHyperlinkCtrl(this, wxID_ANY, wxString::Format("%s 1.40 configuration update", SLIC3R_APP_NAME), CONFIG_UPDATE_WIKI_URL);
+	// TRN %s = PrusaSlicer
+	auto *link = new wxHyperlinkCtrl(this, wxID_ANY, format_wxstr(_L("%s 1.40 configuration update"), SLIC3R_APP_NAME), CONFIG_UPDATE_WIKI_URL);
 	content_sizer->Add(text2);
 	content_sizer->Add(link);
 	content_sizer->AddSpacer(VERT_SPACING);
@@ -494,13 +511,8 @@ MsgNoUpdates::~MsgNoUpdates() {}
 MsgNoAppUpdates::MsgNoAppUpdates() :
 	MsgDialog(nullptr, _(L("App update")), _(L("No updates available")), wxICON_ERROR | wxOK)
 {
-
-	auto* text = new wxStaticText(this, wxID_ANY, wxString::Format(
-		_(L(
-			"%s has no version updates available."
-		)),
-		SLIC3R_APP_NAME
-	));
+	//TRN %1% is PrusaSlicer
+	auto* text = new wxStaticText(this, wxID_ANY, format_wxstr(_L("Your %1% is up to date."),SLIC3R_APP_NAME));
 	text->Wrap(CONTENT_WIDTH * wxGetApp().em_unit());
 	content_sizer->Add(text);
 	content_sizer->AddSpacer(VERT_SPACING);

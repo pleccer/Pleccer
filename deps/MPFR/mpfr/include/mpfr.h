@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 /* mpfr.h -- Include file for mpfr.
 
 Copyright 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010 Free Software Foundation, Inc.

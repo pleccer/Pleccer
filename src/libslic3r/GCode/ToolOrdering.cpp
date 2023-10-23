@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2017 - 2023 Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Tomáš Mészáros @tamasmeszaros
+///|/ Copyright (c) SuperSlicer 2023 Remi Durand @supermerill
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Print.hpp"
 #include "ToolOrdering.hpp"
 #include "Layer.hpp"
@@ -167,6 +172,16 @@ ToolOrdering::ToolOrdering(const Print &print, unsigned int first_extruder, bool
     this->reorder_extruders(first_extruder);
 
     this->fill_wipe_tower_partitions(print.config(), object_bottom_z, max_layer_height);
+
+    if (this->insert_wipe_tower_extruder()) {
+        // Now convert the 0-based list to 1-based again, because that is what reorder_extruder expects.
+        for (LayerTools& lt : m_layer_tools) {
+            for (auto& extruder : lt.extruders)
+                    ++extruder;
+        }
+        this->reorder_extruders(first_extruder);
+        this->fill_wipe_tower_partitions(print.config(), object_bottom_z, max_layer_height);
+    }
 
     this->collect_extruder_statistics(prime_multi_material);
 
@@ -460,6 +475,22 @@ void ToolOrdering::fill_wipe_tower_partitions(const PrintConfig &config, coordf_
             lt.wipe_tower_layer_height = lt.print_z - wipe_tower_print_z_last;
             wipe_tower_print_z_last = lt.print_z;
         }
+}
+
+bool ToolOrdering::insert_wipe_tower_extruder()
+{
+    // In case that wipe_tower_extruder is set to non-zero, we must make sure that the extruder will be in the list.
+    bool changed = false;
+    if (m_print_config_ptr->wipe_tower_extruder != 0) {
+        for (LayerTools& lt : m_layer_tools) {
+            if (lt.wipe_tower_partitions > 0) {
+                lt.extruders.emplace_back(m_print_config_ptr->wipe_tower_extruder - 1);
+                sort_remove_duplicates(lt.extruders);
+                changed = true;
+            }
+        }
+    }
+    return changed;
 }
 
 void ToolOrdering::collect_extruder_statistics(bool prime_multi_material)

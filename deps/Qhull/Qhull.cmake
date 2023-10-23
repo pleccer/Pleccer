@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2021 Tomáš Mészáros @tamasmeszaros
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 include(GNUInstallDirs)
 prusaslicer_add_cmake_project(Qhull
     URL "https://github.com/qhull/qhull/archive/v8.0.1.zip"

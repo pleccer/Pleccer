@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2017 - 2023 Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, David Kocík @kocikdav, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2019 John Drake @foxox
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_PresetBundle_hpp_
 #define slic3r_PresetBundle_hpp_
 
@@ -51,9 +56,12 @@ public:
 	const PresetCollection& 	materials(PrinterTechnology pt) const { return pt == ptFFF ? this->filaments : this->sla_materials; }
     PrinterPresetCollection     printers;
     PhysicalPrinterCollection   physical_printers;
-    // Filament preset names for a multi-extruder or multi-material print.
-    // extruders.size() should be the same as printers.get_edited_preset().config.nozzle_diameter.size()
-    std::vector<std::string>    filament_presets;
+
+    // Filament presets per extruder for a multi-extruder or multi-material print.
+    // extruders_filaments.size() should be the same as printers.get_edited_preset().config.nozzle_diameter.size()
+    std::vector<ExtruderFilaments> extruders_filaments;
+    void cache_extruder_filaments_names();
+    void reset_extruder_filaments();
 
     PresetCollection&           get_presets(Preset::Type preset_type);
 
@@ -132,6 +140,8 @@ public:
     // update size and content of filament_presets.
     void                        update_multi_material_filament_presets();
 
+    void                        update_filaments_compatible(PresetSelectCompatibleType select_other_filament_if_incompatible, int extruder_idx = -1);
+
     // Update the is_compatible flag of all print and filament presets depending on whether they are marked
     // as compatible with the currently selected printer (and print in case of filament presets).
     // Also updates the is_visible flag of each preset.
@@ -145,7 +155,7 @@ public:
     // If the "vendor" section is missing, enable all models and variants of the particular vendor.
     void                        load_installed_printers(const AppConfig &config);
 
-    const std::string&          get_preset_name_by_alias(const Preset::Type& preset_type, const std::string& alias);
+    const std::string&          get_preset_name_by_alias(const Preset::Type& preset_type, const std::string& alias, int extruder_id = -1);
 
     // Save current preset of a provided type under a new name. If the name is different from the old one,
     // Unselected option would be reverted to the beginning values
@@ -169,6 +179,8 @@ private:
     std::vector<std::string>    merge_presets(PresetBundle &&other);
     // Update renamed_from and alias maps of system profiles.
     void 						update_system_maps();
+    // Update alias maps
+    void 						update_alias_maps();
 
     // Set the is_visible flag for filaments and sla materials,
     // apply defaults based on enabled printers when no filaments/materials are installed.

@@ -871,7 +871,7 @@ template<class P> auto rcend(const P& p) -> decltype(_backward(cbegin(p)))
 
 template<class P> TPoint<P> front(const P& p) { return *shapelike::cbegin(p); }
 template<class P> TPoint<P> back (const P& p) {
-    return *backward(shapelike::cend(p));
+    return *std::prev(shapelike::cend(p));
 }
 
 // Optional, does nothing by default

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Lukáš Hejl @hejllukas, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Oleksandra Iushchenko @YuSanka, Pavel Mikuš @Godrak, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 // #include "libslic3r/GCodeSender.hpp"
 #include "ConfigManipulation.hpp"
 #include "I18N.hpp"
@@ -79,7 +83,6 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
            fill_density == 0 &&
            ! config->opt_bool("support_material") &&
            config->opt_int("support_material_enforce_layers") == 0 &&
-           config->opt_bool("ensure_vertical_shell_thickness") &&
            ! config->opt_bool("thin_walls")))
     {
         wxString msg_text = _(L("The Spiral Vase mode requires:\n"
@@ -87,7 +90,6 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
                                 "- no top solid layers\n"
                                 "- 0% fill density\n"
                                 "- no support material\n"
-                                "- Ensure vertical shell thickness enabled\n"
                					"- Detect thin walls disabled"));
         if (is_global_config)
             msg_text += "\n\n" + _(L("Shall I adjust those settings in order to enable Spiral Vase?"));
@@ -102,7 +104,6 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
             new_conf.set_key_value("fill_density", new ConfigOptionPercent(0));
             new_conf.set_key_value("support_material", new ConfigOptionBool(false));
             new_conf.set_key_value("support_material_enforce_layers", new ConfigOptionInt(0));
-            new_conf.set_key_value("ensure_vertical_shell_thickness", new ConfigOptionBool(true));
             new_conf.set_key_value("thin_walls", new ConfigOptionBool(false));            
             fill_density = 0;
             support = false;
@@ -217,14 +218,13 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
 void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
 {
     bool have_perimeters = config->opt_int("perimeters") > 0;
-    for (auto el : { "extra_perimeters","extra_perimeters_on_overhangs", "ensure_vertical_shell_thickness", "thin_walls", "overhangs",
+    for (auto el : { "extra_perimeters","extra_perimeters_on_overhangs", "thin_walls", "overhangs",
                     "seam_position","staggered_inner_seams", "external_perimeters_first", "external_perimeter_extrusion_width",
-                    "perimeter_speed", "small_perimeter_speed", "external_perimeter_speed", "enable_dynamic_overhang_speeds", "overhang_overlap_levels", "dynamic_overhang_speeds" })
+                    "perimeter_speed", "small_perimeter_speed", "external_perimeter_speed", "enable_dynamic_overhang_speeds"})
         toggle_field(el, have_perimeters);
 
     for (size_t i = 0; i < 4; i++) {
-        toggle_field("overhang_overlap_levels#" + std::to_string(i), config->opt_bool("enable_dynamic_overhang_speeds"));
-        toggle_field("dynamic_overhang_speeds#" + std::to_string(i), config->opt_bool("enable_dynamic_overhang_speeds"));
+        toggle_field("overhang_speed_" + std::to_string(i), config->opt_bool("enable_dynamic_overhang_speeds"));
     }
 
     bool have_infill = config->option<ConfigOptionPercent>("fill_density")->value > 0;
@@ -259,7 +259,8 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
         toggle_field(el, has_top_solid_infill || (has_spiral_vase && has_bottom_solid_infill));
 
     bool have_default_acceleration = config->opt_float("default_acceleration") > 0;
-    for (auto el : { "perimeter_acceleration", "infill_acceleration",
+    for (auto el : { "perimeter_acceleration", "infill_acceleration", "top_solid_infill_acceleration",
+                    "solid_infill_acceleration", "external_perimeter_acceleration",
                     "bridge_acceleration", "first_layer_acceleration" })
         toggle_field(el, have_default_acceleration);
 
@@ -281,7 +282,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
     bool have_support_soluble = have_support_material && config->opt_float("support_material_contact_distance") == 0;
     auto support_material_style = config->opt_enum<SupportMaterialStyle>("support_material_style");
     for (auto el : { "support_material_style", "overhang_auto_setting","overhang_margin_classic","overhang_margin_organic","support_material_pattern", "support_material_with_sheath",
-                    "support_material_spacing", "support_material_angle","dont_support_pedestal_overhangs", 
+                    "support_material_spacing", "support_material_angle","dont_support_pedestal_overhangs",
                     "support_material_interface_pattern", "support_material_interface_layers",
                     "dont_support_bridges", "support_material_extrusion_width", "support_material_contact_distance",
                     "support_material_xy_spacing" })
@@ -289,6 +290,14 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
     toggle_field("support_material_threshold", have_support_material_auto);
     toggle_field("support_material_bottom_contact_distance", have_support_material && ! have_support_soluble);
     toggle_field("support_material_closing_radius", have_support_material && support_material_style == smsSnug);
+
+    const bool has_organic_supports = support_material_style == smsOrganic && 
+                                     (config->opt_bool("support_material") || 
+                                      config->opt_int("support_material_enforce_layers") > 0);
+    for (const std::string& key : { "support_tree_angle", "support_tree_angle_slow", "support_tree_branch_diameter",
+                                    "support_tree_branch_diameter_angle", "support_tree_branch_diameter_double_wall",
+                                    "support_tree_tip_diameter", "support_tree_branch_distance", "support_tree_top_rate" })
+        toggle_field(key, has_organic_supports);
 
     for (auto el : { "support_material_bottom_interface_layers", "support_material_interface_spacing", "support_material_interface_extruder",
                     "support_material_interface_speed", "support_material_interface_contact_loops" })
@@ -315,9 +324,12 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
     toggle_field("standby_temperature_delta", have_ooze_prevention);
 
     bool have_wipe_tower = config->opt_bool("wipe_tower");
-    for (auto el : { "wipe_tower_x", "wipe_tower_y", "wipe_tower_width", "wipe_tower_rotation_angle", "wipe_tower_brim_width",
-                     "wipe_tower_bridging", "wipe_tower_no_sparse_layers", "single_extruder_multi_material_priming" })
+    for (auto el : { "wipe_tower_x", "wipe_tower_y", "wipe_tower_width", "wipe_tower_rotation_angle", "wipe_tower_brim_width", "wipe_tower_cone_angle",
+                     "wipe_tower_extra_spacing", "wipe_tower_bridging", "wipe_tower_no_sparse_layers", "single_extruder_multi_material_priming" })
         toggle_field(el, have_wipe_tower);
+
+    bool have_non_zero_mmu_segmented_region_max_width = config->opt_float("mmu_segmented_region_max_width") > 0.;
+    toggle_field("mmu_segmented_region_interlocking_depth", have_non_zero_mmu_segmented_region_max_width);
 
     toggle_field("avoid_crossing_curled_overhangs", !config->opt_bool("avoid_crossing_perimeters"));
     toggle_field("avoid_crossing_perimeters", !config->opt_bool("avoid_crossing_curled_overhangs"));

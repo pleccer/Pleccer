@@ -1,3 +1,13 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas, Lukáš Matěna @lukasmatena
+///|/ Copyright (c) Slic3r 2016 Alessandro Ranellucci @alranel
+///|/
+///|/ ported from lib/Slic3r/Fill/Concentric.pm:
+///|/ Copyright (c) Prusa Research 2016 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2011 - 2015 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2012 Mark Hindess
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_FillRectilinear_hpp_
 #define slic3r_FillRectilinear_hpp_
 
@@ -7,6 +17,7 @@
 
 namespace Slic3r {
 
+class PrintRegionConfig;
 class Surface;
 
 class FillRectilinear : public Fill

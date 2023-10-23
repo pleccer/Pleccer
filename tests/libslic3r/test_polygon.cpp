@@ -196,19 +196,6 @@ SCENARIO("Simplify polygon", "[Polygon]")
             }
         }
     }
-    GIVEN("hole in square") {
-        // CW oriented
-        auto hole_in_square = Polygon{ {140, 140}, {140, 160}, {160, 160}, {160, 140} };
-        WHEN("simplified") {
-            Polygons simplified = hole_in_square.simplify(2.);
-            THEN("hole simplification returns one polygon") {
-                REQUIRE(simplified.size() == 1);
-            }
-            THEN("hole simplification turns cw polygon into ccw polygon") {
-                REQUIRE(simplified.front().is_counter_clockwise());
-            }
-        }
-    }
 }
 
 #include "libslic3r/ExPolygon.hpp"

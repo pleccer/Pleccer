@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Vojtěch Bubník @bubnikv, Roman Beránek @zavorka
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifdef WIN32
 	#ifndef WIN32_LEAN_AND_MEAN
 		#define WIN32_LEAN_AND_MEAN
@@ -107,6 +111,7 @@
 #include <boost/version.hpp>
 
 #include <tbb/parallel_for.h>
+#include <tbb/scalable_allocator.h>
 #include <tbb/spin_mutex.h>
 #include <tbb/task_group.h>
 

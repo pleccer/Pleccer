@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "ConfigSnapshotDialog.hpp"
 #include "I18N.hpp"
 
@@ -9,6 +13,7 @@
 #include "GUI_App.hpp"
 #include "MainFrame.hpp"
 #include "wxExtensions.hpp"
+#include "format.hpp"
 
 namespace Slic3r { 
 namespace GUI {
@@ -89,10 +94,10 @@ static wxString generate_html_row(const Config::Snapshot &snapshot, bool row_eve
     }
 
     if (! compatible) {
-        text += "<p align=\"right\">" + from_u8((boost::format(_utf8(L("Incompatible with this %s"))) % SLIC3R_APP_NAME).str()) + "</p>";
+        text += "<p align=\"right\">" + format_wxstr(_L("Incompatible with this %s"), SLIC3R_APP_NAME) + "</p>";
     }
     else if (! snapshot_active)
-        text += "<p align=\"right\"><a href=\"" + snapshot.id + "\">" + _(L("Activate")) + "</a></p>";
+        text += "<p align=\"right\"><a href=\"" + snapshot.id + "\">" + _L("Activate") + "</a></p>";
     text += "</td>";
 	text += "</tr>";
     return text;
@@ -136,7 +141,7 @@ ConfigSnapshotDialog::ConfigSnapshotDialog(const Config::SnapshotDB &snapshot_db
     // text
     html = new wxHtmlWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxHW_SCROLLBAR_AUTO);
     {
-        wxFont font = get_default_font(this);
+        wxFont font = this->GetFont();// get_default_font(this);
         #ifdef __WXMSW__
             const int fs = font.GetPointSize();
             const int fs1 = static_cast<int>(0.8f*fs);
@@ -155,7 +160,8 @@ ConfigSnapshotDialog::ConfigSnapshotDialog(const Config::SnapshotDB &snapshot_db
     }
     
     wxStdDialogButtonSizer* buttons = this->CreateStdDialogButtonSizer(wxCLOSE);
-    wxGetApp().UpdateDarkUI(static_cast<wxButton*>(this->FindWindowById(wxID_CLOSE, this)));
+    wxGetApp().SetWindowVariantForButton(buttons->GetCancelButton());
+    wxGetApp().UpdateDarkUI(buttons->GetCancelButton());
     this->SetEscapeId(wxID_CLOSE);
     this->Bind(wxEVT_BUTTON, &ConfigSnapshotDialog::onCloseDialog, this, wxID_CLOSE);
     vsizer->Add(buttons, 0, wxEXPAND | wxRIGHT | wxBOTTOM, 3);

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2017 - 2023 Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Pavel Mikuš @Godrak, David Kocík @kocikdav, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Lukáš Hejl @hejllukas, Filip Sykala @Jony01, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Utils.hpp"
 #include "AppConfig.hpp"
@@ -100,6 +104,9 @@ void AppConfig::set_defaults()
 
         if (get("tabs_as_menu").empty())
             set("tabs_as_menu", "0");
+
+        if (get("suppress_round_corners").empty())
+            set("suppress_round_corners", "1");
 #endif // _WIN32
 
         // remove old 'use_legacy_opengl' parameter from this config, if present
@@ -171,6 +178,8 @@ void AppConfig::set_defaults()
 #ifdef _WIN32
         if (get("associate_gcode").empty())
             set("associate_gcode", "0");
+        if (get("associate_bgcode").empty())
+            set("associate_bgcode", "0");
 #endif // _WIN32
     }
 
@@ -340,12 +349,6 @@ std::string AppConfig::load(const std::string &path)
             // Error while parsing config file. We'll customize the error message and rethrow to be displayed.
             // ! But to avoid the use of _utf8 (related to use of wxWidgets) 
             // we will rethrow this exception from the place of load() call, if returned value wouldn't be empty
-            /*
-            throw Slic3r::RuntimeError(
-                _utf8(L("Error parsing PrusaSlicer config file, it is probably corrupted. "
-                        "Try to manually delete the file to recover from the error. Your user profiles will not be affected.")) +
-                "\n\n" + AppConfig::config_path() + "\n\n" + ex.what());
-            */
             return ex.what();
         }
     }

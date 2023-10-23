@@ -1,3 +1,12 @@
+///|/ Copyright (c) Prusa Research 2017 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Enrico Turri @enricoturri1966, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas, Tomáš Mészáros @tamasmeszaros
+///|/ Copyright (c) 2019 Jason Tibbitts @jasontibbitts
+///|/
+///|/ ported from lib/Slic3r/Format/AMF.pm:
+///|/ Copyright (c) Prusa Research 2017 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2012 - 2015 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <limits>
 #include <string.h>
 #include <map>
@@ -57,10 +66,6 @@ const char* SLIC3R_CONFIG_TYPE = "slic3rpe_config";
 namespace Slic3r
 {
 
-//! macro used to mark string used at localization,
-//! return same string
-#define L(s) (s)
-#define _(s) Slic3r::I18N::translate(s)
 
 struct AMFParserContext
 {
@@ -657,11 +662,7 @@ void AMFParserContext::endElement(const char * /* name */)
         if (bool has_transform = !m_volume_transform.isApprox(Transform3d::Identity(), 1e-10); has_transform)
             m_volume->source.transform = Slic3r::Geometry::Transformation(m_volume_transform);
 
-#if ENABLE_RELOAD_FROM_DISK_REWORK
         if (m_volume->source.input_file.empty()) {
-#else
-        if (m_volume->source.input_file.empty() && m_volume->type() == ModelVolumeType::MODEL_PART) {
-#endif // ENABLE_RELOAD_FROM_DISK_REWORK
             m_volume->source.object_idx = (int)m_model.objects.size() - 1;
             m_volume->source.volume_idx = (int)m_model.objects.back()->volumes.size() - 1;
             m_volume->center_geometry_after_creation();
@@ -818,10 +819,8 @@ void AMFParserContext::endElement(const char * /* name */)
                     m_volume->source.is_converted_from_inches = m_value[1] == "1";
                 else if (strcmp(opt_key, "source_in_meters") == 0)
                     m_volume->source.is_converted_from_meters = m_value[1] == "1";
-#if ENABLE_RELOAD_FROM_DISK_REWORK
                 else if (strcmp(opt_key, "source_is_builtin_volume") == 0)
                     m_volume->source.is_from_builtin_objects = m_value[1] == "1";
-#endif // ENABLE_RELOAD_FROM_DISK_REWORK
             }
         }
         else if (m_path.size() == 3) {
@@ -922,11 +921,7 @@ bool load_amf_file(const char *path, DynamicPrintConfig *config, ConfigSubstitut
         unsigned int counter = 0;
         for (ModelVolume* v : o->volumes) {
             ++counter;
-#if ENABLE_RELOAD_FROM_DISK_REWORK
             if (v->source.input_file.empty())
-#else
-            if (v->source.input_file.empty() && v->type() == ModelVolumeType::MODEL_PART)
-#endif // ENABLE_RELOAD_FROM_DISK_REWORK
                 v->source.input_file = path;
             if (v->name.empty()) {
                 v->name = o->name;
@@ -975,7 +970,7 @@ bool extract_model_from_archive(mz_zip_archive& archive, const mz_zip_archive_fi
 
     try
     {
-        res = mz_zip_reader_extract_file_to_callback(&archive, stat.m_filename, [](void* pOpaque, mz_uint64 file_ofs, const void* pBuf, size_t n)->size_t {
+        res = mz_zip_reader_extract_to_callback(&archive, stat.m_file_index, [](void* pOpaque, mz_uint64 file_ofs, const void* pBuf, size_t n)->size_t {
             CallbackData* data = (CallbackData*)pOpaque;
             if (!XML_Parse(data->parser, (const char*)pBuf, (int)n, (file_ofs + n == data->stat.m_uncomp_size) ? 1 : 0) || data->ctx.error())
             {
@@ -1007,7 +1002,7 @@ bool extract_model_from_archive(mz_zip_archive& archive, const mz_zip_archive_fi
     {
         // std::string msg = _(L("The selected amf file has been saved with a newer version of " + std::string(SLIC3R_APP_NAME) + " and is not compatible."));
         // throw Slic3r::FileIOError(msg.c_str());
-        const std::string msg = (boost::format(_(L("The selected amf file has been saved with a newer version of %1% and is not compatible."))) % std::string(SLIC3R_APP_NAME)).str();
+        const std::string msg = (boost::format(_u8L("The selected amf file has been saved with a newer version of %1% and is not compatible.")) % std::string(SLIC3R_APP_NAME)).str();
         throw Slic3r::FileIOError(msg);
     }
 
@@ -1075,11 +1070,7 @@ bool load_amf_archive(const char* path, DynamicPrintConfig* config, ConfigSubsti
 
     for (ModelObject *o : model->objects)
         for (ModelVolume *v : o->volumes)
-#if ENABLE_RELOAD_FROM_DISK_REWORK
             if (v->source.input_file.empty())
-#else
-            if (v->source.input_file.empty() && v->type() == ModelVolumeType::MODEL_PART)
-#endif // ENABLE_RELOAD_FROM_DISK_REWORK
                 v->source.input_file = path;
 
     return true;
@@ -1270,10 +1261,8 @@ bool store_amf(const char* path, Model* model, const DynamicPrintConfig* config,
                 stream << "        <metadata type=\"slic3r.source_in_inches\">1</metadata>\n";
             else if (volume->source.is_converted_from_meters)
                 stream << "        <metadata type=\"slic3r.source_in_meters\">1</metadata>\n";
-#if ENABLE_RELOAD_FROM_DISK_REWORK
             if (volume->source.is_from_builtin_objects)
                 stream << "        <metadata type=\"slic3r.source_is_builtin_volume\">1</metadata>\n";
-#endif // ENABLE_RELOAD_FROM_DISK_REWORK
             stream << std::setprecision(std::numeric_limits<float>::max_digits10);
             const indexed_triangle_set &its = volume->mesh().its;
             for (size_t i = 0; i < its.indices.size(); ++i) {

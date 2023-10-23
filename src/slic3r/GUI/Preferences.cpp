@@ -1,9 +1,18 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Vojtěch Bubník @bubnikv, Pavel Mikuš @Godrak, Enrico Turri @enricoturri1966, Lukáš Matěna @lukasmatena, Vojtěch Král @vojtechkral
+///|/
+///|/ ported from lib/Slic3r/GUI/Preferences.pm:
+///|/ Copyright (c) Prusa Research 2016 - 2018 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2013 - 2014 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Preferences.hpp"
 #include "OptionsGroup.hpp"
 #include "GUI_App.hpp"
 #include "Plater.hpp"
 #include "MsgDialog.hpp"
 #include "I18N.hpp"
+#include "format.hpp"
 #include "libslic3r/AppConfig.hpp"
 #include <wx/notebook.h>
 #include "Notebook.hpp"
@@ -11,6 +20,8 @@
 #include "OG_CustomCtrl.hpp"
 #include "GLCanvas3D.hpp"
 #include "ConfigWizard.hpp"
+
+#include "Widgets/SpinInput.hpp"
 
 #include <boost/dll/runtime_symbol_info.hpp>
 
@@ -55,12 +66,24 @@ namespace GUI {
 
 PreferencesDialog::PreferencesDialog(wxWindow* parent) :
     DPIDialog(parent, wxID_ANY, _L("Preferences"), wxDefaultPosition, 
-              wxDefaultSize, wxDEFAULT_DIALOG_STYLE)
+              wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
 #ifdef __WXOSX__
     isOSX = true;
 #endif
 	build();
+
+    wxSize sz = GetSize();
+    sz.x += em_unit();
+
+    const size_t pages_cnt = tabs->GetPageCount();
+    for (size_t tab_id = 0; tab_id < pages_cnt; tab_id++) {
+        wxSizer* tab_sizer = tabs->GetPage(tab_id)->GetSizer();
+        wxScrolledWindow* scrolled = static_cast<wxScrolledWindow*>(tab_sizer->GetItem(size_t(0))->GetWindow());
+        scrolled->SetScrollRate(0, 5);
+    }
+
+    SetSize(sz);
 
 	m_highlighter.set_timer_owner(this, 0);
 }
@@ -122,14 +145,22 @@ void PreferencesDialog::show(const std::string& highlight_opt_key /*= std::strin
 static std::shared_ptr<ConfigOptionsGroup>create_options_tab(const wxString& title, wxBookCtrlBase* tabs)
 {
 	wxPanel* tab = new wxPanel(tabs, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBK_LEFT | wxTAB_TRAVERSAL);
+
 	tabs->AddPage(tab, _(title));
 	tab->SetFont(wxGetApp().normal_font());
 
+	auto scrolled = new wxScrolledWindow(tab);
+
+	// Sizer in the scrolled area
+	auto* scrolled_sizer = new wxBoxSizer(wxVERTICAL);
+	scrolled->SetSizer(scrolled_sizer);
+
 	wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+	sizer->Add(scrolled, 1, wxEXPAND);
 	sizer->SetSizeHints(tab);
 	tab->SetSizer(sizer);
 
-	std::shared_ptr<ConfigOptionsGroup> optgroup = std::make_shared<ConfigOptionsGroup>(tab);
+	std::shared_ptr<ConfigOptionsGroup> optgroup = std::make_shared<ConfigOptionsGroup>(scrolled);
 	optgroup->label_width = 40;
 	optgroup->set_config_category_and_type(title, int(Preset::TYPE_PREFERENCES));
 	return optgroup;
@@ -141,6 +172,8 @@ static void activate_options_tab(std::shared_ptr<ConfigOptionsGroup> optgroup)
 	optgroup->update_visibility(comSimple);
 	wxBoxSizer* sizer = static_cast<wxBoxSizer*>(static_cast<wxPanel*>(optgroup->parent())->GetSizer());
 	sizer->Add(optgroup->sizer, 0, wxEXPAND | wxALL, 10);
+
+	optgroup->parent()->Layout();
 
 	// apply sercher
 	wxGetApp().sidebar().get_searcher().append_preferences_options(optgroup->get_lines());
@@ -188,25 +221,6 @@ static void append_enum_option( std::shared_ptr<ConfigOptionsGroup> optgroup,
 	wxGetApp().sidebar().get_searcher().add_key(opt_key, Preset::TYPE_PREFERENCES, optgroup->config_category(), L("Preferences"));
 }
 
-static void append_string_option(std::shared_ptr<ConfigOptionsGroup> optgroup,
-									const std::string& opt_key,
-									const std::string& label,
-									const std::string& tooltip,
-									const std::string& def_val,
-									ConfigOptionMode mode = comSimple)
-{
-	ConfigOptionDef def = { opt_key, coString };
-	def.label = label;
-	def.tooltip = tooltip;
-	def.mode = mode;
-	def.set_default_value(new ConfigOptionString{ def_val });
-	Option option(def, opt_key);
-	optgroup->append_single_option_line(option);
-
-	// fill data to the Search Dialog
-	wxGetApp().sidebar().get_searcher().add_key(opt_key, Preset::TYPE_PREFERENCES, optgroup->config_category(), L("Preferences"));
-}
-
 static void append_preferences_option_to_searcher(std::shared_ptr<ConfigOptionsGroup> optgroup,
 												const std::string& opt_key,
 												const wxString& label)
@@ -222,7 +236,7 @@ void PreferencesDialog::build()
 #ifdef _WIN32
 	wxGetApp().UpdateDarkUI(this);
 #else
-	SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
+	//SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
 #endif
 	const wxFont& font = wxGetApp().normal_font();
 	SetFont(font);
@@ -233,7 +247,12 @@ void PreferencesDialog::build()
 	tabs = new Notebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_TOP | wxTAB_TRAVERSAL | wxNB_NOPAGETHEME | wxNB_DEFAULT);
 #else
     tabs = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_TOP | wxTAB_TRAVERSAL  |wxNB_NOPAGETHEME | wxNB_DEFAULT );
-	tabs->SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
+#ifdef __linux__
+	tabs->Bind(wxEVT_NOTEBOOK_PAGE_CHANGED, [this](wxBookCtrlEvent& e) {
+		e.Skip();
+		CallAfter([this]() { tabs->GetCurrentPage()->Layout(); });
+    });
+#endif
 #endif
 
 	// Add "General" tab
@@ -327,14 +346,9 @@ void PreferencesDialog::build()
 		m_optgroup_general->append_separator();
 
 		append_bool_option(m_optgroup_general, "show_drop_project_dialog",
-#if 1 // #ysFIXME_delete_after_test_of_6377
 			L("Show load project dialog"),
 			L("When checked, whenever dragging and dropping a project file on the application or open it from a browser, "
 			  "shows a dialog asking to select the action to take on the file to load."),
-#else
-			L("Show drop project dialog"),
-			L("When checked, whenever dragging and dropping a project file on the application, shows a dialog asking to select the action to take on the file to load."),
-#endif
 			app_config->get_bool("show_drop_project_dialog"));
 
 		append_bool_option(m_optgroup_general, "single_instance",
@@ -382,6 +396,10 @@ void PreferencesDialog::build()
 			L("Associate .gcode files to PrusaSlicer G-code Viewer"),
 			L("If enabled, sets PrusaSlicer G-code Viewer as default application to open .gcode files."),
 			app_config->get_bool("associate_gcode"));
+		append_bool_option(m_optgroup_general, "associate_bgcode",
+			L("Associate .bgcode files to PrusaSlicer G-code Viewer"),
+			L("If enabled, sets PrusaSlicer G-code Viewer as default application to open .bgcode files."),
+			app_config->get_bool("associate_bgcode"));
 	}
 #endif // _WIN32
 
@@ -490,7 +508,7 @@ void PreferencesDialog::build()
 
 	append_bool_option(m_optgroup_gui, "seq_top_layer_only",
 		L("Sequential slider applied only to top layer"),
-		L("If enabled, changes made using the sequential slider, in preview, apply only to gcode top layer."
+		L("If enabled, changes made using the sequential slider, in preview, apply only to gcode top layer. "
 		  "If disabled, changes made using the sequential slider, in preview, apply to the whole gcode."),
 		app_config->get_bool("seq_top_layer_only"));
 
@@ -537,7 +555,14 @@ void PreferencesDialog::build()
 #endif
 
 		m_optgroup_gui->append_separator();
+/*
+		append_bool_option(m_optgroup_gui, "suppress_round_corners",
+			L("Suppress round corners for controls (experimental)"),
+			L("If enabled, Settings Tabs will be placed as menu items. If disabled, old UI will be used."),
+			app_config->get("suppress_round_corners") == "1");
 
+		m_optgroup_gui->append_separator();
+*/
 		append_bool_option(m_optgroup_gui, "show_hints",
 			L("Show \"Tip of the day\" notification after start"),
 			L("If enabled, useful hints are displayed at startup."),
@@ -598,12 +623,13 @@ void PreferencesDialog::build()
 		
 		append_bool_option(m_optgroup_other, "downloader_url_registered",
 			L("Allow downloads from Printables.com"),
-			L("If enabled, PrusaSlicer will allow to download from Printables.com"),
+			L("If enabled, PrusaSlicer will be allowed to download from Printables.com"),
 			app_config->get_bool("downloader_url_registered"));
 
 		activate_options_tab(m_optgroup_other);
 
 		create_downloader_path_sizer();
+		create_settings_font_widget();
 
 #if ENABLE_ENVIRONMENT_MAP
 		// Add "Render" tab
@@ -623,6 +649,7 @@ void PreferencesDialog::build()
 
 		activate_options_tab(m_optgroup_render);
 #endif // ENABLE_ENVIRONMENT_MAP
+	}
 
 #ifdef _WIN32
 		// Add "Dark Mode" tab
@@ -645,14 +672,13 @@ void PreferencesDialog::build()
 		{
 		append_bool_option(m_optgroup_dark_mode, "sys_menu_enabled",
 			L("Use system menu for application"),
-			L("If enabled, application will use the standart Windows system menu,\n"
-			"but on some combination od display scales it can look ugly. If disabled, old UI will be used."),
+			L("If enabled, application will use the standard Windows system menu,\n"
+			"but on some combination of display scales it can look ugly. If disabled, old UI will be used."),
 			app_config->get_bool("sys_menu_enabled"));
 		}
 
 		activate_options_tab(m_optgroup_dark_mode);
 #endif //_WIN32
-	}
 
 	// update alignment of the controls for all tabs
 	update_ctrls_alignment();
@@ -661,6 +687,8 @@ void PreferencesDialog::build()
 	sizer->Add(tabs, 1, wxEXPAND | wxTOP | wxLEFT | wxRIGHT, 5);
 
 	auto buttons = CreateStdDialogButtonSizer(wxOK | wxCANCEL);
+	wxGetApp().SetWindowVariantForButton(buttons->GetAffirmativeButton());
+	wxGetApp().SetWindowVariantForButton(buttons->GetCancelButton());
 	this->Bind(wxEVT_BUTTON, &PreferencesDialog::accept, this, wxID_OK);
 	this->Bind(wxEVT_BUTTON, &PreferencesDialog::revert, this, wxID_CANCEL);
 
@@ -716,9 +744,7 @@ void PreferencesDialog::accept(wxEvent&)
 #endif // __linux__
 	}
 
-	bool update_filament_sidebar = (m_values.find("no_templates") != m_values.end());
-
-	std::vector<std::string> options_to_recreate_GUI = { "no_defaults", "tabs_as_menu", "sys_menu_enabled" };
+	std::vector<std::string> options_to_recreate_GUI = { "no_defaults", "tabs_as_menu", "sys_menu_enabled", "font_pt_size", "suppress_round_corners" };
 
 	for (const std::string& option : options_to_recreate_GUI) {
 		if (m_values.find(option) != m_values.end()) {
@@ -783,12 +809,12 @@ void PreferencesDialog::accept(wxEvent&)
 		wxGetApp().force_menu_update();
 #endif //_MSW_DARK_MODE
 #endif // _WIN32
-	
+
+	if (m_values.find("no_templates") != m_values.end())
+		wxGetApp().plater()->force_filament_cb_update();
+
 	wxGetApp().update_ui_from_settings();
 	clear_cache();
-
-	if (update_filament_sidebar)
-		wxGetApp().plater()->sidebar().update_presets(Preset::Type::TYPE_FILAMENT);
 }
 
 void PreferencesDialog::revert(wxEvent&)
@@ -899,7 +925,7 @@ void PreferencesDialog::refresh_og(std::shared_ptr<ConfigOptionsGroup> og)
 {
 	og->parent()->Layout();
 	tabs->Layout();
-	this->layout();
+//	this->layout();
 }
 
 void PreferencesDialog::create_icon_size_slider()
@@ -967,7 +993,6 @@ void PreferencesDialog::create_icon_size_slider()
 void PreferencesDialog::create_settings_mode_widget()
 {
 	wxWindow* parent = m_optgroup_gui->parent();
-	wxGetApp().UpdateDarkUI(parent);
 
 	wxString title = L("Layout Options");
     wxStaticBox* stb = new wxStaticBox(parent, wxID_ANY, _(title));
@@ -1067,6 +1092,79 @@ void PreferencesDialog::create_settings_mode_color_widget()
 	m_optgroup_gui->sizer->Add(sizer, 0, wxEXPAND | wxTOP, em_unit());
 
 	append_preferences_option_to_searcher(m_optgroup_gui, opt_key, title);
+}
+
+void PreferencesDialog::create_settings_font_widget()
+{
+	wxWindow* parent = m_optgroup_other->parent();
+	wxGetApp().UpdateDarkUI(parent);
+
+	const wxString title = L("Application font size");
+	wxStaticBox* stb = new wxStaticBox(parent, wxID_ANY, _(title));
+	if (!wxOSX) stb->SetBackgroundStyle(wxBG_STYLE_PAINT);
+
+	const std::string opt_key = "font_pt_size";
+	m_blinkers[opt_key] = new BlinkingBitmap(parent);
+
+	wxSizer* stb_sizer = new wxStaticBoxSizer(stb, wxHORIZONTAL);
+
+	wxStaticText* font_example = new wxStaticText(parent, wxID_ANY, "Application text");
+    int val = wxGetApp().normal_font().GetPointSize();
+	SpinInput* size_sc = new SpinInput(parent, format_wxstr("%1%", val), "", wxDefaultPosition, wxSize(15 * em_unit(), -1), wxTE_PROCESS_ENTER | wxSP_ARROW_KEYS
+#ifdef _WIN32
+		| wxBORDER_SIMPLE
+#endif 
+	, 8, wxGetApp().get_max_font_pt_size());
+	wxGetApp().UpdateDarkUI(size_sc);
+
+	auto apply_font = [this, font_example, opt_key, stb_sizer](const int val, const wxFont& font) {
+		font_example->SetFont(font);
+		m_values[opt_key] = format("%1%", val);
+		stb_sizer->Layout();
+#ifdef __linux__
+		CallAfter([this]() { refresh_og(m_optgroup_other); });
+#else
+		refresh_og(m_optgroup_other);
+#endif
+	};
+
+	auto change_value = [size_sc, apply_font](wxCommandEvent& evt) {
+		const int val = size_sc->GetValue();
+		wxFont font = wxGetApp().normal_font();
+		font.SetPointSize(val);
+
+		apply_font(val, font);
+	};
+    size_sc->Bind(wxEVT_SPINCTRL, change_value);
+	size_sc->Bind(wxEVT_TEXT_ENTER, change_value);
+
+	auto revert_btn = new ScalableButton(parent, wxID_ANY, "undo");
+	revert_btn->SetToolTip(_L("Revert font to default"));
+	revert_btn->Bind(wxEVT_BUTTON, [size_sc, apply_font](wxEvent& event) {
+		wxFont font = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
+		const int val = font.GetPointSize();
+	    size_sc->SetValue(val);
+		apply_font(val, font);
+	});
+	parent->Bind(wxEVT_UPDATE_UI, [size_sc](wxUpdateUIEvent& evt) {
+		const int def_size = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT).GetPointSize();
+		evt.Enable(def_size != size_sc->GetValue());
+	}, revert_btn->GetId());
+
+    stb_sizer->Add(new wxStaticText(parent, wxID_ANY, _L("Font size") + ":"), 0, wxALIGN_CENTER_VERTICAL | wxLEFT, em_unit());
+    stb_sizer->Add(size_sc, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT | wxLEFT, em_unit());
+    stb_sizer->Add(revert_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, em_unit());
+	wxBoxSizer* font_sizer = new wxBoxSizer(wxVERTICAL);
+	font_sizer->Add(font_example, 1, wxALIGN_CENTER_HORIZONTAL);
+    stb_sizer->Add(font_sizer, 1, wxALIGN_CENTER_VERTICAL);
+
+	auto sizer = new wxBoxSizer(wxHORIZONTAL);
+	sizer->Add(m_blinkers[opt_key], 0, wxRIGHT, 2);
+	sizer->Add(stb_sizer, 1, wxALIGN_CENTER_VERTICAL);
+
+	m_optgroup_other->sizer->Add(sizer, 1, wxEXPAND | wxTOP, em_unit());
+
+	append_preferences_option_to_searcher(m_optgroup_other, opt_key, title);
 }
 
 void PreferencesDialog::create_downloader_path_sizer()

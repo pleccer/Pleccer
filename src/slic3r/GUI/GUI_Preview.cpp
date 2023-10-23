@@ -1,3 +1,9 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Filip Sykala @Jony01, David Kocík @kocikdav, Tomáš Mészáros @tamasmeszaros, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2022 André Althaus
+///|/ Copyright (c) 2019 John Drake @foxox
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 //#include "stdlib.h"
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Layer.hpp"
@@ -65,6 +71,7 @@ bool View3D::init(wxWindow* parent, Bed3D& bed, Model* model, DynamicPrintConfig
     m_canvas->allow_multisample(OpenGLManager::can_multisample());
 
     m_canvas->enable_picking(true);
+    m_canvas->get_selection().set_mode(Selection::Instance);
     m_canvas->enable_moving(true);
     // XXX: more config from 3D.pm
     m_canvas->set_model(model);
@@ -180,6 +187,12 @@ Preview::Preview(
         load_print();
 }
 
+void Preview::set_layers_slider_values_range(int bottom, int top)
+{
+    m_layers_slider->SetHigherValue(std::min(top, m_layers_slider->GetMaxValue()));
+    m_layers_slider->SetLowerValue(std::max(bottom, m_layers_slider->GetMinValue()));
+}
+
 bool Preview::init(wxWindow* parent, Bed3D& bed, Model* model)
 {
     if (!Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, 0 /* disable wxTAB_TRAVERSAL */))
@@ -270,6 +283,11 @@ void Preview::set_drop_target(wxDropTarget* target)
 {
     if (target != nullptr)
         SetDropTarget(target);
+}
+
+void Preview::load_gcode_shells()
+{
+    m_canvas->load_gcode_shells();
 }
 
 void Preview::load_print(bool keep_z_range)

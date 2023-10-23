@@ -1,13 +1,16 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 Tomáš Mészáros @tamasmeszaros, Pavel Mikuš @Godrak, Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas, Filip Sykala @Jony01
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_Geometry_ConvexHull_hpp_
 #define slic3r_Geometry_ConvexHull_hpp_
 
 #include <vector>
 
-#include "../Polygon.hpp"
+#include "../ExPolygon.hpp"
 
 namespace Slic3r {
 
-class ExPolygon;
 using ExPolygons = std::vector<ExPolygon>;
 
 namespace Geometry {
@@ -16,7 +19,9 @@ Pointf3s convex_hull(Pointf3s points);
 Polygon convex_hull(Points points);
 Polygon convex_hull(const Polygons &polygons);
 Polygon convex_hull(const ExPolygons &expolygons);
-Polygon convex_hulll(const Polylines &polylines);
+Polygon convex_hull(const Polylines &polylines);
+inline Polygon convex_hull(const Polygon &poly) { return convex_hull(poly.points); }
+inline Polygon convex_hull(const ExPolygon &poly) { return convex_hull(poly.contour.points); }
 
 // Returns true if the intersection of the two convex polygons A and B
 // is not an empty set.

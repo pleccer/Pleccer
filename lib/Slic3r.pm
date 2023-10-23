@@ -1,3 +1,13 @@
+#/|/ Copyright (c) Prusa Research 2016 - 2022 Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros, Vojtěch Král @vojtechkral, Oleksandra Iushchenko @YuSanka
+#/|/ Copyright (c) 2018 Martin Loidl @LoidlM
+#/|/ Copyright (c) Slic3r 2011 - 2016 Alessandro Ranellucci @alranel
+#/|/ Copyright (c) 2012 Henrik Brix Andersen @henrikbrixandersen
+#/|/ Copyright (c) 2012 Mark Hindess
+#/|/ Copyright (c) 2012 Michael Moon
+#/|/ Copyright (c) 2011 Clarence Risher
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 # This package loads all the non-GUI Slic3r perl packages.
 
 package Slic3r;

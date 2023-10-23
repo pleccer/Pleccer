@@ -1,7 +1,13 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GLGizmoMmuSegmentation_hpp_
 #define slic3r_GLGizmoMmuSegmentation_hpp_
 
 #include "GLGizmoPainterBase.hpp"
+
+#include "slic3r/GUI/I18N.hpp"
 
 namespace Slic3r::GUI {
 
@@ -88,7 +94,7 @@ public:
 
     void render_painter_gizmo() override;
 
-    void data_changed() override;
+    void data_changed(bool is_serializing) override;
 
     void render_triangles(const Selection& selection) const override;
 
@@ -117,7 +123,7 @@ protected:
 
     std::string get_gizmo_entering_text() const override { return _u8L("Entering Multimaterial painting"); }
     std::string get_gizmo_leaving_text() const override { return _u8L("Leaving Multimaterial painting"); }
-    std::string get_action_snapshot_name() override { return _u8L("Multimaterial painting editing"); }
+    std::string get_action_snapshot_name() const override { return _u8L("Multimaterial painting editing"); }
 
     size_t                            m_first_selected_extruder_idx  = 0;
     size_t                            m_second_selected_extruder_idx = 1;

@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2016 - 2022 Lukáš Hejl @hejllukas, David Kocík @kocikdav, Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966, Lukáš Matěna @lukasmatena, Vojtěch Král @vojtechkral, Tomáš Mészáros @tamasmeszaros
+///|/ Copyright (c) Slic3r 2015 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GUI_hpp_
 #define slic3r_GUI_hpp_
 

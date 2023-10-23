@@ -1,3 +1,8 @@
+#/|/ Copyright (c) Prusa Research 2020 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Tomáš Mészáros @tamasmeszaros, Lukáš Hejl @hejllukas, Vojtěch Bubník @bubnikv
+#/|/ Copyright (c) 2020 Bertrand Giot @bgiot
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 set(_wx_toolkit "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(_gtk_ver 2)
@@ -13,8 +18,8 @@ if (UNIX AND NOT APPLE) # wxWidgets will not use char as the underlying type for
 endif()
 
 prusaslicer_add_cmake_project(wxWidgets
-    URL https://github.com/prusa3d/wxWidgets/archive/4fd2120c913c20c3bb66ee9d01d8ff5087a8b90a.zip
-    URL_HASH SHA256=5b59e8b4dccf73e109c6588f6a69bcfe4e02e930af53c43d5d1329c1f3d83ec9
+    URL https://github.com/prusa3d/wxWidgets/archive/78aa2dc0ea7ce99dc19adc1140f74c3e2e3f3a26.zip
+    URL_HASH SHA256=94b7d972373503e380e5a8b0ca63b1ccb956da4006402298dd89a0c5c7041b1e
     DEPENDS ${PNG_PKG} ${ZLIB_PKG} ${EXPAT_PKG} dep_TIFF dep_JPEG dep_NanoSVG
     CMAKE_ARGS
         -DwxBUILD_PRECOMP=ON

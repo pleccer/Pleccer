@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_SavePresetDialog_hpp_
 #define slic3r_SavePresetDialog_hpp_
 
@@ -36,7 +40,7 @@ public:
             Warning
         };
 
-        Item(Preset::Type type, const std::string& suffix, wxBoxSizer* sizer, SavePresetDialog* parent);
+        Item(Preset::Type type, const std::string& suffix, wxBoxSizer* sizer, SavePresetDialog* parent, bool is_for_multiple_save);
         Item(wxWindow* parent, wxBoxSizer* sizer, const std::string& def_name, PrinterTechnology pt = ptFFF);
 
         void            update_valid_bmp();
@@ -65,7 +69,6 @@ public:
         std::string get_init_preset_name(const std::string &suffix);
         void        init_input_name_ctrl(wxBoxSizer *input_name_sizer, std::string preset_name);
         const Preset*   get_existing_preset() const ;
-        wxString        get_top_label_text() const ;
 
         void        update();
     };
@@ -89,12 +92,11 @@ public:
 
     const wxString& get_info_line_extention() { return m_info_line_extention; }
 
-    SavePresetDialog(wxWindow* parent, Preset::Type type, std::string suffix = "", bool template_filament = false);
     SavePresetDialog(wxWindow* parent, std::vector<Preset::Type> types, std::string suffix = "", bool template_filament = false, PresetBundle* preset_bundle = nullptr);
-    SavePresetDialog(wxWindow* parent, Preset::Type type, bool rename, const wxString& info_line_extention);
+    SavePresetDialog(wxWindow* parent, Preset::Type type, const wxString& info_line_extention);
     ~SavePresetDialog() override;
 
-    void AddItem(Preset::Type type, const std::string& suffix);
+    void AddItem(Preset::Type type, const std::string& suffix, bool is_for_multiple_save);
 
     PresetBundle*   get_preset_bundle() const { return m_preset_bundle; }
     std::string     get_name();

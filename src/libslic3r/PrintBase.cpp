@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, Pavel Mikuš @Godrak, Vojtěch Bubník @bubnikv, Roman Beránek @zavorka, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Exception.hpp"
 #include "PrintBase.hpp"
 
@@ -5,10 +9,6 @@
 #include <boost/lexical_cast.hpp>
 
 #include "I18N.hpp"
-
-//! macro used to mark string used at localization, 
-//! return same string
-#define L(s) Slic3r::I18N::translate(s)
 
 namespace Slic3r
 {
@@ -21,7 +21,7 @@ void PrintTryCancel::operator()() const
 size_t PrintStateBase::g_last_timestamp = 0;
 
 // Update "scale", "input_filename", "input_filename_base" placeholders from the current m_objects.
-void PrintBase::update_object_placeholders(DynamicConfig &config, const std::string &default_ext) const
+void PrintBase::update_object_placeholders(DynamicConfig &config, const std::string & /* default_output_ext */) const
 {
     // get the first input file name
     std::string input_file;
@@ -54,7 +54,7 @@ void PrintBase::update_object_placeholders(DynamicConfig &config, const std::str
         // get basename with and without suffix
         const std::string input_filename = boost::filesystem::path(input_file).filename().string();
         const std::string input_filename_base = input_filename.substr(0, input_filename.find_last_of("."));
-        config.set_key_value("input_filename", new ConfigOptionString(input_filename_base + default_ext));
+//        config.set_key_value("input_filename", new ConfigOptionString(input_filename_base + default_output_ext));
         config.set_key_value("input_filename_base", new ConfigOptionString(input_filename_base));
     }
 }
@@ -70,7 +70,7 @@ std::string PrintBase::output_filename(const std::string &format, const std::str
     PlaceholderParser::update_timestamp(cfg);
     this->update_object_placeholders(cfg, default_ext);
     if (! filename_base.empty()) {
-		cfg.set_key_value("input_filename", new ConfigOptionString(filename_base + default_ext));
+//		cfg.set_key_value("input_filename", new ConfigOptionString(filename_base + default_ext));
 		cfg.set_key_value("input_filename_base", new ConfigOptionString(filename_base));
     }
     try {
@@ -81,7 +81,7 @@ std::string PrintBase::output_filename(const std::string &format, const std::str
             filename = boost::filesystem::change_extension(filename, default_ext);
         return filename.string();
     } catch (std::runtime_error &err) {
-        throw Slic3r::PlaceholderParserError(L("Failed processing of the output_filename_format template.") + "\n" + err.what());
+        throw Slic3r::PlaceholderParserError(_u8L("Failed processing of the output_filename_format template.") + "\n" + err.what());
     }
 }
 

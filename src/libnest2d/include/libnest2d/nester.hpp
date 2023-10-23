@@ -70,6 +70,7 @@ class _Item {
     
     int binid_{BIN_ID_UNSET}, priority_{0};
     bool fixed_{false};
+    std::function<void(_Item&)> on_packed_;
 
 public:
 
@@ -203,6 +204,23 @@ public:
     {
         invalidateCache();
         sl::vertex(sh_, idx) = v;
+    }
+
+    void setShape(RawShape rsh)
+    {
+        sh_ = std::move(rsh);
+        invalidateCache();
+    }
+
+    void setOnPackedFn(std::function<void(_Item&)> onpackedfn)
+    {
+        on_packed_ = onpackedfn;
+    }
+
+    void onPacked()
+    {
+        if (on_packed_)
+            on_packed_(*this);
     }
 
     /**

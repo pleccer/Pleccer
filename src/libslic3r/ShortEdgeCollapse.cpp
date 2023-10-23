@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Vojtěch Bubník @bubnikv, Pavel Mikuš @Godrak
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "ShortEdgeCollapse.hpp"
 #include "libslic3r/NormalUtils.hpp"
 
@@ -5,6 +9,8 @@
 #include <unordered_set>
 #include <random>
 #include <algorithm>
+
+#include <ankerl/unordered_dense.h>
 
 namespace Slic3r {
 
@@ -155,7 +161,7 @@ void its_short_edge_collpase(indexed_triangle_set &mesh, size_t target_triangle_
     }
 
     //Extract the result mesh
-    std::unordered_map<size_t, size_t> final_vertices_mapping;
+    ankerl::unordered_dense::map<size_t, size_t> final_vertices_mapping;
     std::vector<Vec3f> final_vertices;
     std::vector<Vec3i> final_indices;
     final_indices.reserve(face_indices.size());

@@ -1,3 +1,12 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral
+///|/
+///|/ ported from lib/Slic3r/GUI/ConfigWizard.pm:
+///|/ Copyright (c) Prusa Research 2016 - 2018 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2012 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2012 Henrik Brix Andersen @henrikbrixandersen
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 // FIXME: extract absolute units -> em
 
 #include "ConfigWizard_private.hpp"
@@ -10,6 +19,7 @@
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string/case_conv.hpp>
 #include <boost/nowide/convert.hpp>
 #include <boost/dll/runtime_symbol_info.hpp>
 
@@ -56,6 +66,8 @@
 #include "MsgDialog.hpp"
 #include "UnsavedChangesDialog.hpp"
 #include "slic3r/Utils/AppUpdater.hpp"
+#include "slic3r/GUI/I18N.hpp"
+#include "slic3r/Config/Version.hpp"
 
 #if defined(__linux__) && defined(__WXGTK3__)
 #define wxLinux_gtk3 true
@@ -117,7 +129,7 @@ BundleMap BundleMap::load()
     const auto vendor_dir = (boost::filesystem::path(Slic3r::data_dir()) / "vendor").make_preferred();
     const auto archive_dir = (boost::filesystem::path(Slic3r::data_dir()) / "cache" / "vendor").make_preferred();
     const auto rsrc_vendor_dir = (boost::filesystem::path(resources_dir()) / "profiles").make_preferred();
-
+    const auto cache_dir = boost::filesystem::path(Slic3r::data_dir()) / "cache"; // for Index
     // Load Prusa bundle from the datadir/vendor directory or from datadir/cache/vendor (archive) or from resources/profiles.
     auto prusa_bundle_path = (vendor_dir / PresetBundle::PRUSA_BUNDLE).replace_extension(".ini");
     BundleLocation prusa_bundle_loc = BundleLocation::IN_VENDOR;
@@ -137,7 +149,7 @@ BundleMap BundleMap::load()
 
     // Load the other bundles in the datadir/vendor directory
     // and then additionally from datadir/cache/vendor (archive) and resources/profiles.
-    // Should we concider case where archive has older profiles than resources (shouldnt happen)?
+    // Should we concider case where archive has older profiles than resources (shouldnt happen)? -> YES, it happens during re-configuration when running older PS after newer version
     typedef std::pair<const fs::path&, BundleLocation> DirData;
     std::vector<DirData> dir_list { {vendor_dir, BundleLocation::IN_VENDOR},  {archive_dir, BundleLocation::IN_ARCHIVE},  {rsrc_vendor_dir, BundleLocation::IN_RESOURCES} };
     for ( auto dir : dir_list) {
@@ -149,6 +161,49 @@ BundleMap BundleMap::load()
 
                 // Don't load this bundle if we've already loaded it.
                 if (res.find(id) != res.end()) { continue; }
+
+                // Fresh index should be in archive_dir, otherwise look for it in cache
+                // Then if not in archive or cache - it could be 3rd party profile that user just copied to vendor folder (both ini and cache)
+
+                fs::path idx_path (archive_dir / (id + ".idx"));
+                if (!boost::filesystem::exists(idx_path)) {
+                    BOOST_LOG_TRIVIAL(error) << format("Missing index %1% when loading bundle %2%. Going to search for it in cache folder.", idx_path.string(), id);
+                    idx_path = fs::path(cache_dir / (id + ".idx"));
+                }
+                if (!boost::filesystem::exists(idx_path)) {
+                    BOOST_LOG_TRIVIAL(error) << format("Missing index %1% when loading bundle %2%. Going to search for it in vendor folder. Is it a 3rd party profile?", idx_path.string(), id);
+                    idx_path = fs::path(vendor_dir / (id + ".idx"));
+                }
+                if (!boost::filesystem::exists(idx_path)) {
+                    BOOST_LOG_TRIVIAL(error) << format("Could not load bundle %1% due to missing index %2%.", id, idx_path.string());
+                    continue;
+                }
+
+                Slic3r::GUI::Config::Index index;
+                try {
+                    index.load(idx_path);
+                }
+                catch (const std::exception& /* err */) {
+                    BOOST_LOG_TRIVIAL(error) << format("Could not load bundle %1% due to invalid index %2%.", id, idx_path.string());
+                    continue;
+                }
+                const auto recommended_it = index.recommended();
+                if (recommended_it == index.end()) {
+                    BOOST_LOG_TRIVIAL(error) << format("Could not load bundle %1% due to no recommended version in index %2%.", id, idx_path.string());
+                    continue;
+                }
+                const auto recommended = recommended_it->config_version;
+                VendorProfile vp;
+                try {
+                    vp = VendorProfile::from_ini(dir_entry, true);
+                }
+                catch (const std::exception& e) {
+                    BOOST_LOG_TRIVIAL(error) << format("Could not load bundle %1% due to corrupted profile file %2%. Message: %3%", id, dir_entry.path().string(), e.what());
+                    continue;
+                }
+                // Don't load
+                if (vp.config_version > recommended)
+                    continue;
 
                 Bundle bundle;
                 if (bundle.load(dir_entry.path(), dir.second))
@@ -288,7 +343,7 @@ PrinterPicker::PrinterPicker(wxWindow *parent, const VendorProfile &vendor, wxSt
             const auto &variant = model.variants[i];
 
             const auto label = model.technology == ptFFF
-                ? from_u8((boost::format("%1% %2% %3%") % variant.name % _utf8(L("mm")) % _utf8(L("nozzle"))).str())
+                ? format_wxstr("%1% %2% %3%", variant.name, _L("mm"), _L("nozzle"))
                 : from_u8(model.name);
 
             if (i == 1) {
@@ -367,6 +422,10 @@ PrinterPicker::PrinterPicker(wxWindow *parent, const VendorProfile &vendor, wxSt
             title_sizer->Add(sel_all_std, 0, wxRIGHT, BTN_SPACING);
         title_sizer->Add(sel_all, 0, wxRIGHT, BTN_SPACING);
         title_sizer->Add(sel_none);
+
+        wxGetApp().SetWindowVariantForButton(sel_all_std);
+        wxGetApp().SetWindowVariantForButton(sel_all);
+        wxGetApp().SetWindowVariantForButton(sel_none);
 
         wxGetApp().UpdateDarkUI(sel_all_std);
         wxGetApp().UpdateDarkUI(sel_all);
@@ -508,17 +567,17 @@ void ConfigWizardPage::append_spacer(int space)
 // Wizard pages
 
 PageWelcome::PageWelcome(ConfigWizard *parent)
-    : ConfigWizardPage(parent, from_u8((boost::format(
+    : ConfigWizardPage(parent, format_wxstr(
 #ifdef __APPLE__
-            _utf8(L("Welcome to the %s Configuration Assistant"))
+            _L("Welcome to the %s Configuration Assistant")
 #else
-            _utf8(L("Welcome to the %s Configuration Wizard"))
+            _L("Welcome to the %s Configuration Wizard")
 #endif
-            ) % SLIC3R_APP_NAME).str()), _L("Welcome"))
-    , welcome_text(append_text(from_u8((boost::format(
-        _utf8(L("Hello, welcome to %s! This %s helps you with the initial configuration; just a few settings and you will be ready to print.")))
-        % SLIC3R_APP_NAME
-        % _utf8(ConfigWizard::name())).str())
+            , SLIC3R_APP_NAME), _L("Welcome"))
+    , welcome_text(append_text(format_wxstr(
+        _L("Hello, welcome to %s! This %s helps you with the initial configuration; just a few settings and you will be ready to print.")
+        , SLIC3R_APP_NAME
+        , _(ConfigWizard::name()))
     ))
     , cbox_reset(append(
         new wxCheckBox(this, wxID_ANY, _L("Remove user profiles (a snapshot will be taken beforehand)"))
@@ -576,7 +635,7 @@ PagePrinters::PagePrinters(ConfigWizard *parent,
             continue;
         }
 
-        const auto picker_title = family.empty() ? wxString() : from_u8((boost::format(_utf8(L("%s Family"))) % family).str());
+        const auto picker_title = family.empty() ? wxString() : format_wxstr(_L("%s Family"), family);
         auto *picker = new PrinterPicker(this, vendor, picker_title, MAX_COLS, *appconfig, filter);
 
         picker->Bind(EVT_PRINTER_PICK, [this, appconfig](const PrinterPickerEvent &evt) {
@@ -661,6 +720,10 @@ PageMaterials::PageMaterials(ConfigWizard *parent, Materials *materials, wxStrin
     list_vendor->SetMinSize(wxSize(13*em, list_h));
     list_profile->SetMinSize(wxSize(23*em, list_h));
 
+#ifdef __APPLE__
+    for (wxWindow* win : std::initializer_list<wxWindow*>{ list_printer, list_type, list_vendor, list_profile })
+        win->SetBackgroundColour(wxGetApp().get_window_default_clr());
+#endif
 
 
     grid = new wxFlexGridSizer(4, em/2, em);
@@ -688,6 +751,9 @@ PageMaterials::PageMaterials(ConfigWizard *parent, Materials *materials, wxStrin
     wxGetApp().UpdateDarkUI(list_vendor);
     wxGetApp().UpdateDarkUI(sel_all);
     wxGetApp().UpdateDarkUI(sel_none);
+
+    wxGetApp().SetWindowVariantForButton(sel_all);
+    wxGetApp().SetWindowVariantForButton(sel_none);
 
     grid->Add(new wxBoxSizer(wxHORIZONTAL));
     grid->Add(new wxBoxSizer(wxHORIZONTAL));
@@ -727,6 +793,16 @@ PageMaterials::PageMaterials(ConfigWizard *parent, Materials *materials, wxStrin
     reload_presets();
     set_compatible_printers_html_window(std::vector<std::string>(), false);
 }
+
+void PageMaterials::check_and_update_presets(bool force_reload_presets /*= false*/)
+{
+    if (presets_loaded)
+        return;
+    wizard_p()->update_materials(materials->technology);
+    if (force_reload_presets)
+        reload_presets();
+}
+
 void PageMaterials::on_paint()
 {
 }
@@ -771,26 +847,19 @@ void PageMaterials::reload_presets()
 
 void PageMaterials::set_compatible_printers_html_window(const std::vector<std::string>& printer_names, bool all_printers)
 {
-    const auto bgr_clr = 
-#if defined(__APPLE__)
-        html_window->GetParent()->GetBackgroundColour();
-#else 
-#if defined(_WIN32)
-        wxGetApp().get_window_default_clr();
-#else
-        wxSystemSettings::GetColour(wxSYS_COLOUR_MENU);
-#endif
-#endif
     const auto text_clr = wxGetApp().get_label_clr_default();
-    const auto bgr_clr_str = encode_color(ColorRGB(bgr_clr.Red(), bgr_clr.Green(), bgr_clr.Blue()));
     const auto text_clr_str = encode_color(ColorRGB(text_clr.Red(), text_clr.Green(), text_clr.Blue()));
+    const auto bgr_clr_str = wxGetApp().get_html_bg_color(parent);
     wxString text;
     if (materials->technology == T_FFF && template_shown) {
+        // TRN ConfigWizard: Materials : "%1%" = "Filaments"/"SLA materials"
         text = format_wxstr(_L("%1% visible for <b>(\"Template\")</b> printer are universal profiles available for all printers. These might not be compatible with your printer."), materials->technology == T_FFF ? _L("Filaments") : _L("SLA materials"));
     } else {
+        // TRN ConfigWizard: Materials : "%1%" = "Filaments"/"SLA materials"
         wxString first_line = format_wxstr(_L("%1% marked with <b>*</b> are <b>not</b> compatible with some installed printers."), materials->technology == T_FFF ? _L("Filaments") : _L("SLA materials"));
 
         if (all_printers) {
+            // TRN ConfigWizard: Materials : "%1%" = "filament"/"SLA material"
             wxString second_line = format_wxstr(_L("All installed printers are compatible with the selected %1%."), materials->technology == T_FFF ? _L("filament") : _L("SLA material"));
             text = wxString::Format(
                 "<html>"
@@ -799,9 +868,7 @@ void PageMaterials::set_compatible_printers_html_window(const std::vector<std::s
                 "</style>"
                 "<body bgcolor= %s>"
                 "<font color=%s>"
-                "<font size=\"3\">"
                 "%s<br /><br />%s"
-                "</font>"
                 "</font>"
                 "</body>"
                 "</html>"
@@ -824,7 +891,6 @@ void PageMaterials::set_compatible_printers_html_window(const std::vector<std::s
                 "</style>"
                 "<body bgcolor= %s>"
                 "<font color=%s>"
-                "<font size=\"3\">"
                 "%s<br /><br />%s"
                 "<table>"
                 "<tr>"
@@ -845,15 +911,13 @@ void PageMaterials::set_compatible_printers_html_window(const std::vector<std::s
                 "</tr>"
                 "</table>"
                 "</font>"
-                "</font>"
                 "</body>"
                 "</html>"
             );
         }
     }
-       
    
-    wxFont font = get_default_font_for_dpi(this, get_dpi_for_window(this));
+    wxFont font = wxGetApp().normal_font();// get_default_font_for_dpi(this, get_dpi_for_window(this));
     const int fs = font.GetPointSize();
     int size[] = { fs,fs,fs,fs,fs,fs,fs };
     html_window->SetFonts(font.GetFaceName(), font.GetFaceName(), size);
@@ -1114,7 +1178,7 @@ void PageMaterials::sort_list_data(StringList* list, bool add_All_item, bool mat
 // in alphabetical order
     
     std::vector<std::reference_wrapper<const std::string>> prusa_profiles;
-    std::vector<std::reference_wrapper<const std::string>> other_profiles;
+    std::vector<std::pair<std::wstring ,std::reference_wrapper<const std::string>>> other_profiles; // first is lower case id for sorting
     bool add_TEMPLATES_item = false;
     for (int i = 0 ; i < list->size(); ++i) {
         const std::string& data = list->get_data(i);
@@ -1127,7 +1191,7 @@ void PageMaterials::sort_list_data(StringList* list, bool add_All_item, bool mat
         if (!material_type_ordering && data.find("Prusa") != std::string::npos)
             prusa_profiles.push_back(data);
         else 
-            other_profiles.push_back(data);
+            other_profiles.emplace_back(boost::algorithm::to_lower_copy(boost::nowide::widen(data)),data);
     }
     if (material_type_ordering) {
         
@@ -1137,10 +1201,10 @@ void PageMaterials::sort_list_data(StringList* list, bool add_All_item, bool mat
             for (size_t profs = end_of_sorted; profs < other_profiles.size(); profs++)
             {
                 // find instead compare because PET vs PETG
-                if (other_profiles[profs].get().find(value) != std::string::npos) {
+                if (other_profiles[profs].second.get().find(value) != std::string::npos) {
                     //swap
                     if(profs != end_of_sorted) {
-                        std::reference_wrapper<const std::string> aux = other_profiles[end_of_sorted];
+                        std::pair<std::wstring, std::reference_wrapper<const std::string>> aux = other_profiles[end_of_sorted];
                         other_profiles[end_of_sorted] = other_profiles[profs];
                         other_profiles[profs] = aux;
                     }
@@ -1153,8 +1217,8 @@ void PageMaterials::sort_list_data(StringList* list, bool add_All_item, bool mat
         std::sort(prusa_profiles.begin(), prusa_profiles.end(), [](std::reference_wrapper<const std::string> a, std::reference_wrapper<const std::string> b) {
             return a.get() < b.get();
             });
-        std::sort(other_profiles.begin(), other_profiles.end(), [](std::reference_wrapper<const std::string> a, std::reference_wrapper<const std::string> b) {
-            return a.get() < b.get();
+        std::sort(other_profiles.begin(), other_profiles.end(), [](const std::pair<std::wstring, std::reference_wrapper<const std::string>>& a, const std::pair<std::wstring, std::reference_wrapper<const std::string>>& b) {
+            return a.first <b.first;
             });
     }
     
@@ -1166,7 +1230,7 @@ void PageMaterials::sort_list_data(StringList* list, bool add_All_item, bool mat
     for (const auto& item : prusa_profiles)
         list->append(item, &const_cast<std::string&>(item.get()));
     for (const auto& item : other_profiles)
-        list->append(item, &const_cast<std::string&>(item.get()));
+        list->append(item.second, &const_cast<std::string&>(item.second.get()));
     
 }     
 
@@ -1177,20 +1241,19 @@ void PageMaterials::sort_list_data(PresetList* list, const std::vector<ProfilePr
     // then the rest
     // in alphabetical order
     std::vector<ProfilePrintData> prusa_profiles;
-    std::vector<ProfilePrintData> other_profiles;
-    //for (int i = 0; i < data.size(); ++i) {
+    std::vector<std::pair<std::wstring, ProfilePrintData>> other_profiles; // first is lower case id for sorting
     for (const auto& item : data) {
         const std::string& name = item.name;
         if (name.find("Prusa") != std::string::npos)
             prusa_profiles.emplace_back(item);
         else
-            other_profiles.emplace_back(item);
+            other_profiles.emplace_back(boost::algorithm::to_lower_copy(boost::nowide::widen(name)), item);
     }
     std::sort(prusa_profiles.begin(), prusa_profiles.end(), [](ProfilePrintData a, ProfilePrintData b) {
         return a.name.get() < b.name.get();
         });
-    std::sort(other_profiles.begin(), other_profiles.end(), [](ProfilePrintData a, ProfilePrintData b) {
-        return a.name.get() < b.name.get();
+    std::sort(other_profiles.begin(), other_profiles.end(), [](const std::pair<std::wstring, ProfilePrintData>& a, const std::pair<std::wstring, ProfilePrintData>& b) {
+        return a.first < b.first;
         });
     list->Clear();
     for (size_t i = 0; i < prusa_profiles.size(); ++i) {
@@ -1198,8 +1261,8 @@ void PageMaterials::sort_list_data(PresetList* list, const std::vector<ProfilePr
         list->Check(i, prusa_profiles[i].checked);
     }
     for (size_t i = 0; i < other_profiles.size(); ++i) {
-        list->append(std::string(other_profiles[i].name) + (other_profiles[i].omnipresent || template_shown ? "" : " *"), &const_cast<std::string&>(other_profiles[i].name.get()));
-        list->Check(i + prusa_profiles.size(), other_profiles[i].checked);
+        list->append(std::string(other_profiles[i].second.name) + (other_profiles[i].second.omnipresent || template_shown ? "" : " *"), &const_cast<std::string&>(other_profiles[i].second.name.get()));
+        list->Check(i + prusa_profiles.size(), other_profiles[i].second.checked);
     }
 }
 
@@ -1248,10 +1311,7 @@ void PageMaterials::clear()
 
 void PageMaterials::on_activate()
 {
-    if (! presets_loaded) {
-        wizard_p()->update_materials(materials->technology);
-        reload_presets();
-    }
+    check_and_update_presets(true);
     first_paint = true;
 }
 
@@ -1284,8 +1344,7 @@ PageUpdate::PageUpdate(ConfigWizard *parent)
     , preset_update(true)
 {
     const AppConfig *app_config = wxGetApp().app_config;
-    auto boldfont = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
-    boldfont.SetWeight(wxFONTWEIGHT_BOLD);
+    auto boldfont = wxGetApp().bold_font();
 
     auto *box_slic3r = new wxCheckBox(this, wxID_ANY, _L("Check for application updates"));
     box_slic3r->SetValue(app_config->get("notify_release") != "none");
@@ -1364,11 +1423,12 @@ Worker::Worker(wxWindow* parent)
     this->Add(m_input_path, 1, wxEXPAND | wxTOP | wxLEFT | wxRIGHT, 5);
 
     auto* button_path = new wxButton(m_parent, wxID_ANY, _L("Browse"));
+    wxGetApp().SetWindowVariantForButton(button_path);
     this->Add(button_path, 0, wxEXPAND | wxTOP | wxLEFT, 5);
     button_path->Bind(wxEVT_BUTTON, [this](wxCommandEvent& event) {
         boost::filesystem::path chosen_dest(boost::nowide::narrow(m_input_path->GetValue()));
 
-        wxDirDialog dialog(m_parent, L("Choose folder:"), chosen_dest.string() );
+        wxDirDialog dialog(m_parent, _L("Choose folder") + ":", chosen_dest.string() );
         if (dialog.ShowModal() == wxID_OK)
             this->m_input_path->SetValue(dialog.GetPath());
     });
@@ -1414,17 +1474,49 @@ PageDownloader::PageDownloader(ConfigWizard* parent)
 
     append_spacer(VERTICAL_SPACING);
 
-    auto* box_allow_downloads = new wxCheckBox(this, wxID_ANY, _L("Allow build-in downloader"));
+    auto* box_allow_downloads = new wxCheckBox(this, wxID_ANY, _L("Allow built-in downloader"));
     // TODO: Do we want it like this? The downloader is allowed for very first time the wizard is run. 
     bool box_allow_value = (app_config->has("downloader_url_registered") ? app_config->get_bool("downloader_url_registered") : true);
     box_allow_downloads->SetValue(box_allow_value);
     append(box_allow_downloads);
 
-    append_text(wxString::Format(_L(
-        "If enabled, %s registers to start on custom URL on www.printables.com."
-        " You will be able to use button with %s logo to open models in this %s."
-        " The model will be downloaded into folder you choose bellow."
-    ), SLIC3R_APP_NAME, SLIC3R_APP_NAME, SLIC3R_APP_NAME));
+    // append info line with link on printables.com
+    {
+        const int em = parent->em_unit();
+        wxHtmlWindow* html_window = new wxHtmlWindow(this, wxID_ANY, wxDefaultPosition, wxSize(60 * em, 5 * em), wxHW_SCROLLBAR_NEVER);
+
+        html_window->Bind(wxEVT_HTML_LINK_CLICKED, [](wxHtmlLinkEvent& event) {
+            wxGetApp().open_browser_with_warning_dialog(event.GetLinkInfo().GetHref());
+            event.Skip(false);
+            });
+
+        append(html_window);
+
+        const auto text_clr = wxGetApp().get_label_clr_default();
+        const auto bgr_clr_str = wxGetApp().get_html_bg_color(parent);
+        const auto text_clr_str = encode_color(ColorRGB(text_clr.Red(), text_clr.Green(), text_clr.Blue()));
+
+        const wxString link = format_wxstr("<a href = \"%1%\">%1%</a>", "printables.com");
+
+        // TRN ConfigWizard : Downloader : %1% = "printables.com", %2% = "PrusaSlicer"
+        const wxString main_text = format_wxstr(_L("If enabled, you will be able to open models from the %1% "
+                                                   "online database with a single click (using a %2% logo button)."
+        ), link, SLIC3R_APP_NAME);
+
+        const wxFont& font = this->GetFont();
+        const int fs = font.GetPointSize();
+        int size[] = { fs,fs,fs,fs,fs,fs,fs };
+        html_window->SetFonts(font.GetFaceName(), font.GetFaceName(), size);
+
+        html_window->SetPage(format_wxstr(
+            "<html><body bgcolor=%1% link=%2%>"
+            "<font color=%2% size=\"3\">%3%</font>"
+            "</body></html>"
+            , bgr_clr_str
+            , text_clr_str
+            , main_text
+        ));
+    }
 
 #ifdef __linux__
     append_text(wxString::Format(_L(
@@ -1455,7 +1547,7 @@ bool DownloaderUtils::Worker::perform_register(const std::string& path_override/
         chosen_dest = aux_dest;
     ec.clear();
     if (chosen_dest.empty() || !boost::filesystem::is_directory(chosen_dest, ec) || ec) {
-        std::string err_msg = GUI::format("%1%\n\n%2%",_L("Chosen directory for downloads does not Exists.") ,chosen_dest.string());
+        std::string err_msg = GUI::format("%1%\n\n%2%",_L("Chosen directory for downloads does not exist.") ,chosen_dest.string());
         BOOST_LOG_TRIVIAL(error) << err_msg;
         show_error(m_parent, err_msg);
         return false;
@@ -1622,9 +1714,17 @@ PageVendors::PageVendors(ConfigWizard *parent)
 
     auto boldfont = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
     boldfont.SetWeight(wxFONTWEIGHT_BOLD);
+    // Copy vendors from bundle map to vector, so we can sort it without case sensitivity
+    std::vector<std::pair<std::wstring, const VendorProfile*>> vendors;
+    for (const auto& pair : wizard_p()->bundles) {
+        vendors.emplace_back(boost::algorithm::to_lower_copy(boost::nowide::widen(pair.second.vendor_profile->name)),pair.second.vendor_profile);
+    }
+    std::sort(vendors.begin(), vendors.end(), [](const std::pair<std::wstring, const VendorProfile*>& a, const std::pair<std::wstring, const VendorProfile*>& b) {
+        return a.first < b.first;
+        });
 
-    for (const auto &pair : wizard_p()->bundles) {
-        const VendorProfile *vendor = pair.second.vendor_profile;
+    for (const std::pair<std::wstring, const VendorProfile*>& v : vendors) {
+        const VendorProfile* vendor = v.second;
         if (vendor->id == PresetBundle::PRUSA_BUNDLE) { continue; }
         if (vendor && vendor->templates_profile)
             continue;
@@ -1634,8 +1734,8 @@ PageVendors::PageVendors(ConfigWizard *parent)
             wizard_p()->on_3rdparty_install(vendor, cbox->IsChecked());
         });
 
-        const auto &vendors = appconfig.vendors();
-        const bool enabled = vendors.find(pair.first) != vendors.end();
+        const auto &acvendors = appconfig.vendors();
+        const bool enabled = acvendors.find(vendor->id) != acvendors.end();
         if (enabled) {
             cbox->SetValue(true);
 
@@ -1752,10 +1852,11 @@ void PageBedShape::apply_custom_config(DynamicPrintConfig &config)
 }
 
 PageBuildVolume::PageBuildVolume(ConfigWizard* parent)
+    // TRN ConfigWizard : Size of possible print, related on printer size
     : ConfigWizardPage(parent, _L("Build Volume"), _L("Build Volume"), 1)
     , build_volume(new DiamTextCtrl(this))
 {
-    append_text(_L("Set vertical size of your printer."));
+    append_text(_L("Set the printer height."));
 
     wxString value = "200";
     build_volume->SetValue(value);
@@ -1792,7 +1893,7 @@ PageBuildVolume::PageBuildVolume(ConfigWizard* parent)
     }, build_volume->GetId());
 
     auto* sizer_volume = new wxFlexGridSizer(3, 5, 5);
-    auto* text_volume = new wxStaticText(this, wxID_ANY, _L("Max print height:"));
+    auto* text_volume = new wxStaticText(this, wxID_ANY, _L("Max print height") + ":");
     auto* unit_volume = new wxStaticText(this, wxID_ANY, _L("mm"));
     sizer_volume->AddGrowableCol(0, 1);
     sizer_volume->Add(text_volume, 0, wxALIGN_CENTRE_VERTICAL);
@@ -1828,7 +1929,7 @@ PageDiameters::PageDiameters(ConfigWizard *parent)
     append_text(_L("Enter the diameter of your printer's hot end nozzle."));
 
     auto *sizer_nozzle = new wxFlexGridSizer(3, 5, 5);
-    auto *text_nozzle = new wxStaticText(this, wxID_ANY, _L("Nozzle Diameter:"));
+    auto *text_nozzle = new wxStaticText(this, wxID_ANY, _L("Nozzle Diameter") + ":");
     auto *unit_nozzle = new wxStaticText(this, wxID_ANY, _L("mm"));
     sizer_nozzle->AddGrowableCol(0, 1);
     sizer_nozzle->Add(text_nozzle, 0, wxALIGN_CENTRE_VERTICAL);
@@ -1842,7 +1943,7 @@ PageDiameters::PageDiameters(ConfigWizard *parent)
     append_text(_L("Good precision is required, so use a caliper and do multiple measurements along the filament, then compute the average."));
 
     auto *sizer_filam = new wxFlexGridSizer(3, 5, 5);
-    auto *text_filam = new wxStaticText(this, wxID_ANY, _L("Filament Diameter:"));
+    auto *text_filam = new wxStaticText(this, wxID_ANY, _L("Filament Diameter") + ":");
     auto *unit_filam = new wxStaticText(this, wxID_ANY, _L("mm"));
     sizer_filam->AddGrowableCol(0, 1);
     sizer_filam->Add(text_filam, 0, wxALIGN_CENTRE_VERTICAL);
@@ -1880,7 +1981,7 @@ void PageDiameters::apply_custom_config(DynamicPrintConfig &config)
     set_extrusion_width("solid_infill_extrusion_width",       0.45);
 }
 
-class SpinCtrlDouble: public wxSpinCtrlDouble
+class SpinCtrlDouble: public ::SpinInputDouble
 {
 public:
     SpinCtrlDouble(wxWindow* parent)
@@ -1890,10 +1991,7 @@ public:
 #else
         long style = wxSP_ARROW_KEYS;
 #endif
-        Create(parent, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, style);
-#ifdef _WIN32
-        wxGetApp().UpdateDarkUI(this->GetText());
-#endif
+        Create(parent, "", wxEmptyString, wxDefaultPosition, wxSize(6* wxGetApp().em_unit(), -1), style);
         this->Refresh();
     }
     ~SpinCtrlDouble() {}
@@ -1934,7 +2032,7 @@ PageTemperatures::PageTemperatures(ConfigWizard *parent)
     append_text(_L("A rule of thumb is 60 °C for PLA and 110 °C for ABS. Leave zero if you have no heated bed."));
 
     auto *sizer_bed = new wxFlexGridSizer(3, 5, 5);
-    auto *text_bed = new wxStaticText(this, wxID_ANY, _L("Bed Temperature:"));
+    auto *text_bed = new wxStaticText(this, wxID_ANY, _L("Bed Temperature") + ":");
     auto *unit_bed = new wxStaticText(this, wxID_ANY, _L("°C"));
     sizer_bed->AddGrowableCol(0, 1);
     sizer_bed->Add(text_bed, 0, wxALIGN_CENTRE_VERTICAL);
@@ -2267,8 +2365,21 @@ void ConfigWizard::priv::load_pages()
     index->add_page(page_msla);
     if (!only_sla_mode) {
         index->add_page(page_vendors);
-        for (const auto &pages : pages_3rdparty) {
-            for ( PagePrinters* page : { pages.second.first, pages.second.second })
+
+        // Copy pages names from map to vector, so we can sort it without case sensitivity
+        std::vector<std::pair<std::wstring, std::string>> sorted_vendors;
+        for (const auto& pages : pages_3rdparty) {
+            sorted_vendors.emplace_back(boost::algorithm::to_lower_copy(boost::nowide::widen(pages.first)), pages.first);
+        }
+        std::sort(sorted_vendors.begin(), sorted_vendors.end(), [](const std::pair<std::wstring, std::string>& a, const std::pair<std::wstring, std::string>& b) {
+            return a.first < b.first;
+            });
+
+        for (const std::pair<std::wstring, std::string> &v : sorted_vendors) {
+            const auto& pages = pages_3rdparty.find(v.second);
+            if (pages == pages_3rdparty.end())
+                continue; // Should not happen
+            for ( PagePrinters* page : { pages->second.first, pages->second.second })
                 if (page && page->install)
                     index->add_page(page);
         }
@@ -2402,7 +2513,7 @@ void ConfigWizard::priv::load_vendors()
                 }
 		}
         appconfig_new.set_section(section_name, section_new);
-    };
+    }
 }
 
 void ConfigWizard::priv::add_page(ConfigWizardPage *page)
@@ -2484,77 +2595,36 @@ void ConfigWizard::priv::set_run_reason(RunReason run_reason)
 
 void ConfigWizard::priv::update_materials(Technology technology)
 {
+    auto add_material = [](Materials& materials, PresetAliases& aliases, const Preset& preset, const Preset* printer = nullptr) {
+        if (!materials.containts(&preset)) {
+            materials.push(&preset);
+            if (!preset.alias.empty())
+                aliases[preset.alias].emplace(&preset);
+        }
+        if (printer) {
+            materials.add_printer(printer);
+            materials.compatibility_counter[preset.alias]++;
+        }
+    };
+
     if ((any_fff_selected || custom_printer_in_bundle || custom_printer_selected) && (technology & T_FFF)) {
         filaments.clear();
         aliases_fff.clear();
-        // Iterate filaments in all bundles
-        for (const auto &pair : bundles) {
-            for (const auto &filament : pair.second.preset_bundle->filaments) {
-                // Check if filament is already added
-                if (filaments.containts(&filament))
-					continue;
+
+        for (const auto &[name, bundle] : bundles) {
+            for (const auto &filament : bundle.preset_bundle->filaments) {
                 // Iterate printers in all bundles
-                for (const auto &printer : pair.second.preset_bundle->printers) {
+                for (const auto &printer : bundle.preset_bundle->printers) {
 					if (!printer.is_visible || printer.printer_technology() != ptFFF)
 						continue;
                     // Filter out inapplicable printers
-					if (is_compatible_with_printer(PresetWithVendorProfile(filament, filament.vendor), PresetWithVendorProfile(printer, printer.vendor))) {
-						if (!filaments.containts(&filament)) {
-							filaments.push(&filament);
-							if (!filament.alias.empty())
-								aliases_fff[filament.alias].insert(filament.name); 
-						} 
-						filaments.add_printer(&printer);
-                    }
+					if (is_compatible_with_printer(PresetWithVendorProfile(filament, filament.vendor), PresetWithVendorProfile(printer, printer.vendor)))
+                        add_material(filaments, aliases_fff, filament, &printer);
 				}
                 // template filament bundle has no printers - filament would be never added
-                if(pair.second.vendor_profile&& pair.second.vendor_profile->templates_profile && pair.second.preset_bundle->printers.begin() == pair.second.preset_bundle->printers.end())
-                {
-                    if (!filaments.containts(&filament)) {
-                        filaments.push(&filament);
-                        if (!filament.alias.empty())
-                            aliases_fff[filament.alias].insert(filament.name);
-                    }
-                }
+                if(bundle.vendor_profile && bundle.vendor_profile->templates_profile && bundle.preset_bundle->printers.begin() == bundle.preset_bundle->printers.end())
+                    add_material(filaments, aliases_fff, filament);
             }
-        }
-        // count compatible printers
-        for (const auto& preset : filaments.presets) {
-            // skip template filaments
-            if (preset->vendor && preset->vendor->templates_profile)
-                continue;
-
-            const auto filter = [preset](const std::pair<std::string, size_t> element) {
-                return preset->alias == element.first;
-            };
-            if (std::find_if(filaments.compatibility_counter.begin(), filaments.compatibility_counter.end(), filter) != filaments.compatibility_counter.end()) {
-                continue;
-            }
-            // find all aliases (except templates)
-            std::vector<size_t> idx_with_same_alias;
-            for (size_t i = 0; i < filaments.presets.size(); ++i) {
-                if (preset->alias == filaments.presets[i]->alias && ((filaments.presets[i]->vendor && !filaments.presets[i]->vendor->templates_profile) || !filaments.presets[i]->vendor))
-                    idx_with_same_alias.push_back(i);
-            }
-            // check compatibility with each printer
-            size_t counter = 0;
-            for (const auto& printer : filaments.printers) {
-                if (!(*printer).is_visible || (*printer).printer_technology() != ptFFF)
-                    continue;
-                bool compatible = false;
-                // Test other materials with same alias
-                for (size_t i = 0; i < idx_with_same_alias.size() && !compatible; ++i) {
-                    const Preset& prst = *(filaments.presets[idx_with_same_alias[i]]);
-                    const Preset& prntr = *printer;
-                    if (is_compatible_with_printer(PresetWithVendorProfile(prst, prst.vendor), PresetWithVendorProfile(prntr, prntr.vendor))) {
-                        compatible = true;
-                        break;
-                    }
-                }
-                if (compatible)
-                    counter++;
-            }
-            filaments.compatibility_counter.emplace_back(preset->alias, counter);
         }
     }
 
@@ -2563,61 +2633,19 @@ void ConfigWizard::priv::update_materials(Technology technology)
         aliases_sla.clear();
 
         // Iterate SLA materials in all bundles
-        for (const auto &pair : bundles) {
-            for (const auto &material : pair.second.preset_bundle->sla_materials) {
-                // Check if material is already added
-                if (sla_materials.containts(&material))
-                	continue;
+        for (const auto& [name, bundle] : bundles) {
+            for (const auto &material : bundle.preset_bundle->sla_materials) {
                 // Iterate printers in all bundles
 				// For now, we only allow the profiles to be compatible with another profiles inside the same bundle.
-                for (const auto& printer : pair.second.preset_bundle->printers) {
+                for (const auto& printer : bundle.preset_bundle->printers) {
                     if(!printer.is_visible || printer.printer_technology() != ptSLA)
                         continue;
                     // Filter out inapplicable printers
-                    if (is_compatible_with_printer(PresetWithVendorProfile(material, nullptr), PresetWithVendorProfile(printer, nullptr))) {
+                    if (is_compatible_with_printer(PresetWithVendorProfile(material, nullptr), PresetWithVendorProfile(printer, nullptr)))
                         // Check if material is already added
-                        if(!sla_materials.containts(&material)) {
-                            sla_materials.push(&material);
-                            if (!material.alias.empty())
-                                aliases_sla[material.alias].insert(material.name);
-                        }
-                        sla_materials.add_printer(&printer);
-                    }
+                        add_material(sla_materials, aliases_sla, material, &printer);
                 }
             }
-        }
-        // count compatible printers        
-        for (const auto& preset : sla_materials.presets) {
-            
-            const auto filter = [preset](const std::pair<std::string, size_t> element) {
-                return preset->alias == element.first;
-            };
-            if (std::find_if(sla_materials.compatibility_counter.begin(), sla_materials.compatibility_counter.end(), filter) != sla_materials.compatibility_counter.end()) {
-                continue;
-            }
-            std::vector<size_t> idx_with_same_alias;
-            for (size_t i = 0; i < sla_materials.presets.size(); ++i) {
-                if(preset->alias == sla_materials.presets[i]->alias)
-                    idx_with_same_alias.push_back(i);
-            }
-            size_t counter = 0;
-            for (const auto& printer : sla_materials.printers) {
-                if (!(*printer).is_visible || (*printer).printer_technology() != ptSLA)
-                    continue;
-                bool compatible = false;
-                // Test otrher materials with same alias
-                for (size_t i = 0; i < idx_with_same_alias.size() && !compatible; ++i) {
-                    const Preset& prst = *(sla_materials.presets[idx_with_same_alias[i]]);
-                    const Preset& prntr = *printer;
-                    if (is_compatible_with_printer(PresetWithVendorProfile(prst, prst.vendor), PresetWithVendorProfile(prntr, prntr.vendor))) {
-                        compatible = true;
-                        break;
-                    }
-                }
-                if (compatible)
-                    counter++;
-            }
-            sla_materials.compatibility_counter.emplace_back(preset->alias, counter);
         }
     }
 }
@@ -2752,21 +2780,15 @@ bool ConfigWizard::priv::on_bnt_finish()
         index->go_to(page_downloader);
         return false;
     }
-    /* When Filaments or Sla Materials pages are activated, 
-     * materials for this pages are automaticaly updated and presets are reloaded.
-     * 
-     * But, if _Finish_ button was clicked without activation of those pages 
-     * (for example, just some printers were added/deleted), 
-     * than last changes wouldn't be updated for filaments/materials.
-     * SO, do that before close of Wizard
-     */
-    update_materials(T_ANY);
-    if (any_fff_selected)
-        page_filaments->reload_presets();
-    if (any_sla_selected)
-        page_sla_materials->reload_presets();
 
-	// theres no need to check that filament is selected if we have only custom printer
+    /* If some printers were added/deleted, but related MaterialPage wasn't activated,
+     * than last changes wouldn't be updated for filaments/materials.
+     * SO, do that before check_and_install_missing_materials()
+     */
+    page_filaments->check_and_update_presets();
+    page_sla_materials->check_and_update_presets();
+
+	// there's no need to check that filament is selected if we have only custom printer
     if (custom_printer_selected && !any_fff_selected && !any_sla_selected) return true;
     // check, that there is selected at least one filament/material
     return check_and_install_missing_materials(T_ANY);
@@ -2785,7 +2807,7 @@ bool ConfigWizard::priv::check_and_install_missing_materials(Technology technolo
 {
 	// Walk over all installed Printer presets and verify whether there is a filament or SLA material profile installed at the same PresetBundle,
 	// which is compatible with it.
-    const auto printer_models_missing_materials = [this, only_for_model_id](PrinterTechnology technology, const std::string &section)
+    const auto printer_models_missing_materials = [this, only_for_model_id](PrinterTechnology technology, const std::string &section, bool no_templates)
     {
 		const std::map<std::string, std::string> &appconfig_presets = appconfig_new.has_section(section) ? appconfig_new.get_section(section) : std::map<std::string, std::string>();
     	std::set<const VendorProfile::PrinterModel*> printer_models_without_material;
@@ -2805,15 +2827,16 @@ bool ConfigWizard::priv::check_and_install_missing_materials(Technology technolo
 				                	has_material = true;
 				                    break;
 				                }
-                                
                                 // find if preset.first is part of the templates profile (up is searching if preset.first is part of printer vendor preset)
-                                for (const auto& bp : bundles) {
-                                    if (!bp.second.preset_bundle->vendors.empty() && bp.second.preset_bundle->vendors.begin()->second.templates_profile) {
-                                        const PresetCollection& template_materials = bp.second.preset_bundle->materials(technology);
-                                        const Preset* template_material = template_materials.find_preset(preset.first, false);
-                                        if (template_material && is_compatible_with_printer(PresetWithVendorProfile(*template_material, &bp.second.preset_bundle->vendors.begin()->second), PresetWithVendorProfile(printer, nullptr))) {
-                                            has_material = true;
-                                            break;
+                                if (!no_templates) {
+                                    for (const auto& bp : bundles) {
+                                        if (!bp.second.preset_bundle->vendors.empty() && bp.second.preset_bundle->vendors.begin()->second.templates_profile) {
+                                            const PresetCollection& template_materials = bp.second.preset_bundle->materials(technology);
+                                            const Preset* template_material = template_materials.find_preset(preset.first, false);
+                                            if (template_material && is_compatible_with_printer(PresetWithVendorProfile(*template_material, &bp.second.preset_bundle->vendors.begin()->second), PresetWithVendorProfile(printer, nullptr))) {
+                                                has_material = true;
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -2872,15 +2895,17 @@ bool ConfigWizard::priv::check_and_install_missing_materials(Technology technolo
     	return out;
     };
 
+    bool no_templates = wxGetApp().app_config->get("no_templates") == "1";
+
     if (any_fff_selected && (technology & T_FFF)) {
-    	std::set<const VendorProfile::PrinterModel*> printer_models_without_material = printer_models_missing_materials(ptFFF, AppConfig::SECTION_FILAMENTS);
+    	std::set<const VendorProfile::PrinterModel*> printer_models_without_material = printer_models_missing_materials(ptFFF, AppConfig::SECTION_FILAMENTS, no_templates);
     	if (! printer_models_without_material.empty()) {
 			if (only_for_model_id.empty())
 				ask_and_select_default_materials(
 					_L("The following FFF printer models have no filament selected:") +
-					"\n\n\t" +
+					"\n\n" +
 					printer_model_list(printer_models_without_material) +
-					"\n\n\t" +
+					"\n\n" +
 					_L("Do you want to select default filaments for these FFF printer models?"),
 					printer_models_without_material,
 					T_FFF);
@@ -2891,14 +2916,14 @@ bool ConfigWizard::priv::check_and_install_missing_materials(Technology technolo
     }
 
     if (any_sla_selected && (technology & T_SLA)) {
-    	std::set<const VendorProfile::PrinterModel*> printer_models_without_material = printer_models_missing_materials(ptSLA, AppConfig::SECTION_MATERIALS);
+    	std::set<const VendorProfile::PrinterModel*> printer_models_without_material = printer_models_missing_materials(ptSLA, AppConfig::SECTION_MATERIALS, no_templates);
     	if (! printer_models_without_material.empty()) {
 	        if (only_for_model_id.empty())
 	            ask_and_select_default_materials(
 					_L("The following SLA printer models have no materials selected:") +
-	            	"\n\n\t" +
+	            	"\n\n" +
 				   	printer_model_list(printer_models_without_material) +
-					"\n\n\t" +
+					"\n\n" +
 					_L("Do you want to select default SLA materials for these printer models?"),
 					printer_models_without_material,
 	            	T_SLA);
@@ -3163,6 +3188,8 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         }
         else {
             auto changed = [app_config, &appconfig_new = std::as_const(this->appconfig_new)](const std::string& section_name) {
+                if (!appconfig_new.has_section(section_name))
+                    return false;
                 return (app_config->has_section(section_name) ? app_config->get_section(section_name) : std::map<std::string, std::string>()) != appconfig_new.get_section(section_name);
             };
             bool is_filaments_changed     = changed(AppConfig::SECTION_FILAMENTS);
@@ -3247,8 +3274,8 @@ void ConfigWizard::priv::update_presets_in_config(const std::string& section, co
     // add or delete presets had a same alias 
     auto it = aliases.find(alias_key);
     if (it != aliases.end())
-        for (const std::string& name : it->second)
-            update(section, name);
+        for (const Preset* preset : it->second)
+            update(section, preset->name);
 }
 
 bool ConfigWizard::priv::check_fff_selected()
@@ -3276,6 +3303,11 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
     : DPIDialog(parent, wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _(name()), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
     , p(new priv(this))
 {
+#ifdef __APPLE__
+    this->SetBackgroundColour(wxGetApp().get_window_default_clr());
+#endif
+    wxBusyCursor wait;
+
     this->SetFont(wxGetApp().normal_font());
 
     p->load_vendors();
@@ -3318,6 +3350,12 @@ ConfigWizard::ConfigWizard(wxWindow *parent)
     wxGetApp().UpdateDarkUI(p->btn_next);
     wxGetApp().UpdateDarkUI(p->btn_finish);
     wxGetApp().UpdateDarkUI(p->btn_cancel);
+
+    wxGetApp().SetWindowVariantForButton(p->btn_sel_all);
+    wxGetApp().SetWindowVariantForButton(p->btn_prev);
+    wxGetApp().SetWindowVariantForButton(p->btn_next);
+    wxGetApp().SetWindowVariantForButton(p->btn_finish);
+    wxGetApp().SetWindowVariantForButton(p->btn_cancel);
 
     const auto prusa_it = p->bundles.find("PrusaResearch");
     wxCHECK_RET(prusa_it != p->bundles.cend(), "Vendor PrusaResearch not found");

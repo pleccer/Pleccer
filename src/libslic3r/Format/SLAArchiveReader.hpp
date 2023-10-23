@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef SLAARCHIVEREADER_HPP
 #define SLAARCHIVEREADER_HPP
 
@@ -47,15 +51,6 @@ public:
         const std::string &format_id,
         SLAImportQuality   quality = SLAImportQuality::Balanced,
         const ProgrFn     &progr   = [](int) { return false; });
-
-    // Get the names of currently known archive reader implementations
-    static const std::vector<const char *> & registered_archives();
-
-    // Get the understood file extensions belonging to an archive format
-    static std::vector<const char *> get_extensions(const char *archtype);
-
-    // Generic description (usable in GUI) about an archive format
-    static const char * get_description(const char *archtype);
 };
 
 // Raised in import_sla_archive when a nullptr reader is returned by

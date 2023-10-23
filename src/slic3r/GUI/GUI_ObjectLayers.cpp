@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Lukáš Matěna @lukasmatena, Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "GUI_ObjectLayers.hpp"
 #include "GUI_ObjectList.hpp"
 
@@ -283,7 +287,7 @@ void ObjectLayers::sys_color_changed()
         if (item->IsSizer()) {// case when we have editor with buttons
             for (size_t btn : {2, 3}) { // del_btn, add_btn
                 wxSizerItem* b_item = item->GetSizer()->GetItem(btn);
-                if (b_item->IsWindow()) {
+                if (b_item && b_item->IsWindow()) {
                     auto button = dynamic_cast<PlusMinusButton*>(b_item->GetWindow());
                     if (button != nullptr)
                         button->sys_color_changed();

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef PERFORMCSGMESHBOOLEANS_HPP
 #define PERFORMCSGMESHBOOLEANS_HPP
 
@@ -155,10 +159,10 @@ It check_csgmesh_booleans(const Range<It> &csgrange, Visitor &&vfn)
             if (!m || MeshBoolean::cgal::empty(*m))
                 return;
 
-            if (!MeshBoolean::cgal::does_bound_a_volume(*m))
+            if (MeshBoolean::cgal::does_self_intersect(*m))
                 return;
 
-            if (MeshBoolean::cgal::does_self_intersect(*m))
+            if (!MeshBoolean::cgal::does_bound_a_volume(*m))
                 return;
         }
         catch (...) { return; }

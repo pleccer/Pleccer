@@ -1,3 +1,24 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Filip Sykala @Jony01, David Kocík @kocikdav, Tomáš Mészáros @tamasmeszaros, Vojtěch Král @vojtechkral
+///|/ Copyright (c) Slic3r 2013 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2015 Maksim Derbasov @ntfshard
+///|/ Copyright (c) 2015 Greg Thornton @xdissent
+///|/ Copyright (c) 2014 Kamil Kwolek
+///|/
+///|/ ported from lib/Slic3r/Config.pm:
+///|/ Copyright (c) Prusa Research 2016 - 2022 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) 2017 Joseph Lenox @lordofhyphens
+///|/ Copyright (c) Slic3r 2011 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2015 Alexander Rössler @machinekoder
+///|/ Copyright (c) 2012 Henrik Brix Andersen @henrikbrixandersen
+///|/ Copyright (c) 2012 Mark Hindess
+///|/ Copyright (c) 2012 Josh McCullough
+///|/ Copyright (c) 2011 - 2012 Michael Moon
+///|/ Copyright (c) 2012 Simon George
+///|/ Copyright (c) 2012 Johannes Reinhardt
+///|/ Copyright (c) 2011 Clarence Risher
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_Config_hpp_
 #define slic3r_Config_hpp_
 
@@ -303,7 +324,7 @@ template <class T>
 class ConfigOptionSingle : public ConfigOption {
 public:
     T value;
-    explicit ConfigOptionSingle(T value) : value(value) {}
+    explicit ConfigOptionSingle(T value) : value(std::move(value)) {}
     operator T() const { return this->value; }
     
     void set(const ConfigOption *rhs) override
@@ -847,9 +868,9 @@ using ConfigOptionIntsNullable = ConfigOptionIntsTempl<true>;
 class ConfigOptionString : public ConfigOptionSingle<std::string>
 {
 public:
-    ConfigOptionString() : ConfigOptionSingle<std::string>("") {}
-    explicit ConfigOptionString(const std::string &value) : ConfigOptionSingle<std::string>(value) {}
-    
+    ConfigOptionString() : ConfigOptionSingle<std::string>(std::string{}) {}
+    explicit ConfigOptionString(std::string value) : ConfigOptionSingle<std::string>(std::move(value)) {}
+
     static ConfigOptionType static_type() { return coString; }
     ConfigOptionType        type()  const override { return static_type(); }
     ConfigOption*           clone() const override { return new ConfigOptionString(*this); }
@@ -1736,7 +1757,7 @@ private:
     void set_values(const std::initializer_list<std::string_view> il) {
         m_values.clear();
         m_values.reserve(il.size());
-        for (const std::string_view p : il)
+        for (const std::string_view& p : il)
             m_values.emplace_back(p);
         assert(m_labels.empty() || m_labels.size() == m_values.size());
     }
@@ -1745,7 +1766,7 @@ private:
         m_values.reserve(il.size());
         m_labels.clear();
         m_labels.reserve(il.size());
-        for (const std::pair<std::string_view, std::string_view> p : il) {
+        for (const std::pair<std::string_view, std::string_view>& p : il) {
             m_values.emplace_back(p.first);
             m_labels.emplace_back(p.second);
         }
@@ -1753,7 +1774,7 @@ private:
     void set_labels(const std::initializer_list<std::string_view> il) {
         m_labels.clear();
         m_labels.reserve(il.size());
-        for (const std::string_view p : il)
+        for (const std::string_view& p : il)
             m_labels.emplace_back(p);
         assert(m_values.empty() || m_labels.size() == m_values.size());
     }
@@ -1762,9 +1783,9 @@ private:
         // Check whether def.enum_values contains all the values of def.enum_keys_map and
         // that they are sorted by their ordinary values.
         m_values_ordinary = true;
-        for (const std::pair<std::string, int>& key : *m_enum_keys_map) {
-            assert(key.second >= 0);
-            if (key.second >= this->values().size() || this->value(key.second) != key.first) {
+        for (const auto& [enum_name, enum_int] : *m_enum_keys_map) {
+            assert(enum_int >= 0);
+            if (enum_int >= int(this->values().size()) || this->value(enum_int) != enum_name) {
                 m_values_ordinary = false;
                 break;
             }
@@ -1815,6 +1836,8 @@ public:
         // Close parameter, string value could be one of the list values.
         select_close,
     };
+    static bool is_gui_type_enum_open(const GUIType gui_type)
+        { return gui_type == ConfigOptionDef::GUIType::i_enum_open || gui_type == ConfigOptionDef::GUIType::f_enum_open || gui_type == ConfigOptionDef::GUIType::select_open; }
 
 	// Identifier of this option. It is stored here so that it is accessible through the by_serialization_key_ordinal map.
 	t_config_option_key 				opt_key;
@@ -1831,6 +1854,8 @@ public:
     ConfigOption*						create_empty_option() const;
     // Create a default option to be inserted into a DynamicConfig.
     ConfigOption*						create_default_option() const;
+
+    bool                                is_scalar()     const { return (int(this->type) & int(coVectorType)) == 0; }
 
     template<class Archive> ConfigOption* load_option_from_archive(Archive &archive) const {
     	if (this->nullable) {
@@ -1902,6 +1927,7 @@ public:
     // Special values - "i_enum_open", "f_enum_open" to provide combo box for int or float selection,
     // "select_open" - to open a selection dialog (currently only a serial port selection).
     GUIType                             gui_type { GUIType::undefined };
+    bool                                is_gui_type_enum_open() const { return is_gui_type_enum_open(this->gui_type); }
     // Usually empty. Otherwise "serialized" or "show_value"
     // The flags may be combined.
     // "serialized" - vector valued option is entered in a single edit field. Values are separated by a semicolon.
@@ -1965,7 +1991,7 @@ public:
 
     void set_enum_values(GUIType gui_type, const std::initializer_list<std::string_view> il) {
         this->enum_def_new();
-        assert(gui_type == GUIType::i_enum_open || gui_type == GUIType::f_enum_open || gui_type == GUIType::select_open);
+        assert(is_gui_type_enum_open(gui_type));
         this->gui_type = gui_type;
         enum_def->set_values(il);
     }
@@ -1991,7 +2017,7 @@ public:
 
     void set_enum_labels(GUIType gui_type, const std::initializer_list<std::string_view> il) {
         this->enum_def_new();
-        assert(gui_type == GUIType::i_enum_open || gui_type == GUIType::f_enum_open || gui_type == ConfigOptionDef::GUIType::select_open);
+        assert(gui_type == GUIType::i_enum_open || gui_type == GUIType::f_enum_open || gui_type == ConfigOptionDef::GUIType::select_close);
         this->gui_type = gui_type;
         enum_def->set_labels(il);
     }
@@ -2077,6 +2103,7 @@ public:
             out.push_back(kvp.first);
         return out;
     }
+    bool                    empty() const { return options.empty(); }
 
     // Iterate through all of the CLI options and write them to a stream.
     std::ostream&           print_cli_help(
@@ -2160,6 +2187,10 @@ protected:
     // If the opt_key is no more valid in this version of Slic3r, opt_key is cleared by handle_legacy().
     // handle_legacy() is called internally by set_deserialize().
     virtual void                    handle_legacy(t_config_option_key &/*opt_key*/, std::string &/*value*/) const {}
+    // Called after a config is loaded as a whole.
+    // Perform composite conversions, for example merging multiple keys into one key.
+    // For conversion of single options, the handle_legacy() method above is called.
+    virtual void                    handle_legacy_composite() {}
 
 public:
 	using ConfigOptionResolver::option;
@@ -2303,7 +2334,8 @@ public:
     // Loading a "will be one day a legacy format" of configuration stored into 3MF or AMF.
     // Accepts the same data as load_from_ini_string(), only with each configuration line possibly prefixed with a semicolon (G-code comment).
     ConfigSubstitutions load_from_ini_string_commented(std::string &&data, ForwardCompatibilitySubstitutionRule compatibility_rule);
-    ConfigSubstitutions load_from_gcode_file(const std::string &file, ForwardCompatibilitySubstitutionRule compatibility_rule);
+    ConfigSubstitutions load_from_gcode_file(const std::string &filename, ForwardCompatibilitySubstitutionRule compatibility_rule);
+    ConfigSubstitutions load_from_binary_gcode_file(const std::string& filename, ForwardCompatibilitySubstitutionRule compatibility_rule);
     ConfigSubstitutions load(const boost::property_tree::ptree &tree, ForwardCompatibilitySubstitutionRule compatibility_rule);
     void                save(const std::string &file) const;
 

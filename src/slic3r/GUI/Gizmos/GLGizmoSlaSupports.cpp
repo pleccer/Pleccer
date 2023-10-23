@@ -1,5 +1,9 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Tomáš Mészáros @tamasmeszaros, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, Vojtěch Bubník @bubnikv, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2019 BeldrothTheGold @BeldrothTheGold
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "libslic3r/libslic3r.h"
-// Include GLGizmoBase.hpp before I18N.hpp as it includes some libigl code, which overrides our localization "L" macro.
 #include "GLGizmoSlaSupports.hpp"
 #include "slic3r/GUI/MainFrame.hpp"
 #include "slic3r/Utils/UndoRedo.hpp"
@@ -25,8 +29,10 @@ namespace Slic3r {
 namespace GUI {
 
 GLGizmoSlaSupports::GLGizmoSlaSupports(GLCanvas3D& parent, const std::string& icon_filename, unsigned int sprite_id)
-    : GLGizmoSlaBase(parent, icon_filename, sprite_id, slaposDrillHoles)
-{}
+: GLGizmoSlaBase(parent, icon_filename, sprite_id, slaposDrillHoles)
+{
+    show_sla_supports(true);
+}
 
 bool GLGizmoSlaSupports::on_init()
 {
@@ -48,7 +54,7 @@ bool GLGizmoSlaSupports::on_init()
     return true;
 }
 
-void GLGizmoSlaSupports::data_changed()
+void GLGizmoSlaSupports::data_changed(bool is_serializing)
 {
     if (! m_c->selection_info())
         return;
@@ -64,9 +70,13 @@ void GLGizmoSlaSupports::data_changed()
     // If we triggered autogeneration before, check backend and fetch results if they are there
     if (mo) {
         m_c->instances_hider()->set_hide_full_scene(true);
-        const SLAPrintObject* po = m_c->selection_info()->print_object();
+
+        int last_comp_step = slaposCount;
         const int required_step = get_min_sla_print_object_step();
-        auto last_comp_step = static_cast<int>(po->last_completed_step());
+        const SLAPrintObject* po = m_c->selection_info()->print_object();
+        if (po != nullptr)
+            last_comp_step = static_cast<int>(po->last_completed_step());
+
         if (last_comp_step == slaposCount)
             last_comp_step = -1;
 
@@ -82,6 +92,8 @@ void GLGizmoSlaSupports::data_changed()
             register_point_raycasters_for_picking();
         else
             update_point_raycasters_for_picking_transform();
+
+        m_c->instances_hider()->set_hide_full_scene(true);
     }
 
 //    m_parent.toggle_model_objects_visibility(false);
@@ -122,11 +134,15 @@ void GLGizmoSlaSupports::on_render()
     glsafe(::glEnable(GL_BLEND));
     glsafe(::glEnable(GL_DEPTH_TEST));
 
+    show_sla_supports(!m_editing_mode);
+
     render_volumes();
     render_points(selection);
 
     m_selection_rectangle.render(m_parent);
     m_c->object_clipper()->render_cut();
+    if (are_sla_supports_shown())
+        m_c->supports_clipper()->render_cut();
 
     glsafe(::glDisable(GL_BLEND));
 }
@@ -167,11 +183,7 @@ void GLGizmoSlaSupports::render_points(const Selection& selection)
     trafo.translation()(2) += shift_z;
     const Geometry::Transformation transformation{trafo};
 
-#if ENABLE_WORLD_COORDINATE
     const Transform3d instance_scaling_matrix_inverse = transformation.get_scaling_factor_matrix().inverse();
-#else
-    const Transform3d& instance_scaling_matrix_inverse = transformation.get_matrix(true, true, false, true).inverse();
-#endif // ENABLE_WORLD_COORDINATE
     const Camera& camera = wxGetApp().plater()->get_camera();
     const Transform3d& view_matrix = camera.get_view_matrix();
     shader->set_uniform("projection_matrix", camera.get_projection_matrix());
@@ -395,7 +407,7 @@ bool GLGizmoSlaSupports::gizmo_event(SLAGizmoEventType action, const Vec2d& mous
         }
 
         if (action ==  SLAGizmoEventType::DiscardChanges) {
-            ask_about_changes_call_after([this](){ editing_mode_apply_changes(); },
+            ask_about_changes([this](){ editing_mode_apply_changes(); },
                                          [this](){ editing_mode_discard_changes(); });
             return true;
         }
@@ -793,6 +805,12 @@ bool GLGizmoSlaSupports::on_is_activable() const
         if (selection.get_volume(idx)->is_outside && selection.get_volume(idx)->composite_id.volume_id >= 0)
             return false;
 
+    // Check that none of the selected volumes is marked as non-pritable.
+    for (const auto& idx : list) {
+        if (!selection.get_volume(idx)->printable)
+          return false;
+    }
+
     return true;
 }
 
@@ -806,39 +824,36 @@ std::string GLGizmoSlaSupports::on_get_name() const
     return _u8L("SLA Support Points");
 }
 
-void GLGizmoSlaSupports::ask_about_changes_call_after(std::function<void()> on_yes, std::function<void()> on_no)
+bool GLGizmoSlaSupports::ask_about_changes(std::function<void()> on_yes, std::function<void()> on_no)
 {
-    wxGetApp().CallAfter([on_yes, on_no]() {
-        // Following is called through CallAfter, because otherwise there was a problem
-        // on OSX with the wxMessageDialog being shown several times when clicked into.
-        MessageDialog dlg(GUI::wxGetApp().mainframe, _L("Do you want to save your manually "
-            "edited support points?") + "\n",_L("Save support points?"), wxICON_QUESTION | wxYES | wxNO | wxCANCEL );
-        int ret = dlg.ShowModal();
-            if (ret == wxID_YES)
-                on_yes();
-            else if (ret == wxID_NO)
-                on_no();
-    });
-}
+    MessageDialog dlg(GUI::wxGetApp().mainframe, _L("Do you want to save your manually edited support points?") + "\n",
+                      _L("Save support points?"), wxICON_QUESTION | wxYES | wxNO | wxCANCEL );
 
+    const int ret = dlg.ShowModal();
+    if (ret == wxID_YES)
+        on_yes();
+    else if (ret == wxID_NO)
+        on_no();
+    else
+        return false;
+
+    return true;
+}
 
 void GLGizmoSlaSupports::on_set_state()
 {
-    if (m_state == m_old_state)
-        return;
-
-    if (m_state == On && m_old_state != On) { // the gizmo was just turned on
+    if (m_state == On) { // the gizmo was just turned on
         // Set default head diameter from config.
         const DynamicPrintConfig& cfg = wxGetApp().preset_bundle->sla_prints.get_edited_preset().config;
         m_new_point_head_diameter = static_cast<const ConfigOptionFloat*>(cfg.option("support_head_front_diameter"))->value;
     }
-    if (m_state == Off && m_old_state != Off) { // the gizmo was just turned Off
-        bool will_ask = m_editing_mode && unsaved_changes() && on_is_activable();
-        if (will_ask) {
-            ask_about_changes_call_after([this](){ editing_mode_apply_changes(); },
-                                         [this](){ editing_mode_discard_changes(); });
-            // refuse to be turned off so the gizmo is active when the CallAfter is executed
-            m_state = m_old_state;
+    else {
+        if (m_editing_mode && unsaved_changes() && on_is_activable()) {
+            if (!ask_about_changes([this]() { editing_mode_apply_changes(); },
+                [this]() { editing_mode_discard_changes(); })) {
+                m_state = On;
+                return;
+            }
         }
         else {
             // we are actually shutting down
@@ -846,15 +861,12 @@ void GLGizmoSlaSupports::on_set_state()
             m_old_mo_id = -1;
         }
 
-        if (m_state == Off) {
-            m_c->instances_hider()->set_hide_full_scene(false);
-            m_c->selection_info()->set_use_shift(false); // see top of on_render for details
-        }
+        m_parent.post_event(SimpleEvent(EVT_GLCANVAS_FORCE_UPDATE));
+        m_c->instances_hider()->set_hide_full_scene(false);
+        m_c->selection_info()->set_use_shift(false); // see top of on_render for details
+
     }
-    m_old_state = m_state;
 }
-
-
 
 void GLGizmoSlaSupports::on_start_dragging()
 {

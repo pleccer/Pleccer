@@ -2,7 +2,6 @@
 // CuraEngine is released under the terms of the AGPLv3 or higher.
 
 #include <algorithm> //For std::partition_copy and std::min_element.
-#include <unordered_set>
 
 #include "WallToolPaths.hpp"
 
@@ -233,7 +232,7 @@ std::unique_ptr<LocToLineGrid>                                               cre
 void fixSelfIntersections(const coord_t epsilon, Polygons &thiss)
 {
     if (epsilon < 1) {
-        ClipperLib::SimplifyPolygons(ClipperUtils::PolygonsProvider(thiss));
+        ClipperLib::SimplifyPolygons(ClipperUtils::PolygonsProvider(thiss), ClipperLib::pftEvenOdd);
         return;
     }
 
@@ -274,7 +273,7 @@ void fixSelfIntersections(const coord_t epsilon, Polygons &thiss)
         }
     }
 
-    ClipperLib::SimplifyPolygons(ClipperUtils::PolygonsProvider(thiss));
+    ClipperLib::SimplifyPolygons(ClipperUtils::PolygonsProvider(thiss), ClipperLib::pftEvenOdd);
 }
 
 /*!
@@ -341,7 +340,7 @@ void removeSmallAreas(Polygons &thiss, const double min_area_size, const bool re
         }
     } else {
         // For each polygon, computes the signed area, move small outlines at the end of the vector and keep pointer on small holes
-        std::vector<Polygon> small_holes;
+        Polygons small_holes;
         for (auto it = thiss.begin(); it < new_end;) {
             if (double area = ClipperLib::Area(to_path(*it)); fabs(area) < min_area_size) {
                 if (area >= 0) {
@@ -767,9 +766,9 @@ bool WallToolPaths::removeEmptyToolPaths(std::vector<VariableWidthLines> &toolpa
      *
      * \param outer_to_inner Whether the wall polygons with a lower inset_idx should go before those with a higher one.
  */
-std::unordered_set<std::pair<const ExtrusionLine *, const ExtrusionLine *>, boost::hash<std::pair<const ExtrusionLine *, const ExtrusionLine *>>> WallToolPaths::getRegionOrder(const std::vector<ExtrusionLine *> &input, const bool outer_to_inner)
+WallToolPaths::ExtrusionLineSet WallToolPaths::getRegionOrder(const std::vector<ExtrusionLine *> &input, const bool outer_to_inner)
 {
-    std::unordered_set<std::pair<const ExtrusionLine *, const ExtrusionLine *>, boost::hash<std::pair<const ExtrusionLine *, const ExtrusionLine *>>> order_requirements;
+    ExtrusionLineSet order_requirements;
 
     // We build a grid where we map toolpath vertex locations to toolpaths,
     // so that we can easily find which two toolpaths are next to each other,

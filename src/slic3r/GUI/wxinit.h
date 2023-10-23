@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2017 - 2018 Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_wxinit_hpp_
 #define slic3r_wxinit_hpp_
 

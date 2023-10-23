@@ -6,6 +6,7 @@ add_executable(${_TEST_NAME}_tests
 	test_aabbindirect.cpp
 	test_kdtreeindirect.cpp
 	test_arachne.cpp
+	test_arc_welder.cpp
 	test_clipper_offset.cpp
 	test_clipper_utils.cpp
 	test_color.cpp
@@ -23,6 +24,7 @@ add_executable(${_TEST_NAME}_tests
 	test_stl.cpp
 	test_meshboolean.cpp
 	test_marchingsquares.cpp
+	test_region_expansion.cpp
 	test_timeutils.cpp
 	test_utils.cpp
 	test_voronoi.cpp
@@ -30,13 +32,17 @@ add_executable(${_TEST_NAME}_tests
     test_png_io.cpp
     test_surface_mesh.cpp
     test_timeutils.cpp
-	test_quadric_edge_collapse.cpp
+        test_quadric_edge_collapse.cpp
     test_triangulation.cpp
     test_emboss.cpp
     test_indexed_triangle_set.cpp
     test_astar.cpp
-	test_jump_point_search.cpp
-    ../libnest2d/printer_parts.cpp
+    test_anyptr.cpp
+    test_jump_point_search.cpp
+    test_support_spots_generator.cpp
+    ../data/prusaparts.cpp
+    ../data/prusaparts.hpp
+     test_static_map.cpp
 	)
 
 if (TARGET OpenVDB::openvdb)

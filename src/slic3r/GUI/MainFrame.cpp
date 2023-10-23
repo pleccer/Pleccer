@@ -1,3 +1,14 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, David Kocík @kocikdav, Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros, Enrico Turri @enricoturri1966, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2021 Jason Scurtu @xarbit
+///|/ Copyright (c) 2019 John Drake @foxox
+///|/
+///|/ ported from lib/Slic3r/GUI/MainFrame.pm:
+///|/ Copyright (c) Prusa Research 2016 - 2019 Vojtěch Bubník @bubnikv, Vojtěch Král @vojtechkral, Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, Enrico Turri @enricoturri1966
+///|/ Copyright (c) Slic3r 2014 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2014 Mark Hindess
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "MainFrame.hpp"
 
 #include <wx/panel.h>
@@ -122,8 +133,8 @@ static wxIcon main_frame_icon(GUI_App::EAppMode app_mode)
 #endif // _WIN32
 }
 
-MainFrame::MainFrame() :
-DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "mainframe"),
+MainFrame::MainFrame(const int font_point_size) :
+DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "mainframe", font_point_size),
     m_printhost_queue_dlg(new PrintHostQueueDialog(this))
     , m_recent_projects(9)
     , m_settings_dialog(this)
@@ -202,7 +213,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
     sizer->SetSizeHints(this);
     Fit();
 
-    const wxSize min_size = wxGetApp().get_min_size(); //wxSize(76*wxGetApp().em_unit(), 49*wxGetApp().em_unit());
+    const wxSize min_size = wxGetApp().get_min_size(this);
 #ifdef __APPLE__
     // Using SetMinSize() on Mac messes up the window position in some cases
     // cf. https://groups.google.com/forum/#!topic/wx-users/yUKPBBfXWO0
@@ -314,9 +325,9 @@ void MainFrame::bind_diff_dialog()
             process(diff_dlg_type);
     };
 
-    diff_dialog.Bind(EVT_DIFF_DIALOG_TRANSFER,      [this, process_options, transfer](SimpleEvent&)         { process_options(transfer); });
+    diff_dialog.Bind(EVT_DIFF_DIALOG_TRANSFER,      [process_options, transfer](SimpleEvent&)         { process_options(transfer); });
 
-    diff_dialog.Bind(EVT_DIFF_DIALOG_UPDATE_PRESETS,[this, process_options, update_presets](SimpleEvent&)   { process_options(update_presets); });
+    diff_dialog.Bind(EVT_DIFF_DIALOG_UPDATE_PRESETS,[process_options, update_presets](SimpleEvent&)   { process_options(update_presets); });
 }
 
 
@@ -721,7 +732,7 @@ void MainFrame::init_tabpanel()
 #ifdef _MSW_DARK_MODE
     if (wxGetApp().tabs_as_menu()) {
         m_tabpanel = new wxSimplebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_TOP | wxTAB_TRAVERSAL | wxNB_NOPAGETHEME);
-        wxGetApp().UpdateDarkUI(m_tabpanel);
+//        wxGetApp().UpdateDarkUI(m_tabpanel);
     }
     else
         m_tabpanel = new Notebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_TOP | wxTAB_TRAVERSAL | wxNB_NOPAGETHEME, true);
@@ -729,9 +740,9 @@ void MainFrame::init_tabpanel()
     m_tabpanel = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_TOP | wxTAB_TRAVERSAL | wxNB_NOPAGETHEME);
 #endif
 
-#ifndef __WXOSX__ // Don't call SetFont under OSX to avoid name cutting in ObjectList
+    wxGetApp().UpdateDarkUI(m_tabpanel);
+
     m_tabpanel->SetFont(Slic3r::GUI::wxGetApp().normal_font());
-#endif
     m_tabpanel->Hide();
     m_settings_dialog.set_tabpanel(m_tabpanel);
 
@@ -1096,7 +1107,6 @@ void MainFrame::on_sys_color_changed()
     wxGetApp().update_ui_colours_from_appconfig();
 #ifdef __WXMSW__
     wxGetApp().UpdateDarkUI(m_tabpanel);
- //   m_statusbar->update_dark_ui();
 #ifdef _MSW_DARK_MODE
     // update common mode sizer
     if (!wxGetApp().tabs_as_menu())
@@ -1144,9 +1154,46 @@ static const wxString sep = " - ";
 static const wxString sep_space = "";
 #endif
 
+static void append_about_menu_item(wxMenu* target_menu, int insert_pos = wxNOT_FOUND)
+{
+    if (wxGetApp().is_editor())
+        append_menu_item(target_menu, wxID_ANY, wxString::Format(_L("&About %s"), SLIC3R_APP_NAME), _L("Show about dialog"),
+            [](wxCommandEvent&) { Slic3r::GUI::about(); }, nullptr, nullptr, []() {return true; }, nullptr, insert_pos);
+    else
+        append_menu_item(target_menu, wxID_ANY, wxString::Format(_L("&About %s"), GCODEVIEWER_APP_NAME), _L("Show about dialog"),
+            [](wxCommandEvent&) { Slic3r::GUI::about(); }, nullptr, nullptr, []() {return true; }, nullptr, insert_pos);
+}
+
+#ifdef __APPLE__
+static void init_macos_application_menu(wxMenuBar* menu_bar, MainFrame* main_frame)
+{
+    wxMenu* apple_menu = menu_bar->OSXGetAppleMenu();
+    if (apple_menu != nullptr) {
+        append_about_menu_item(apple_menu, 0);
+
+        // This fixes a bug on macOS where the quit command doesn't emit window close events.
+        // wx bug: https://trac.wxwidgets.org/ticket/18328
+        apple_menu->Bind(wxEVT_MENU, [main_frame](wxCommandEvent&) { main_frame->Close(); }, wxID_EXIT);
+    }
+}
+#endif // __APPLE__
+
 static wxMenu* generate_help_menu()
 {
     wxMenu* helpMenu = new wxMenu();
+
+    append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("%s &Website"), SLIC3R_APP_NAME),
+        wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME),
+        [](wxCommandEvent&) { wxGetApp().open_web_page_localized("https://www.prusa3d.com/slicerweb"); });
+    // TRN Item from "Help" menu
+    append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("&Quick Start"), SLIC3R_APP_NAME),
+        wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME),
+        [](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("https://help.prusa3d.com/article/first-print-with-prusaslicer_1753", nullptr, false); });
+    // TRN Item from "Help" menu
+    append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("Sample &G-codes and Models"), SLIC3R_APP_NAME),
+        wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME),
+        [](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("https://help.prusa3d.com/article/sample-g-codes_529630", nullptr, false); });
+    helpMenu->AppendSeparator();
     append_menu_item(helpMenu, wxID_ANY, _L("Prusa 3D &Drivers"), _L("Open the Prusa3D drivers download page in your browser"),
         [](wxCommandEvent&) { wxGetApp().open_web_page_localized("https://www.prusa3d.com/downloads"); });
     append_menu_item(helpMenu, wxID_ANY, _L("Software &Releases"), _L("Open the software releases page in your browser"),
@@ -1155,9 +1202,6 @@ static wxMenu* generate_help_menu()
 //#            wxTheApp->check_version(1);
 //#        });
 //#        $versioncheck->Enable(wxTheApp->have_version_check);
-    append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("%s &Website"), SLIC3R_APP_NAME),
-        wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME),
-        [](wxCommandEvent&) { wxGetApp().open_web_page_localized("https://www.prusa3d.com/slicerweb"); });
 //        append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("%s &Manual"), SLIC3R_APP_NAME),
 //                                             wxString::Format(_L("Open the %s manual in your browser"), SLIC3R_APP_NAME),
 //            [this](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("http://manual.slic3r.org/"); });
@@ -1168,13 +1212,10 @@ static wxMenu* generate_help_menu()
         [](wxCommandEvent&) { Slic3r::GUI::desktop_open_datadir_folder(); });
     append_menu_item(helpMenu, wxID_ANY, _L("Report an I&ssue"), wxString::Format(_L("Report an issue on %s"), SLIC3R_APP_NAME),
         [](wxCommandEvent&) { wxGetApp().open_browser_with_warning_dialog("https://github.com/prusa3d/slic3r/issues/new", nullptr, false); });
-    if (wxGetApp().is_editor())
-        append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("&About %s"), SLIC3R_APP_NAME), _L("Show about dialog"),
-            [](wxCommandEvent&) { Slic3r::GUI::about(); });
-    else
-        append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("&About %s"), GCODEVIEWER_APP_NAME), _L("Show about dialog"),
-            [](wxCommandEvent&) { Slic3r::GUI::about(); });
-    append_menu_item(helpMenu, wxID_ANY, _L("Show Tip of the Day") 
+#ifndef __APPLE__
+    append_about_menu_item(helpMenu);
+#endif // __APPLE__
+    append_menu_item(helpMenu, wxID_ANY, _L("Show Tip of the Day")
 #if 0//debug
         + "\tCtrl+Shift+T"
 #endif
@@ -1198,10 +1239,10 @@ static void add_common_view_menu_items(wxMenu* view_menu, MainFrame* mainFrame, 
     append_menu_item(view_menu, wxID_ANY, _L("Iso") + sep + "&0", _L("Iso View"), [mainFrame](wxCommandEvent&) { mainFrame->select_view("iso"); },
         "", nullptr, [can_change_view]() { return can_change_view(); }, mainFrame);
     view_menu->AppendSeparator();
-    //TRN To be shown in the main menu View->Top 
+    //TRN Main menu: View->Top
     append_menu_item(view_menu, wxID_ANY, _L("Top") + sep + "&1", _L("Top View"), [mainFrame](wxCommandEvent&) { mainFrame->select_view("top"); },
         "", nullptr, [can_change_view]() { return can_change_view(); }, mainFrame);
-    //TRN To be shown in the main menu View->Bottom 
+    //TRN Main menu: View->Bottom
     append_menu_item(view_menu, wxID_ANY, _L("Bottom") + sep + "&2", _L("Bottom View"), [mainFrame](wxCommandEvent&) { mainFrame->select_view("bottom"); },
         "", nullptr, [can_change_view]() { return can_change_view(); }, mainFrame);
     append_menu_item(view_menu, wxID_ANY, _L("Front") + sep + "&3", _L("Front View"), [mainFrame](wxCommandEvent&) { mainFrame->select_view("front"); },
@@ -1293,6 +1334,10 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { if (m_plater) m_plater->import_sl1_archive(); }, "import_plater", nullptr,
             [this](){return m_plater != nullptr && m_plater->get_ui_job_worker().is_idle(); }, this);
     
+        append_menu_item(import_menu, wxID_ANY, _L("Import ZIP Archive") + dots, _L("Load a ZIP archive"),
+            [this](wxCommandEvent&) { if (m_plater) m_plater->import_zip_archive(); }, "import_plater", nullptr,
+            [this]() {return m_plater != nullptr; }, this);
+
         import_menu->AppendSeparator();
         append_menu_item(import_menu, wxID_ANY, _L("Import &Config") + dots + "\tCtrl+L", _L("Load exported configuration file"),
             [this](wxCommandEvent&) { load_config_file(); }, "import_config", nullptr,
@@ -1344,6 +1389,15 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { export_configbundle(true); }, "export_config_bundle", nullptr,
             []() {return true; }, this);
         append_submenu(fileMenu, export_menu, wxID_ANY, _L("&Export"), "");
+
+        wxMenu* convert_menu = new wxMenu();
+        append_menu_item(convert_menu, wxID_ANY, _L("Convert ASCII G-code to &binary") + dots, _L("Convert a G-code file from ASCII to binary format"),
+            [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_binary(); }, "convert_file", nullptr,
+            []() { return true; }, this);
+        append_menu_item(convert_menu, wxID_ANY, _L("Convert binary G-code to &ASCII") + dots, _L("Convert a G-code file from binary to ASCII format"),
+            [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_ascii(); }, "convert_file", nullptr,
+            []() { return true; }, this);
+        append_submenu(fileMenu, convert_menu, wxID_ANY, _L("&Convert"), "");
 
 		append_menu_item(fileMenu, wxID_ANY, _L("Ejec&t SD Card / Flash Drive") + dots + "\tCtrl+T", _L("Eject SD card / Flash drive after the G-code was exported to it."),
 			[this](wxCommandEvent&) { if (m_plater) m_plater->eject_drive(); }, "eject_sd", nullptr,
@@ -1536,6 +1590,7 @@ void MainFrame::init_menubar_as_editor()
     // assign menubar to frame after appending items, otherwise special items
     // will not be handled correctly
     m_menubar = new wxMenuBar();
+    m_menubar->SetFont(this->normal_font());
     m_menubar->Append(fileMenu, _L("&File"));
     if (editMenu) m_menubar->Append(editMenu, _L("&Edit"));
     m_menubar->Append(windowMenu, _L("&Window"));
@@ -1559,14 +1614,7 @@ void MainFrame::init_menubar_as_editor()
 #endif
 
 #ifdef __APPLE__
-    // This fixes a bug on Mac OS where the quit command doesn't emit window close events
-    // wx bug: https://trac.wxwidgets.org/ticket/18328
-    wxMenu* apple_menu = m_menubar->OSXGetAppleMenu();
-    if (apple_menu != nullptr) {
-        apple_menu->Bind(wxEVT_MENU, [this](wxCommandEvent &) {
-            Close();
-        }, wxID_EXIT);
-    }
+    init_macos_application_menu(m_menubar, this);
 #endif // __APPLE__
 
     if (plater()->printer_technology() == ptSLA)
@@ -1617,12 +1665,19 @@ void MainFrame::init_menubar_as_gcodeviewer()
             "", nullptr, [this]() { return !m_plater->get_last_loaded_gcode().empty(); }, this);
 #endif // __APPLE__
         fileMenu->AppendSeparator();
+        append_menu_item(fileMenu, wxID_ANY, _L("Convert ASCII G-code to &binary") + dots, _L("Convert a G-code file from ASCII to binary format"),
+            [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_binary(); }, "convert_file", nullptr,
+            []() { return true; }, this);
+        append_menu_item(fileMenu, wxID_ANY, _L("Convert binary G-code to &ASCII") + dots, _L("Convert a G-code file from binary to ASCII format"),
+            [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->convert_gcode_to_ascii(); }, "convert_file", nullptr,
+            []() { return true; }, this);
+        fileMenu->AppendSeparator();
         append_menu_item(fileMenu, wxID_ANY, _L("Export &Toolpaths as OBJ") + dots, _L("Export toolpaths as OBJ"),
             [this](wxCommandEvent&) { if (m_plater != nullptr) m_plater->export_toolpaths_to_obj(); }, "export_plater", nullptr,
             [this]() {return can_export_toolpaths(); }, this);
         append_menu_item(fileMenu, wxID_ANY, _L("Open &PrusaSlicer") + dots, _L("Open PrusaSlicer"),
             [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr,
-            []() {return true; }, this);
+            []() { return true; }, this);
         fileMenu->AppendSeparator();
         append_menu_item(fileMenu, wxID_EXIT, _L("&Quit"), wxString::Format(_L("Quit %s"), SLIC3R_APP_NAME),
             [this](wxCommandEvent&) { Close(false); });
@@ -1634,7 +1689,7 @@ void MainFrame::init_menubar_as_gcodeviewer()
         viewMenu = new wxMenu();
         add_common_view_menu_items(viewMenu, this, std::bind(&MainFrame::can_change_view, this));
         viewMenu->AppendSeparator();
-        append_menu_check_item(viewMenu, wxID_ANY, _L("Show legen&d") + sep + "L", _L("Show legend"),
+        append_menu_check_item(viewMenu, wxID_ANY, _L("Show Legen&d") + sep + "L", _L("Show legend"),
             [this](wxCommandEvent&) { m_plater->show_legend(!m_plater->is_legend_shown()); }, this,
             [this]() { return m_plater->is_preview_shown(); }, [this]() { return m_plater->is_legend_shown(); }, this);
     }
@@ -1651,14 +1706,7 @@ void MainFrame::init_menubar_as_gcodeviewer()
     SetMenuBar(m_menubar);
 
 #ifdef __APPLE__
-    // This fixes a bug on Mac OS where the quit command doesn't emit window close events
-    // wx bug: https://trac.wxwidgets.org/ticket/18328
-    wxMenu* apple_menu = m_menubar->OSXGetAppleMenu();
-    if (apple_menu != nullptr) {
-        apple_menu->Bind(wxEVT_MENU, [this](wxCommandEvent&) {
-            Close();
-            }, wxID_EXIT);
-    }
+    init_macos_application_menu(m_menubar, this);
 #endif // __APPLE__
 }
 
@@ -1751,7 +1799,7 @@ void MainFrame::quick_slice(const int qs)
     } 
     else if (qs & qsSaveAs) {
         // The following line may die if the output_filename_format template substitution fails.
-        wxFileDialog dlg(this, from_u8((boost::format(_utf8(L("Save %s file as:"))) % ((qs & qsExportSVG) ? _L("SVG") : _L("G-code"))).str()),
+        wxFileDialog dlg(this, format_wxstr(_L("Save %s file as:"), ((qs & qsExportSVG) ? _L("SVG") : _L("G-code"))),
             wxGetApp().app_config->get_last_output_dir(get_dir_name(output_file)), get_base_name(input_file), 
             qs & qsExportSVG ? file_wildcards(FT_SVG) : file_wildcards(FT_GCODE),
             wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
@@ -1763,7 +1811,7 @@ void MainFrame::quick_slice(const int qs)
         wxGetApp().app_config->update_last_output_dir(get_dir_name(output_file));
     } 
     else if (qs & qsExportPNG) {
-        wxFileDialog dlg(this, _L("Save zip file as:"),
+        wxFileDialog dlg(this, _L("Save ZIP file as:"),
             wxGetApp().app_config->get_last_output_dir(get_dir_name(output_file)),
             get_base_name(output_file), "*.sl1", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
         if (dlg.ShowModal() != wxID_OK)
@@ -1773,8 +1821,8 @@ void MainFrame::quick_slice(const int qs)
 
     // show processbar dialog
     m_progress_dialog = new wxProgressDialog(_L("Slicing") + dots,
-        // TRN "Processing input_file_basename"
-        from_u8((boost::format(_utf8(L("Processing %s"))) % (input_file_basename + dots)).str()),
+        // TRN ProgressDialog on reslicing: "input file basename"
+        format_wxstr(_L("Processing %s"), (input_file_basename + dots)),
         100, nullptr, wxPD_AUTO_HIDE);
     m_progress_dialog->Pulse();
     {
@@ -1872,11 +1920,25 @@ void MainFrame::load_config_file()
         return;
     wxFileDialog dlg(this, _L("Select configuration to load:"),
         !m_last_config.IsEmpty() ? get_dir_name(m_last_config) : wxGetApp().app_config->get_last_dir(),
-        "config.ini", "INI files (*.ini, *.gcode)|*.ini;*.INI;*.gcode;*.g", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-	wxString file;
+        "config.ini", "INI files (*.ini, *.gcode, *.bgcode)|*.ini;*.INI;*.gcode;*.g;*.bgcode;*.bgc", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    wxString file;
     if (dlg.ShowModal() == wxID_OK)
         file = dlg.GetPath();
     if (! file.IsEmpty() && this->load_config_file(file.ToUTF8().data())) {
+        DynamicPrintConfig config = wxGetApp().preset_bundle->full_config();
+        const auto* post_process = config.opt<ConfigOptionStrings>("post_process");
+        if (post_process != nullptr && !post_process->values.empty()) {
+            const wxString msg = _L("The selected config file contains a post-processing script.\nPlease review the script carefully before exporting G-code.");
+            std::string text;
+            for (const std::string& s : post_process->values) {
+                text += s;
+            }
+
+            InfoDialog msg_dlg(nullptr, msg, from_u8(text), true, wxOK | wxICON_WARNING);
+            msg_dlg.set_caption(wxString(SLIC3R_APP_NAME " - ") + _L("Attention!"));
+            msg_dlg.ShowModal();
+        }
+
         wxGetApp().app_config->update_config_dir(get_dir_name(file));
         m_last_config = file;
     }
@@ -2233,23 +2295,13 @@ std::string MainFrame::get_dir_name(const wxString &full_name) const
 // ----------------------------------------------------------------------------
 
 SettingsDialog::SettingsDialog(MainFrame* mainframe)
-:DPIFrame(NULL, wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("Settings"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "settings_dialog"),
+:DPIFrame(NULL, wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("Settings"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "settings_dialog", mainframe->normal_font().GetPointSize()),
 //: DPIDialog(mainframe, wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("Settings"), wxDefaultPosition, wxDefaultSize,
 //        wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX, "settings_dialog"),
     m_main_frame(mainframe)
 {
     if (wxGetApp().is_gcode_viewer())
         return;
-
-#if defined(__WXMSW__)
-    // ys_FIXME! temporary workaround for correct font scaling
-    // Because of from wxWidgets 3.1.3 auto rescaling is implemented for the Fonts,
-    // From the very beginning set dialog font to the wxSYS_DEFAULT_GUI_FONT
-    this->SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT));
-#else
-    this->SetFont(wxGetApp().normal_font());
-    this->SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
-#endif // __WXMSW__
 
     // Load the icon either from the exe, or from the ico file.
 #if _WIN32

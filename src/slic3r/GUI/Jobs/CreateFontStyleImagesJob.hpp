@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 Filip Sykala @Jony01
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_CreateFontStyleImagesJob_hpp_
 #define slic3r_CreateFontStyleImagesJob_hpp_
 
@@ -19,11 +23,11 @@ class CreateFontStyleImagesJob : public Job
 
     // Output data
     // texture size
-    int width, height;
+    int m_width, m_height;
     // texture data
-    std::vector<unsigned char> pixels; 
+    std::vector<unsigned char> m_pixels;
     // descriptors of sub textures
-    std::vector<StyleManager::StyleImage> images;
+    std::vector<StyleManager::StyleImage> m_images;
 
 public:
     CreateFontStyleImagesJob(StyleManager::StyleImagesData &&input);

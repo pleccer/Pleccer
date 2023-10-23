@@ -1,8 +1,14 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2013 - 2015 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_SurfaceCollection_hpp_
 #define slic3r_SurfaceCollection_hpp_
 
 #include "libslic3r.h"
 #include "Surface.hpp"
+#include <initializer_list>
 #include <vector>
 
 namespace Slic3r {
@@ -27,11 +33,11 @@ public:
         return false;
     }
     SurfacesPtr filter_by_type(const SurfaceType type) const;
-    SurfacesPtr filter_by_types(const SurfaceType *types, int ntypes) const;
+    SurfacesPtr filter_by_types(std::initializer_list<SurfaceType> types) const;
     void keep_type(const SurfaceType type);
-    void keep_types(const SurfaceType *types, int ntypes);
+    void keep_types(std::initializer_list<SurfaceType> types);
     void remove_type(const SurfaceType type);
-    void remove_types(const SurfaceType *types, int ntypes);
+    void remove_types(std::initializer_list<SurfaceType> types);
     void filter_by_type(SurfaceType type, Polygons *polygons) const;
     void remove_type(const SurfaceType type, ExPolygons *polygons);
     void set_type(SurfaceType type) {

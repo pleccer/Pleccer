@@ -1,3 +1,9 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Enrico Turri @enricoturri1966, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Filip Sykala @Jony01, Oleksandra Iushchenko @YuSanka
+///|/ Copyright (c) BambuStudio 2023 manch1n @manch1n
+///|/ Copyright (c) SuperSlicer 2023 Remi Durand @supermerill
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GCodeViewer_hpp_
 #define slic3r_GCodeViewer_hpp_
 
@@ -5,8 +11,6 @@
 #include "libslic3r/ExtrusionRole.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "GLModel.hpp"
-
-#include <boost/iostreams/device/mapped_file.hpp>
 
 #include <cstdint>
 #include <float.h>
@@ -378,6 +382,7 @@ class GCodeViewer
     {
         GLVolumeCollection volumes;
         bool visible{ false };
+        bool force_visible{ false };
     };
 
     // helper to render center of gravity
@@ -526,6 +531,10 @@ class GCodeViewer
         std::vector<Range>& get_ranges() { return m_ranges; }
         double get_z_at(unsigned int id) const { return (id < m_zs.size()) ? m_zs[id] : 0.0; }
         Range get_range_at(unsigned int id) const { return (id < m_ranges.size()) ? m_ranges[id] : Range(); }
+        int get_l_at(double z) const {
+            auto iter = std::upper_bound(m_zs.begin(), m_zs.end(), z);
+            return std::distance(m_zs.begin(), iter);
+        }
 
         bool operator != (const Layers& other) const {
             if (m_zs != other.m_zs)
@@ -647,11 +656,14 @@ public:
             GLModel m_model;
             Vec3f m_world_position;
             Transform3f m_world_transform;
-            // for seams, the position of the marker is on the last endpoint of the toolpath containing it
-            // the offset is used to show the correct value of tool position in the "ToolPosition" window
-            // see implementation of render() method
+            // For seams, the position of the marker is on the last endpoint of the toolpath containing it.
+            // This offset is used to show the correct value of tool position in the "ToolPosition" window.
+            // See implementation of render() method
             Vec3f m_world_offset;
-            float m_z_offset{ 0.5f };
+            // z offset of the print
+            float m_z_offset{ 0.0f };
+            // z offset of the model
+            float m_model_z_offset{ 0.5f };
             bool m_visible{ true };
 
         public:
@@ -661,6 +673,7 @@ public:
 
             void set_world_position(const Vec3f& position);
             void set_world_offset(const Vec3f& offset) { m_world_offset = offset; }
+            void set_z_offset(float z_offset) { m_z_offset = z_offset; }
 
             bool is_visible() const { return m_visible; }
             void set_visible(bool visible) { m_visible = visible; }
@@ -676,32 +689,43 @@ public:
                 std::string parameters;
                 std::string comment;
             };
+
+            struct Range
+            {
+                std::optional<size_t> min;
+                std::optional<size_t> max;
+                bool empty() const {
+                    return !min.has_value() || !max.has_value();
+                }
+                bool contains(const Range& other) const {
+                    return !this->empty() && !other.empty() && *this->min <= *other.min && *this->max >= other.max;
+                }
+                size_t size() const {
+                    return empty() ? 0 : *this->max - *this->min + 1;
+                }
+            };
+
             bool m_visible{ true };
-            uint64_t m_selected_line_id{ 0 };
-            size_t m_last_lines_size{ 0 };
             std::string m_filename;
-            boost::iostreams::mapped_file_source m_file;
+            bool m_is_binary_file{ false };
             // map for accessing data in file by line number
-            std::vector<size_t> m_lines_ends;
-            // current visible lines
-            std::vector<Line> m_lines;
+            std::vector<std::vector<size_t>> m_lines_ends;
+            std::vector<Line> m_lines_cache;
+            Range m_cache_range;
+            size_t m_max_line_length{ 0 };
 
         public:
-            GCodeWindow() = default;
-            ~GCodeWindow() { stop_mapping_file(); }
-            void load_gcode(const std::string& filename, const std::vector<size_t>& lines_ends);
+            void load_gcode(const GCodeProcessorResult& gcode_result);
             void reset() {
-                stop_mapping_file();
                 m_lines_ends.clear();
-                m_lines.clear();
+                m_lines_cache.clear();
                 m_filename.clear();
             }
-
             void toggle_visibility() { m_visible = !m_visible; }
+            void render(float top, float bottom, size_t curr_line_id);
 
-            void render(float top, float bottom, uint64_t curr_line_id) const;
-
-            void stop_mapping_file();
+        private:
+            void add_gcode_line_to_lines_cache(const std::string& src);
         };
 
         struct Endpoints
@@ -748,9 +772,12 @@ private:
     std::vector<TBuffer> m_buffers{ static_cast<size_t>(EMoveType::Extrude) };
     // bounding box of toolpaths
     BoundingBoxf3 m_paths_bounding_box;
-    // bounding box of toolpaths + marker tools
+    // bounding box of shells
+    BoundingBoxf3 m_shells_bounding_box;
+    // bounding box of toolpaths + marker tools + shells
     BoundingBoxf3 m_max_bounding_box;
     float m_max_print_height{ 0.0f };
+    float m_z_offset{ 0.0f };
     std::vector<ColorRGBA> m_tool_colors;
     Layers m_layers;
     std::array<unsigned int, 2> m_layers_z_range;
@@ -784,6 +811,8 @@ private:
 
     bool m_contained_in_bed{ true };
 
+    ConflictResultOpt m_conflict_result;
+
 public:
     GCodeViewer();
     ~GCodeViewer() { reset(); }
@@ -805,7 +834,20 @@ public:
     bool can_export_toolpaths() const;
 
     const BoundingBoxf3& get_paths_bounding_box() const { return m_paths_bounding_box; }
-    const BoundingBoxf3& get_max_bounding_box() const { return m_max_bounding_box; }
+    const BoundingBoxf3& get_shells_bounding_box() const { return m_shells_bounding_box; }
+
+    const BoundingBoxf3& get_max_bounding_box() const {
+        BoundingBoxf3& max_bounding_box = const_cast<BoundingBoxf3&>(m_max_bounding_box);
+        if (!max_bounding_box.defined) {
+            if (m_shells_bounding_box.defined)
+                max_bounding_box = m_shells_bounding_box;
+            if (m_paths_bounding_box.defined) {
+                max_bounding_box.merge(m_paths_bounding_box);
+                max_bounding_box.merge(m_paths_bounding_box.max + m_sequential_view.marker.get_bounding_box().size().z() * Vec3d::UnitZ());
+            }
+        }
+        return m_max_bounding_box;
+    }
     const std::vector<double>& get_layers_zs() const { return m_layers.get_zs(); }
 
     const SequentialView& get_sequential_view() const { return m_sequential_view; }
@@ -832,6 +874,8 @@ public:
     bool is_legend_enabled() const { return m_legend_enabled; }
     void enable_legend(bool enable) { m_legend_enabled = enable; }
 
+    void set_force_shells_visible(bool visible) { m_shells.force_visible = visible; }
+
     void export_toolpaths_to_obj(const char* filename) const;
 
     void toggle_gcode_window_visibility() { m_sequential_view.gcode_window.toggle_visibility(); }
@@ -841,9 +885,13 @@ public:
 
     void invalidate_legend() { m_legend_resizer.reset(); }
 
+    const ConflictResultOpt& get_conflict_result() const { return m_conflict_result; }
+
+    void load_shells(const Print& print);
+
 private:
     void load_toolpaths(const GCodeProcessorResult& gcode_result);
-    void load_shells(const Print& print);
+    void load_wipetower_shell(const Print& print);
     void render_toolpaths();
     void render_shells();
     void render_legend(float& legend_height);

@@ -258,4 +258,16 @@ SCENARIO("Custom G-code", "[CustomGCode]")
             REQUIRE(match_count == 2);
         }
     }
+    GIVEN("before_layer_gcode increments global variable") {
+        auto config = Slic3r::DynamicPrintConfig::new_with({
+            { "start_gcode", "{global counter=0}" },
+            { "before_layer_gcode", ";Counter{counter=counter+1;counter}\n" }
+        });
+        std::string gcode = Slic3r::Test::slice({ Slic3r::Test::TestMesh::cube_20x20x20 }, config);
+        THEN("The counter is emitted multiple times before layer change.") {
+            REQUIRE(Slic3r::Test::contains(gcode, ";Counter1\n"));
+            REQUIRE(Slic3r::Test::contains(gcode, ";Counter2\n"));
+            REQUIRE(Slic3r::Test::contains(gcode, ";Counter3\n"));
+        }
+    }
 }

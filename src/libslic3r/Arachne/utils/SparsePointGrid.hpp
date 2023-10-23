@@ -6,7 +6,6 @@
 #define UTILS_SPARSE_POINT_GRID_H
 
 #include <cassert>
-#include <unordered_map>
 #include <vector>
 
 #include "SparseGrid.hpp"

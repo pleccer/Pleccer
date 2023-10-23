@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef NLOPTOPTIMIZER_HPP
 #define NLOPTOPTIMIZER_HPP
 
@@ -12,6 +16,8 @@
 #endif
 
 #include <utility>
+
+#include <libslic3r/libslic3r.h>
 
 #include "Optimizer.hpp"
 
@@ -103,29 +109,6 @@ struct NLoptRAII { // Helper RAII class for nlopt_opt
 
     ~NLoptRAII() { nlopt_destroy(ptr); }
 };
-
-// Map a generic function to each argument following the mapping function
-template<class Fn, class...Args>
-Fn for_each_argument(Fn &&fn, Args&&...args)
-{
-    // see https://www.fluentcpp.com/2019/03/05/for_each_arg-applying-a-function-to-each-argument-of-a-function-in-cpp/
-    (fn(std::forward<Args>(args)),...);
-
-    return fn;
-}
-
-// Call fn on each element of the input tuple tup.
-template<class Fn, class Tup>
-Fn for_each_in_tuple(Fn fn, Tup &&tup)
-{
-    auto mpfn = [&fn](auto&...pack) {
-        for_each_argument(fn, pack...);
-    };
-
-    std::apply(mpfn, tup);
-
-    return fn;
-}
 
 // Wrap each element of the tuple tup into a wrapper class W and return
 // a new tuple with each element being of type W<T_i> where T_i is the type of

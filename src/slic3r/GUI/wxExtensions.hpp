@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Hejl @hejllukas, Enrico Turri @enricoturri1966, David Kocík @kocikdav, Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GUI_wxExtensions_hpp_
 #define slic3r_GUI_wxExtensions_hpp_
 
@@ -46,18 +50,13 @@ void enable_menu_item(wxUpdateUIEvent& evt, std::function<bool()> const cb_condi
 class wxDialog;
 
 void    edit_tooltip(wxString& tooltip);
-void    msw_buttons_rescale(wxDialog* dlg, const int em_unit, const std::vector<int>& btn_ids);
+void    msw_buttons_rescale(wxDialog* dlg, const int em_unit, const std::vector<int>& btn_ids, double height_koef = 1.);
 int     em_unit(wxWindow* win);
 int     mode_icon_px_size();
 
-wxBitmapBundle* get_bmp_bundle(const std::string& bmp_name, int px_cnt = 16, const std::string& new_color_rgb = std::string());
+wxBitmapBundle* get_bmp_bundle(const std::string& bmp_name, int width = 16, int height = -1, const std::string& new_color_rgb = std::string());
 wxBitmapBundle* get_empty_bmp_bundle(int width, int height);
 wxBitmapBundle* get_solid_bmp_bundle(int width, int height, const std::string& color);
-
-wxBitmap create_scaled_bitmap(const std::string& bmp_name, wxWindow *win = nullptr, 
-    const int px_cnt = 16, const bool grayscale = false,
-    const std::string& new_color = std::string(), // color witch will used instead of orange
-    const bool menu_bitmap = false);
 
 std::vector<wxBitmapBundle*> get_extruder_color_icons(bool thin_icon = false);
 
@@ -132,6 +131,17 @@ public:
     void				SetItemsCnt(int cnt) { m_cnt_open_items = cnt; }
 };
 
+inline wxSize get_preferred_size(const wxBitmapBundle& bmp, wxWindow* parent)
+{
+    if (!bmp.IsOk())
+        return wxSize(0,0);
+#ifdef __WIN32__
+    return bmp.GetPreferredBitmapSizeFor(parent);
+#else
+    return bmp.GetDefaultSize();
+#endif
+}
+
 
 // ----------------------------------------------------------------------------
 // ScalableBitmap
@@ -142,8 +152,14 @@ class ScalableBitmap
 public:
     ScalableBitmap() {};
     ScalableBitmap( wxWindow *parent,
-                    const std::string& icon_name = "",
-                    const int px_cnt = 16, 
+                    const std::string& icon_name,
+                    const int  width = 16,
+                    const int  height = -1 ,
+                    const bool grayscale = false);
+
+    ScalableBitmap( wxWindow *parent,
+                    const std::string& icon_name,
+                    const  wxSize icon_size,
                     const bool grayscale = false);
 
     ~ScalableBitmap() {}
@@ -154,15 +170,10 @@ public:
     wxBitmap            get_bitmap()    { return m_bmp.GetBitmapFor(m_parent); }
     wxWindow*           parent()  const { return m_parent;}
     const std::string&  name()    const { return m_icon_name; }
-    int                 px_cnt()  const { return m_px_cnt;}
+    wxSize              px_size()  const { return wxSize(m_bmp_width, m_bmp_height);}
 
-    wxSize              GetSize()   const {
-#ifdef __WIN32__
-        return m_bmp.GetPreferredBitmapSizeFor(m_parent);
-#else
-        return m_bmp.GetDefaultSize();
-#endif
-    }
+    void                SetBitmap(const wxBitmapBundle& bmp) { m_bmp = bmp; }
+    wxSize              GetSize()   const { return get_preferred_size(m_bmp, m_parent); }
     int                 GetWidth()  const { return GetSize().GetWidth(); }
     int                 GetHeight() const { return GetSize().GetHeight(); }
 
@@ -171,8 +182,8 @@ private:
     wxBitmapBundle  m_bmp = wxBitmapBundle();
     wxBitmap        m_bitmap = wxBitmap();
     std::string     m_icon_name = "";
-    int             m_px_cnt {16};
-    bool            m_grayscale {false};
+    int             m_bmp_width{ 16 };
+    int             m_bmp_height{ -1 };
 };
 
 
@@ -231,7 +242,8 @@ public:
         const wxSize&       size = wxDefaultSize,
         const wxPoint&      pos = wxDefaultPosition,
         long                style = wxBU_EXACTFIT | wxNO_BORDER,
-        int                 bmp_px_cnt = 16);
+        int                 width = 16,
+        int                 height = -1);
 
     ScalableButton(
         wxWindow *          parent,
@@ -258,7 +270,8 @@ private:
 
 protected:
     // bitmap dimensions 
-    int             m_px_cnt{ 16 };
+    int             m_bmp_width{ 16 };
+    int             m_bmp_height{ -1 };
     bool            m_has_border {false};
 };
 
@@ -338,7 +351,6 @@ public:
 
 private:
     std::vector<ModeButton*> m_mode_btns;
-    wxWindow*                m_parent {nullptr};
     double                   m_hgap_unscaled;
 };
 

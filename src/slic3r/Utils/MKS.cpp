@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 Oleksandra Iushchenko @YuSanka, David Kocík @kocikdav, Vojtěch Bubník @bubnikv
+///|/ Copyright (c) 2020 Sergey Kovalev @RandoMan70
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "MKS.hpp"
 
 #include <algorithm>
@@ -24,6 +29,7 @@
 #include "slic3r/GUI/GUI.hpp"
 #include "slic3r/GUI/I18N.hpp"
 #include "slic3r/GUI/MsgDialog.hpp"
+#include "slic3r/GUI/format.hpp"
 #include "Http.hpp"
 
 namespace fs = boost::filesystem;
@@ -57,9 +63,7 @@ wxString MKS::get_test_ok_msg() const
 
 wxString MKS::get_test_failed_msg(wxString& msg) const
 {
-	return GUI::from_u8((boost::format("%s: %s")
-		% _utf8(L("Could not connect to MKS"))
-		% std::string(msg.ToUTF8())).str());
+	return GUI::format_wxstr("%s: %s", _L("Could not connect to MKS"), msg);
 }
 
 bool MKS::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, ErrorFn error_fn, InfoFn info_fn) const

@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2021 - 2022 Tomáš Mészáros @tamasmeszaros
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 set(_curl_platform_flags 
   -DENABLE_IPV6:BOOL=ON
   -DENABLE_VERSIONED_SYMBOLS:BOOL=ON

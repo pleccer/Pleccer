@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Vojtěch Bubník @bubnikv, Pavel Mikuš @Godrak
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "TriangleSelectorWrapper.hpp"
 #include <memory>
 
@@ -11,6 +15,9 @@ TriangleSelectorWrapper::TriangleSelectorWrapper(const TriangleMesh &mesh, const
 void TriangleSelectorWrapper::enforce_spot(const Vec3f &point, const Vec3f &origin, float radius) {
     std::vector<igl::Hit> hits;
     Vec3f dir = (point - origin).normalized();
+    static constexpr const auto eps_angle = 89.99f;
+    Transform3d trafo_no_translate = mesh_transform;
+    trafo_no_translate.translation() = Vec3d::Zero();
     if (AABBTreeIndirect::intersect_ray_all_hits(mesh.its.vertices, mesh.its.indices, triangles_tree,
             Vec3d(origin.cast<double>()),
             Vec3d(dir.cast<double>()),
@@ -22,8 +29,8 @@ void TriangleSelectorWrapper::enforce_spot(const Vec3f &point, const Vec3f &orig
             if ((point - pos).norm() < radius && face_normal.dot(dir) < 0) {
                 std::unique_ptr<TriangleSelector::Cursor> cursor = std::make_unique<TriangleSelector::Sphere>(
                         pos, origin, radius, this->mesh_transform, TriangleSelector::ClippingPlane { });
-                selector.select_patch(hit.id, std::move(cursor), EnforcerBlockerType::ENFORCER, Transform3d::Identity(),
-                        true, 0.0f);
+                selector.select_patch(hit.id, std::move(cursor), EnforcerBlockerType::ENFORCER, trafo_no_translate,
+                        true, eps_angle);
                 break;
             }
         }
@@ -36,8 +43,8 @@ void TriangleSelectorWrapper::enforce_spot(const Vec3f &point, const Vec3f &orig
             std::unique_ptr<TriangleSelector::Cursor> cursor = std::make_unique<TriangleSelector::Sphere>(
                     point, origin, radius, this->mesh_transform, TriangleSelector::ClippingPlane { });
             selector.select_patch(hit_idx_out, std::move(cursor), EnforcerBlockerType::ENFORCER,
-                    Transform3d::Identity(),
-                    true, 0.0f);
+                    trafo_no_translate,
+                    true, eps_angle);
         }
     }
 }

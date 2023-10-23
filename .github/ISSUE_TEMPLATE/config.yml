@@ -1,7 +1,10 @@
 contact_links:
-  - name: PrusaSlicer Manual and Support
+  - name: Do you need Support?
+    url: https://www.prusa3d.com/page/prusaslicer-support-form_233563/
+    about: If you are not sure whether what you are reporting is a bug, please contact our support team first. We are providing full 24/7 customer support.
+  - name: PrusaSlicer Manual
     url: https://help.prusa3d.com/en/article/customer-support_2287/
-    about: If you are not sure that what you are reporting is really a bug, please, consult the manual first.
+    about: We have a comprehensive customer support page and help documentation that could be helpful for troubleshooting.
   - name: PrusaPrinters Forum
     url: https://forum.prusaprinters.org/forum/prusaslicer/
     about: Please get in touch on our PrusaPrinters Community Forum! (Not an official support channel.)

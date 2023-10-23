@@ -1,3 +1,8 @@
+#/|/ Copyright (c) Prusa Research 2018 Vojtěch Bubník @bubnikv
+#/|/ Copyright (c) Slic3r 2011 - 2015 Alessandro Ranellucci @alranel
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 package Slic3r::Point;
 use strict;
 use warnings;

@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena, Pavel Mikuš @Godrak, Lukáš Hejl @hejllukas
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "ClipperUtils.hpp"
 #include "Geometry.hpp"
 #include "Tesselate.hpp"
@@ -10,11 +14,15 @@
 #include <deque>
 #include <queue>
 #include <mutex>
+#include <new>
 #include <utility>
 
 #include <boost/log/trivial.hpp>
 
 #include <tbb/parallel_for.h>
+#include <tbb/scalable_allocator.h>
+
+#include <ankerl/unordered_dense.h>
 
 #ifndef NDEBUG
 //    #define EXPENSIVE_DEBUG_CHECKS
@@ -32,7 +40,18 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
 
+#if defined(__cpp_lib_hardware_interference_size) && ! defined(__APPLE__)
+    using std::hardware_destructive_interference_size;
+#else
+    // 64 bytes on x86-64 │ L1_CACHE_BYTES │ L1_CACHE_SHIFT │ __cacheline_aligned │ ...
+    constexpr std::size_t hardware_destructive_interference_size = 64;
+#endif
+
 // #define SLIC3R_DEBUG_SLICE_PROCESSING
+
+#ifdef SLIC3R_DEBUG_SLICE_PROCESSING
+    #define DEBUG_INTERSECTIONLINE
+#endif
 
 #if defined(SLIC3R_DEBUG) || defined(SLIC3R_DEBUG_SLICE_PROCESSING)
 #include "SVG.hpp"
@@ -61,6 +80,12 @@ public:
     IntersectionPoint(const IntersectionReference &ir, const Point &pt) : IntersectionReference(ir), Point(pt) {}
     // Inherits coord_t x, y
 };
+
+#if (! defined(NDEBUG) || defined(SLIC3R_DEBUG_SLICE_PROCESSING))
+    #define DEBUG_INTERSECTION_LINE 1
+#else
+    #define DEBUG_INTERSECTION_LINE 0
+#endif
 
 class IntersectionLine : public Line
 {
@@ -119,17 +144,17 @@ public:
     };
     uint32_t        flags { 0 };
 
-#ifndef NDEBUG
+#ifdef DEBUG_INTERSECTIONLINE
     enum class Source {
         BottomPlane,
         TopPlane,
         Slab,
     };
     Source          source { Source::BottomPlane };
-#endif // NDEBUG
+#endif
 };
 
-using IntersectionLines = std::vector<IntersectionLine>;
+using IntersectionLines = std::vector<IntersectionLine, tbb::scalable_allocator<IntersectionLine>>;
 
 enum class FacetSliceType {
     NoSlice = 0,
@@ -341,6 +366,21 @@ inline FacetSliceType slice_facet(
     return FacetSliceType::NoSlice;
 }
 
+class LinesMutexes {
+public:
+    std::mutex& operator()(size_t slice_id) {
+        ankerl::unordered_dense::hash<size_t> hash;
+        return m_mutexes[hash(slice_id) % m_mutexes.size()].mutex;
+    }
+
+private:
+    struct CacheLineAlignedMutex
+    {
+        alignas(hardware_destructive_interference_size) std::mutex mutex;
+    };
+    std::array<CacheLineAlignedMutex, 64> m_mutexes;
+};
+
 template<typename TransformVertex>
 void slice_facet_at_zs(
     // Scaled or unscaled vertices. transform_vertex_fn may scale zs.
@@ -351,7 +391,7 @@ void slice_facet_at_zs(
     // Scaled or unscaled zs. If vertices have their zs scaled or transform_vertex_fn scales them, then zs have to be scaled as well.
     const std::vector<float>                         &zs,
     std::vector<IntersectionLines>                   &lines,
-    std::array<std::mutex, 64>                       &lines_mutex)
+    LinesMutexes                                     &lines_mutex)
 {
     stl_vertex vertices[3] { transform_vertex_fn(mesh_vertices[indices(0)]), transform_vertex_fn(mesh_vertices[indices(1)]), transform_vertex_fn(mesh_vertices[indices(2)]) };
 
@@ -370,7 +410,7 @@ void slice_facet_at_zs(
         if (min_z != max_z && slice_facet(*it, vertices, indices, edge_ids, idx_vertex_lowest, false, il) == FacetSliceType::Slicing) {
             assert(il.edge_type != IntersectionLine::FacetEdgeType::Horizontal);
             size_t slice_id = it - zs.begin();
-            boost::lock_guard<std::mutex> l(lines_mutex[slice_id % lines_mutex.size()]);
+            boost::lock_guard<std::mutex> l(lines_mutex(slice_id));
             lines[slice_id].emplace_back(il);
         }
     }
@@ -385,8 +425,8 @@ static inline std::vector<IntersectionLines> slice_make_lines(
     const std::vector<float>                        &zs,
     const ThrowOnCancel                              throw_on_cancel_fn)
 {
-    std::vector<IntersectionLines>  lines(zs.size(), IntersectionLines());
-    std::array<std::mutex, 64>      lines_mutex;
+    std::vector<IntersectionLines>  lines(zs.size(), IntersectionLines{});
+    LinesMutexes                    lines_mutex;
     tbb::parallel_for(
         tbb::blocked_range<int>(0, int(indices.size())),
         [&vertices, &transform_vertex_fn, &indices, &face_edge_ids, &zs, &lines, &lines_mutex, throw_on_cancel_fn](const tbb::blocked_range<int> &range) {
@@ -465,7 +505,7 @@ void slice_facet_with_slabs(
     const int                                         num_edges,
     const std::vector<float>                         &zs,
     SlabLines                                        &lines,
-    std::array<std::mutex, 64>                       &lines_mutex)
+    LinesMutexes                                     &lines_mutex)
 {
     const stl_triangle_vertex_indices &indices = mesh_triangles[facet_idx];
     stl_vertex vertices[3] { mesh_vertices[indices(0)], mesh_vertices[indices(1)], mesh_vertices[indices(2)] };
@@ -484,7 +524,7 @@ void slice_facet_with_slabs(
     auto emit_slab_edge = [&lines, &lines_mutex](IntersectionLine il, size_t slab_id, bool reverse) {
         if (reverse)
             il.reverse();
-        boost::lock_guard<std::mutex> l(lines_mutex[(slab_id + lines_mutex.size() / 2) % lines_mutex.size()]);
+        boost::lock_guard<std::mutex> l(lines_mutex(slab_id));
         lines.between_slices[slab_id].emplace_back(il);
     };
 
@@ -520,7 +560,7 @@ void slice_facet_with_slabs(
                         };
                         // Don't flip the FacetEdgeType::Top edge, it will be flipped when chaining.
                         // if (! ProjectionFromTop) il.reverse();
-                        boost::lock_guard<std::mutex> l(lines_mutex[line_id % lines_mutex.size()]);
+                        boost::lock_guard<std::mutex> l(lines_mutex(line_id));
                         lines.at_slice[line_id].emplace_back(il);
                     }
         } else {
@@ -639,7 +679,7 @@ void slice_facet_with_slabs(
                     if (! ProjectionFromTop)
                         il.reverse();
                     size_t line_id = it - zs.begin();
-                    boost::lock_guard<std::mutex> l(lines_mutex[line_id % lines_mutex.size()]);
+                    boost::lock_guard<std::mutex> l(lines_mutex(line_id));
                     lines.at_slice[line_id].emplace_back(il);
                 }
             }
@@ -794,8 +834,8 @@ inline std::pair<SlabLines, SlabLines> slice_slabs_make_lines(
     std::pair<SlabLines, SlabLines> out;
     SlabLines   &lines_top      = out.first;
     SlabLines   &lines_bottom   = out.second;
-    std::array<std::mutex, 64> lines_mutex_top;
-    std::array<std::mutex, 64> lines_mutex_bottom;
+    LinesMutexes lines_mutex_top;
+    LinesMutexes lines_mutex_bottom;
 
     if (top) {
         lines_top.at_slice.assign(zs.size(), IntersectionLines());
@@ -1440,24 +1480,24 @@ static std::vector<Polygons> make_slab_loops(
                         for (const IntersectionLine &l : lines.at_slice[slice_below])
                             if (l.edge_type != IntersectionLine::FacetEdgeType::Top) {
                                 in.emplace_back(l);
-#ifndef NDEBUG
+#ifdef DEBUG_INTERSECTIONLINE
                                 in.back().source = IntersectionLine::Source::BottomPlane;
-#endif // NDEBUG
+#endif // DEBUG_INTERSECTIONLINE
                             }
                     }
                     {
                         // Edges in between slice_below and slice_above.
-#ifndef NDEBUG
+#ifdef DEBUG_INTERSECTIONLINE
                         size_t old_size = in.size();
-#endif // NDEBUG
+#endif // DEBUG_INTERSECTIONLINE
                         // Edge IDs of end points on in-between lines that touch the layer above are already increased with num_edges.
                         append(in, lines.between_slices[line_idx]);
-#ifndef NDEBUG
+#ifdef DEBUG_INTERSECTIONLINE
                         for (auto it = in.begin() + old_size; it != in.end(); ++ it) {
                             assert(it->edge_type == IntersectionLine::FacetEdgeType::Slab);
                             it->source = IntersectionLine::Source::Slab;
                         }
-#endif // NDEBUG
+#endif // DEBUG_INTERSECTIONLINE
                     }
                     if (has_slice_above) {
                         for (const IntersectionLine &lsrc : lines.at_slice[slice_above])
@@ -1470,9 +1510,9 @@ static std::vector<Polygons> make_slab_loops(
                                     l.edge_a_id += num_edges;
                                 if (l.edge_b_id >= 0)
                                     l.edge_b_id += num_edges;
-#ifndef NDEBUG
+#ifdef DEBUG_INTERSECTIONLINE
                                 l.source = IntersectionLine::Source::TopPlane;
-#endif // NDEBUG
+#endif // DEBUG_INTERSECTIONLINE
                             }
                     }
                     if (! in.empty()) {
@@ -1530,7 +1570,7 @@ static std::vector<Polygons> make_slab_loops(
 }
 
 // Used to cut the mesh into two halves.
-static ExPolygons make_expolygons_simple(std::vector<IntersectionLine> &lines)
+static ExPolygons make_expolygons_simple(IntersectionLines &lines)
 {
     ExPolygons slices;
     Polygons holes;
@@ -1901,6 +1941,26 @@ std::vector<ExPolygons> slice_mesh_ex(
                     this_mode == MeshSlicingParams::SlicingMode::EvenOdd ? ClipperLib::pftEvenOdd : 
                     this_mode == MeshSlicingParams::SlicingMode::PositiveLargestContour ? ClipperLib::pftPositive : ClipperLib::pftNonZero,
                     &expolygons);
+
+#if 0
+//#ifndef NDEBUG
+                // Test whether the expolygons in a single layer overlap.
+                for (size_t i = 0; i < expolygons.size(); ++ i)
+                    for (size_t j = i + 1; j < expolygons.size(); ++ j) {
+                        Polygons overlap = intersection(expolygons[i], expolygons[j]);
+                        assert(overlap.empty());
+                    }
+#endif
+#if 0
+//#ifndef NDEBUG
+                for (const ExPolygon &ex : expolygons) {
+                    assert(! has_duplicate_points(ex.contour));
+                    for (const Polygon &hole : ex.holes)
+                        assert(! has_duplicate_points(hole));
+                    assert(! has_duplicate_points(ex));
+                }
+                assert(!has_duplicate_points(expolygons));
+#endif // NDEBUG
                 //FIXME simplify
                 if (this_mode == MeshSlicingParams::SlicingMode::PositiveLargestContour)
                     keep_largest_contour_only(expolygons);
@@ -1911,6 +1971,16 @@ std::vector<ExPolygons> slice_mesh_ex(
                         append(simplified, ex.simplify(resolution));
                     expolygons = std::move(simplified);
                 }
+#if 0
+//#ifndef NDEBUG
+                for (const ExPolygon &ex : expolygons) {
+                    assert(! has_duplicate_points(ex.contour));
+                    for (const Polygon &hole : ex.holes)
+                        assert(! has_duplicate_points(hole));
+                    assert(! has_duplicate_points(ex));
+                }
+                assert(! has_duplicate_points(expolygons));
+#endif // NDEBUG
             }
         });
 //    BOOST_LOG_TRIVIAL(debug) << "slice_mesh make_expolygons in parallel - end";

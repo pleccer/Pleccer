@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2022 Vojtěch Bubník @bubnikv, Filip Sykala @Jony01
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef libslic3r_Triangulation_hpp_
 #define libslic3r_Triangulation_hpp_
 

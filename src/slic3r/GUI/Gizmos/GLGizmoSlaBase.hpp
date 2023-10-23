@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Enrico Turri @enricoturri1966, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GLGizmoSlaBase_hpp_
 #define slic3r_GLGizmoSlaBase_hpp_
 
@@ -40,11 +44,15 @@ protected:
 
     bool unproject_on_mesh(const Vec2d& mouse_pos, std::pair<Vec3f, Vec3f>& pos_and_normal);
 
+    bool are_sla_supports_shown() const { return m_show_sla_supports; }
+    void show_sla_supports(bool show) { m_show_sla_supports = show; }
+
     const GLVolumeCollection &volumes() const { return m_volumes; }
 
 private:
     GLVolumeCollection m_volumes;
     bool m_input_enabled{ false };
+    bool m_show_sla_supports{ false };
     int m_min_sla_print_object_step{ -1 };
     std::vector<std::shared_ptr<SceneRaycasterItem>> m_volume_raycasters;
 };

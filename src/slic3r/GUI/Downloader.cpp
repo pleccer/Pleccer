@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2023 David Kocík @kocikdav, Oleksandra Iushchenko @YuSanka
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "Downloader.hpp"
 #include "GUI_App.hpp"
 #include "NotificationManager.hpp"
@@ -147,7 +151,7 @@ void Downloader::start_download(const std::string& full_url)
     std::string escaped_url = FileGet::escape_url(full_url.substr(24));
 #endif
 	if (!boost::starts_with(escaped_url, "https://") || !FileGet::is_subdomain(escaped_url, "printables.com")) {
-		std::string msg = format(_L("Download won't start. Download URL doesn't point to https://files.printables.com : %1%"), escaped_url);
+		std::string msg = format(_L("Download won't start. Download URL doesn't point to https://printables.com : %1%"), escaped_url);
 		BOOST_LOG_TRIVIAL(error) << msg;
 		NotificationManager* ntf_mngr = wxGetApp().notification_manager();
 		ntf_mngr->push_notification(NotificationType::CustomNotification, NotificationManager::NotificationLevel::RegularNotificationLevel, msg);
@@ -178,7 +182,7 @@ void Downloader::on_error(wxCommandEvent& event)
     BOOST_LOG_TRIVIAL(error) << "Download error: " << event.GetString();
 	NotificationManager* ntf_mngr = wxGetApp().notification_manager();
 	ntf_mngr->set_download_URL_error(id, boost::nowide::narrow(event.GetString()));
-	show_error(nullptr, format_wxstr(L"%1%\n%2%", _L("The download has failed:"), event.GetString()));
+	show_error(nullptr, format_wxstr(L"%1%\n%2%", _L("The download has failed") + ":", event.GetString()));
 }
 void Downloader::on_complete(wxCommandEvent& event)
 {

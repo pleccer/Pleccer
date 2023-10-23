@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef THREADSAFEQUEUE_HPP
 #define THREADSAFEQUEUE_HPP
 
@@ -114,7 +118,8 @@ public:
     void clear()
     {
         std::lock_guard lk{m_mutex};
-        while (!m_queue.empty()) m_queue.pop();
+        while (!m_queue.empty())
+            m_queue.pop();
     }
 };
 

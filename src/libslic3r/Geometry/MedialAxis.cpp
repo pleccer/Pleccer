@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2023 Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "MedialAxis.hpp"
 
 #include "clipper.hpp"
@@ -444,10 +448,25 @@ private:
 
 MedialAxis::MedialAxis(double min_width, double max_width, const ExPolygon &expolygon) :
     m_expolygon(expolygon), m_lines(expolygon.lines()), m_min_width(min_width), m_max_width(max_width)
-{}
+{
+    (void)m_expolygon; // supress unused variable warning
+}
 
 void MedialAxis::build(ThickPolylines* polylines)
 {
+#ifndef NDEBUG
+    // Verify the scaling of the coordinates of input line segments.
+    for (const Line& l : m_lines) {
+        auto test = [](int32_t v) {
+            static constexpr const int32_t hi = 65536 * 16383;
+            assert(v <= hi && -v < hi);
+        };
+        test(l.a.x());
+        test(l.a.y());
+        test(l.b.x());
+        test(l.b.y());
+    }
+#endif // NDEBUG
     construct_voronoi(m_lines.begin(), m_lines.end(), &m_vd);
     Slic3r::Voronoi::annotate_inside_outside(m_vd, m_lines);
 //    static constexpr double threshold_alpha = M_PI / 12.; // 30 degrees
@@ -467,10 +486,7 @@ void MedialAxis::build(ThickPolylines* polylines)
         return;
     }
     */
-    
-    //typedef const VD::vertex_type vert_t;
-    using edge_t = const VD::edge_type;
-    
+
     // collect valid edges (i.e. prune those not belonging to MAT)
     // note: this keeps twins, so it inserts twice the number of the valid edges
     m_edge_data.assign(m_vd.edges().size() / 2, EdgeData{});

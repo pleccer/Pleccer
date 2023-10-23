@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Oleksandra Iushchenko @YuSanka, Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "libslic3r/libslic3r.h"
 #include "DoubleSlider.hpp"
 #include "libslic3r/GCode.hpp"
@@ -106,7 +110,7 @@ Control::Control( wxWindow *parent,
     m_cog_icon_dim    = m_bmp_cog.GetWidth();
 
     m_selection = ssUndef;
-    m_ticks.set_pause_print_msg(_utf8(L("Place bearings in slots and resume printing")));
+    m_ticks.set_pause_print_msg(_u8L("Place bearings in slots and resume printing"));
     m_ticks.set_extruder_colors(&m_extruder_colors);
 
     // slider events
@@ -708,28 +712,28 @@ static wxString short_and_splitted_time(const std::string& time)
         ::sscanf(time.c_str(), "%ds", &seconds);
 
     // Format the dhm time.
-    char buffer[64];
+    auto get_d = [days]()   { return format(_u8L("%1%d"), days); };
+    auto get_h = [hours]()  { return format(_u8L("%1%h"), hours); };
+    auto get_m = [minutes](){ return format(_u8L("%1%m"), minutes); };
+    auto get_s = [seconds](){ return format(_u8L("%1%s"), seconds); };
+
     if (days > 0)
-        ::sprintf(buffer, "%dd%dh\n%dm", days, hours, minutes);
-    else if (hours > 0) {
+        return format_wxstr("%1%%2%\n%3%", get_d(), get_h(), get_m());
+    if (hours > 0) {
         if (hours < 10 && minutes < 10 && seconds < 10)
-            ::sprintf(buffer, "%dh%dm%ds", hours, minutes, seconds);
-        else if (hours > 10 && minutes > 10 && seconds > 10)
-            ::sprintf(buffer, "%dh\n%dm\n%ds", hours, minutes, seconds);
-        else if ((minutes < 10 && seconds > 10) || (minutes > 10 && seconds < 10))
-            ::sprintf(buffer, "%dh\n%dm%ds", hours, minutes, seconds);
-        else
-            ::sprintf(buffer, "%dh%dm\n%ds", hours, minutes, seconds);
+            return format_wxstr("%1%%2%%3%", get_h(), get_m(), get_s());
+        if (hours > 10 && minutes > 10 && seconds > 10)
+            return format_wxstr("%1%\n%2%\n%3%", get_h(), get_m(), get_s());
+        if ((minutes < 10 && seconds > 10) || (minutes > 10 && seconds < 10))
+            return format_wxstr("%1%\n%2%%3%", get_h(), get_m(), get_s());
+        return format_wxstr("%1%%2%\n%3%", get_h(), get_m(), get_s());
     }
-    else if (minutes > 0) {
+    if (minutes > 0) {
         if (minutes > 10 && seconds > 10)
-            ::sprintf(buffer, "%dm\n%ds", minutes, seconds);
-        else
-            ::sprintf(buffer, "%dm%ds", minutes, seconds);
+            return format_wxstr("%1%\n%2%", get_m(), get_s());
+        return format_wxstr("%1%%2%", get_m(), get_s());
     }
-    else
-        ::sprintf(buffer, "%ds", seconds);
-    return wxString::FromUTF8(buffer);
+    return from_u8(get_s());
 }
 
 wxString Control::get_label(int tick, LabelType label_type/* = ltHeightWithLayer*/) const
@@ -2757,6 +2761,11 @@ bool TickCodeInfo::add_tick(const int tick, Type type, const int extruder, doubl
 
 bool TickCodeInfo::edit_tick(std::set<TickCode>::iterator it, double print_z)
 {
+    // Save previously value of the tick before the call a Dialog from get_... functions,
+    // otherwise a background process can change ticks values and current iterator wouldn't be valid for the moment of a Dialog close
+    // and PS will crash (see https://github.com/prusa3d/PrusaSlicer/issues/10941)
+    TickCode changed_tick = *it;
+
     std::string edited_value;
     if (it->type == ColorChange)
         edited_value = get_new_color(it->color);
@@ -2768,7 +2777,10 @@ bool TickCodeInfo::edit_tick(std::set<TickCode>::iterator it, double print_z)
     if (edited_value.empty())
         return false;
 
-    TickCode changed_tick = *it;
+    // Update iterator. For this moment its value can be invalid
+    if (it = ticks.find(changed_tick); it == ticks.end())
+        return false;
+
     if (it->type == ColorChange) {
         if (it->color == edited_value)
             return false;

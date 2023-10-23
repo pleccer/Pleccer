@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2022 - 2023 Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "libslic3r/libslic3r.h"
 
 #include "CoordAxes.hpp"
@@ -7,8 +11,6 @@
 #include "Camera.hpp"
 
 #include <GL/glew.h>
-
-#if ENABLE_WORLD_COORDINATE
 
 namespace Slic3r {
 namespace GUI {
@@ -44,17 +46,23 @@ void CoordAxes::render(const Transform3d& trafo, float emission_factor)
     shader->start_using();
     shader->set_uniform("emission_factor", emission_factor);
 
+    // Scale the axes if the camera is close to them to avoid issues
+    // such as https://github.com/prusa3d/PrusaSlicer/issues/9483
+    const Camera& camera = wxGetApp().plater()->get_camera();
+    Transform3d scale_tr = Transform3d::Identity();
+    scale_tr.scale(std::min(1., camera.get_inv_zoom() * 10.));
+
     // x axis
     m_arrow.set_color(ColorRGBA::X());
-    render_axis(*shader, trafo * Geometry::translation_transform(m_origin) * Geometry::rotation_transform({ 0.0, 0.5 * M_PI, 0.0 }));
+    render_axis(*shader, trafo * Geometry::translation_transform(m_origin) * Geometry::rotation_transform({ 0.0, 0.5 * M_PI, 0.0 }) * scale_tr);
 
     // y axis
     m_arrow.set_color(ColorRGBA::Y());
-    render_axis(*shader, trafo * Geometry::translation_transform(m_origin) * Geometry::rotation_transform({ -0.5 * M_PI, 0.0, 0.0 }));
+    render_axis(*shader, trafo * Geometry::translation_transform(m_origin) * Geometry::rotation_transform({ -0.5 * M_PI, 0.0, 0.0 }) * scale_tr);
 
     // z axis
     m_arrow.set_color(ColorRGBA::Z());
-    render_axis(*shader, trafo * Geometry::translation_transform(m_origin));
+    render_axis(*shader, trafo * Geometry::translation_transform(m_origin) * scale_tr);
 
     shader->stop_using();
     if (curr_shader != nullptr)
@@ -63,5 +71,3 @@ void CoordAxes::render(const Transform3d& trafo, float emission_factor)
 
 } // GUI
 } // Slic3r
-
-#endif // ENABLE_WORLD_COORDINATE

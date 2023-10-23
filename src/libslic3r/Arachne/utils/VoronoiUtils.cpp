@@ -138,9 +138,9 @@ public:
         return Point(coord_t(p.x() * matrix[0] + p.y() * matrix[2]), coord_t(p.x() * matrix[1] + p.y() * matrix[3]));
     }
 };
-std::vector<Point> VoronoiUtils::discretizeParabola(const Point& p, const Segment& segment, Point s, Point e, coord_t approximate_step_size, float transitioning_angle)
+Points VoronoiUtils::discretizeParabola(const Point& p, const Segment& segment, Point s, Point e, coord_t approximate_step_size, float transitioning_angle)
 {
-    std::vector<Point> discretized;
+    Points discretized;
     // x is distance of point projected on the segment ab
     // xx is point projected on the segment ab
     const Point a = segment.from();

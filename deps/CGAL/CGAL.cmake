@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2019 - 2022 Tomáš Mészáros @tamasmeszaros, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv, David Kocík @kocikdav
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 prusaslicer_add_cmake_project(
     CGAL
     # GIT_REPOSITORY https://github.com/CGAL/cgal.git

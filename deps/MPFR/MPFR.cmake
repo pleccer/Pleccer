@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2019 - 2021 Tomáš Mészáros @tamasmeszaros
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 set(_srcdir ${CMAKE_CURRENT_LIST_DIR}/mpfr)
 set(_dstdir ${DESTDIR}/usr/local)
 

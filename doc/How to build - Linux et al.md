@@ -40,6 +40,7 @@ git clone https://www.github.com/prusa3d/PrusaSlicer
 cd PrusaSlicer
 ```
 This will download the source code into a new directory and `cd` into it. You can now optionally select a tag/branch/commit to build using `git checkout`. Otherwise, `master` branch will be built.
+The path to the build directory must not contain spaces - this scenario is not supported by the build scripts.
 
 
 #### 2. Building dependencies
@@ -87,7 +88,6 @@ And that's it. It is now possible to run the freshly built PrusaSlicer binary:
 - `-DSLIC3R_ASAN=ON` enables gcc/clang address sanitizer (defaults to `OFF`, requires gcc>4.8 or clang>3.1)
 - `-DSLIC3R_GTK=3` to use GTK3 (defaults to `2`). Note that wxWidgets must be built against the same GTK version.
 - `-DSLIC3R_STATIC=ON` for static build (defaults to `OFF`)
-- `-DSLIC3R_WX_STABLE=ON` to look for wxWidgets 3.0 (defaults to `OFF`)
 - `-DCMAKE_BUILD_TYPE=Debug` to build in debug mode (defaults to `Release`)
 - `-DSLIC3R_GUI=no` to build the console variant of PrusaSlicer
 
@@ -101,13 +101,7 @@ As already mentioned above, dynamic linking of dependencies is possible, but Pru
 
 The list of dependencies can be easily obtained by inspecting the CMake scripts in the `deps/` directory. Some of the dependencies don't have to be as recent as the versions listed - generally versions available on conservative Linux distros such as Debian stable, Ubuntu LTS releases or Fedora are likely sufficient. If you decide to build this way, it is your responsibility to make sure that CMake finds all required dependencies. It is possible to look at your distribution PrusaSlicer package to see how the package maintainers solved the dependency issues.
 
-#### wxWidgets
-By default, PrusaSlicer looks for wxWidgets 3.1. Our build script in fact downloads specific patched version of wxWidgets. If you want to link against wxWidgets 3.0 (which are still provided by most distributions because wxWidgets 3.1 have not yet been declared stable), you must set `-DSLIC3R_WX_STABLE=ON` when running CMake. Note that while PrusaSlicer can be linked against wWidgets 3.0, the combination is not well tested and there might be bugs in the resulting application. 
-
-When building on ubuntu 20.04 focal fossa, the package libwxgtk3.0-gtk3-dev needs to be installed instead of libwxgtk3.0-dev and you should use:
-```
--DSLIC3R_WX_STABLE=1 -DSLIC3R_GTK=3
-``` 
+Note that you may need to use wxGTK with disabled EGL support for PrusaSlicer to work correctly: see [#9774](https://github.com/prusa3d/PrusaSlicer/issues/9774).
 
 ## Miscellaneous
 

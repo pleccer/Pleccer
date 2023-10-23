@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2022 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, David Kocík @kocikdav, Lukáš Hejl @hejllukas, Vojtěch Bubník @bubnikv, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_MsgDialog_hpp_
 #define slic3r_MsgDialog_hpp_
 
@@ -13,7 +17,7 @@
 #include <wx/statline.h>
 
 class wxBoxSizer;
-class wxCheckBox;
+class CheckBox;
 class wxStaticBitmap;
 
 namespace Slic3r {
@@ -128,7 +132,7 @@ public:
 // Generic rich message dialog, used intead of wxRichMessageDialog
 class RichMessageDialog : public MsgDialog
 {
-	wxCheckBox* m_checkBox{ nullptr };
+	CheckBox*   m_checkBox{ nullptr };
 	wxString	m_checkBoxText;
 	bool		m_checkBoxValue{ false };
 
@@ -315,6 +319,8 @@ public:
 	InfoDialog&operator=(InfoDialog&&) = delete;
 	InfoDialog&operator=(const InfoDialog&) = delete;
 	virtual ~InfoDialog() = default;
+
+	void set_caption(const wxString& caption) { this->SetTitle(caption); }
 
 private:
 	wxString msg;

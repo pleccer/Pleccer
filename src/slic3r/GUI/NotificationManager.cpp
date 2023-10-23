@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 David Kocík @kocikdav, Vojtěch Bubník @bubnikv, Oleksandra Iushchenko @YuSanka, Filip Sykala @Jony01, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Lukáš Hejl @hejllukas, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "NotificationManager.hpp"
 
 #include "HintNotification.hpp"
@@ -866,7 +870,7 @@ bool NotificationManager::ExportFinishedNotification::on_text_click()
 }
 void NotificationManager::ExportFinishedNotification::on_eject_click()
 {
-	NotificationData data{ get_data().type, get_data().level , 0, _utf8("Ejecting.") };
+	NotificationData data{ get_data().type, get_data().level , 0, _u8L("Ejecting.") };
 	m_eject_pending = true;
 	m_multiline = false;
 	update(data);
@@ -2108,9 +2112,9 @@ void NotificationManager::push_slicing_error_notification(const std::string& tex
 	push_notification_data({ NotificationType::SlicingError, NotificationLevel::ErrorNotificationLevel, 0,  _u8L("ERROR:") + "\n" + text }, 0);
 	set_slicing_progress_hidden();
 }
-void NotificationManager::push_slicing_warning_notification(const std::string& text, bool gray, ObjectID oid, int warning_step)
+void NotificationManager::push_slicing_warning_notification(const std::string& text, bool gray, ObjectID oid, int warning_step, const std::string& hypertext, std::function<bool(wxEvtHandler*)> callback)
 {
-	NotificationData data { NotificationType::SlicingWarning, NotificationLevel::WarningNotificationLevel, 0,  _u8L("WARNING:") + "\n" + text };
+	NotificationData data { NotificationType::SlicingWarning, NotificationLevel::WarningNotificationLevel, 0,  _u8L("WARNING:") + "\n" + text ,  hypertext, callback};
 
 	auto notification = std::make_unique<NotificationManager::ObjectIDNotification>(data, m_id_provider, m_evt_handler);
 	notification->object_id = oid;
@@ -2218,7 +2222,6 @@ void NotificationManager::push_version_notification(NotificationType type, Notif
 
 	for (std::unique_ptr<PopNotification>& notification : m_pop_notifications) {
 		// NoNewReleaseAvailable must not show if alfa / beta is on.
-		NotificationType nttype = notification->get_type();
 		if (type == NotificationType::NoNewReleaseAvailable
 			&& (notification->get_type() == NotificationType::NewAlphaAvailable 
 				|| notification->get_type() == NotificationType::NewBetaAvailable)) {
@@ -2447,7 +2450,7 @@ void NotificationManager::push_download_URL_progress_notification(size_t id, con
 		}
 	}
 	// push new one
-	NotificationData data{ NotificationType::URLDownload, NotificationLevel::ProgressBarNotificationLevel, 5, _utf8("Download:") + " " + text };
+	NotificationData data{ NotificationType::URLDownload, NotificationLevel::ProgressBarNotificationLevel, 5, _u8L("Download") + ": " + text };
 	push_notification_data(std::make_unique<NotificationManager::URLDownloadNotification>(data, m_id_provider, m_evt_handler, id, user_action_callback), 0);
 }
 

@@ -1,12 +1,11 @@
+///|/ Copyright (c) Prusa Research 2022 Filip Sykala @Jony01
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "CreateFontStyleImagesJob.hpp"
 
 // rasterization of ExPoly
 #include "libslic3r/SLA/AGGRaster.hpp"
-
-// for get DPI
-#include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/MainFrame.hpp"
-
 #include "slic3r/GUI/3DScene.hpp" // ::glsafe
 
 // ability to request new frame after finish rendering
@@ -20,15 +19,15 @@ using namespace Slic3r::GUI;
 using namespace Slic3r::GUI::Emboss;
 
 
-CreateFontStyleImagesJob::CreateFontStyleImagesJob(
-    StyleManager::StyleImagesData &&input)
-    : m_input(std::move(input))
+CreateFontStyleImagesJob::CreateFontStyleImagesJob(StyleManager::StyleImagesData &&input)
+    : m_input(std::move(input)), m_width(0), m_height(0)
 {
     assert(m_input.result != nullptr);
     assert(!m_input.styles.empty());
     assert(!m_input.text.empty());
     assert(m_input.max_size.x() > 1);
     assert(m_input.max_size.y() > 1);
+    assert(m_input.ppm > 1e-5);
 }
 
 void CreateFontStyleImagesJob::process(Ctl &ctl)
@@ -36,29 +35,23 @@ void CreateFontStyleImagesJob::process(Ctl &ctl)
     // create shapes and calc size (bounding boxes)
     std::vector<ExPolygons> name_shapes(m_input.styles.size());
     std::vector<double> scales(m_input.styles.size());
-    images = std::vector<StyleManager::StyleImage>(m_input.styles.size());
+    m_images = std::vector<StyleManager::StyleImage>(m_input.styles.size());
 
+    auto was_canceled = []() { return false; };
     for (auto &item : m_input.styles) {
         size_t index = &item - &m_input.styles.front();
         ExPolygons &shapes = name_shapes[index];
-        shapes = text2shapes(item.font, m_input.text.c_str(), item.prop);
+        shapes = text2shapes(item.font, m_input.text.c_str(), item.prop, was_canceled);
 
         // create image description
-        StyleManager::StyleImage &image = images[index];
+        StyleManager::StyleImage &image = m_images[index];
         BoundingBox &bounding_box = image.bounding_box;
         for (ExPolygon &shape : shapes)
             bounding_box.merge(BoundingBox(shape.contour.points));
         for (ExPolygon &shape : shapes) shape.translate(-bounding_box.min);
         
         // calculate conversion from FontPoint to screen pixels by size of font
-        auto   mf  = wxGetApp().mainframe;
-        // dot per inch for monitor
-        int    dpi = get_dpi_for_window(mf);
-        double ppm = dpi / 25.4; // pixel per milimeter
-        const auto  &cn  = item.prop.collection_number;
-        unsigned int font_index  = (cn.has_value()) ? *cn : 0;
-        double unit_per_em = item.font.font_file->infos[font_index].unit_per_em;
-        double scale = item.prop.size_in_mm / unit_per_em * SHAPE_SCALE * ppm;
+        double scale = get_text_shape_scale(item.prop, *item.font.font_file);
         scales[index] = scale;
 
         //double scale = font_prop.size_in_mm * SCALING_FACTOR;
@@ -78,30 +71,30 @@ void CreateFontStyleImagesJob::process(Ctl &ctl)
 
     // arrange bounding boxes
     int offset_y = 0;
-    width        = 0;
-    for (StyleManager::StyleImage &image : images) {
+    m_width      = 0;
+    for (StyleManager::StyleImage &image : m_images) {
         image.offset.y() = offset_y;
         offset_y += image.tex_size.y+1;
-        if (width < image.tex_size.x) 
-            width = image.tex_size.x;
+        if (m_width < image.tex_size.x)
+            m_width = image.tex_size.x;
     }
-    height = offset_y;
-    for (StyleManager::StyleImage &image : images) {
+    m_height = offset_y;
+    for (StyleManager::StyleImage &image : m_images) {
         const Point &o = image.offset;
         const ImVec2 &s = image.tex_size;
-        image.uv0 = ImVec2(o.x() / (double) width, 
-                           o.y() / (double) height);
-        image.uv1 = ImVec2((o.x() + s.x) / (double) width,
-                           (o.y() + s.y) / (double) height);
+        image.uv0 = ImVec2(o.x() / (double) m_width,
+                           o.y() / (double) m_height);
+        image.uv1 = ImVec2((o.x() + s.x) / (double) m_width,
+                           (o.y() + s.y) / (double) m_height);
     }
 
     // Set up result
-    pixels = std::vector<unsigned char>(4*width * height, {255});
+    m_pixels = std::vector<unsigned char>(4 * m_width * m_height, {255});
 
     // upload sub textures
-    for (StyleManager::StyleImage &image : images) {
+    for (StyleManager::StyleImage &image : m_images) {
         sla::Resolution resolution(image.tex_size.x, image.tex_size.y);
-        size_t index = &image - &images.front();
+        size_t index = &image - &m_images.front();
         double pixel_dim = SCALING_FACTOR / scales[index];
         sla::PixelDim dim(pixel_dim, pixel_dim);
         double gamma = 1.;
@@ -110,7 +103,7 @@ void CreateFontStyleImagesJob::process(Ctl &ctl)
         for (const ExPolygon &shape : name_shapes[index]) r->draw(shape);
         
         // copy rastered data to pixels
-        sla::RasterEncoder encoder = [&offset = image.offset, &pix = pixels, w=width,h=height]
+        sla::RasterEncoder encoder = [&offset = image.offset, &pix = m_pixels, w=m_width,h=m_height]
         (const void *ptr, size_t width, size_t height, size_t num_components) {
             // bigger value create darker image
             unsigned char gray_level = 5;
@@ -142,18 +135,18 @@ void CreateFontStyleImagesJob::finalize(bool canceled, std::exception_ptr &)
     glsafe(::glBindTexture(target, tex_id));
     glsafe(::glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
     glsafe(::glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
-    GLint w = width, h=height;
+    GLint w = m_width, h = m_height;
     glsafe(::glTexImage2D(target, level, GL_RGBA, w, h, border, format, type,
-                          (const void *) pixels.data()));
+                          (const void *) m_pixels.data()));
 
     // set up texture id
     void *texture_id = (void *) (intptr_t) tex_id;        
-    for (StyleManager::StyleImage &image : images)
+    for (StyleManager::StyleImage &image : m_images)
         image.texture_id = texture_id;
         
     // move to result
     m_input.result->styles = std::move(m_input.styles);
-    m_input.result->images = std::move(images);
+    m_input.result->images = std::move(m_images);
 
     // bind default texture
     GLuint no_texture_id = 0;

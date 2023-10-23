@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 David Kocík @kocikdav, Lukáš Matěna @lukasmatena, Roman Beránek @zavorka, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "RemovableDriveManager.hpp"
 #include "libslic3r/Platform.hpp"
 #include <libslic3r/libslic3r.h>
@@ -13,6 +17,15 @@
 #include <Dbt.h>
 #include <Setupapi.h>
 #include <cfgmgr32.h>
+
+#include <initguid.h>   // include before devpropdef.h
+#include <devpropdef.h>
+#include <devpkey.h>
+#include <usbioctl.h>
+
+#include <atlbase.h>
+#include <atlcom.h>
+#include <shldisp.h>
 #else
 // unix, linux & OSX includes
 #include <errno.h>
@@ -73,6 +86,262 @@ std::vector<DriveData> RemovableDriveManager::search_for_removable_drives() cons
 }
 
 namespace {
+
+
+#if 0
+// From https://github.com/microsoft/Windows-driver-samples/tree/main/usb/usbview
+typedef struct _STRING_DESCRIPTOR_NODE
+{
+	struct _STRING_DESCRIPTOR_NODE* Next;
+	UCHAR                           DescriptorIndex;
+	USHORT                          LanguageID;
+	USB_STRING_DESCRIPTOR           StringDescriptor[1];
+} STRING_DESCRIPTOR_NODE, * PSTRING_DESCRIPTOR_NODE;
+
+// Based at https://github.com/microsoft/Windows-driver-samples/tree/main/usb/usbview
+PSTRING_DESCRIPTOR_NODE GetStringDescriptor(
+	HANDLE  handle_hub_device,
+	ULONG   connection_index,
+	UCHAR   descriptor_index,
+	USHORT  language_ID
+)
+{
+	BOOL					success = 0;
+	ULONG					nbytes = 0;
+	ULONG					nbytes_returned = 0;
+	UCHAR					string_desc_req_buf[sizeof(USB_DESCRIPTOR_REQUEST) + MAXIMUM_USB_STRING_LENGTH];
+	PUSB_DESCRIPTOR_REQUEST string_desc_req = NULL;
+	PUSB_STRING_DESCRIPTOR  string_desc = NULL;
+	PSTRING_DESCRIPTOR_NODE string_desc_node = NULL;
+
+	nbytes			= sizeof(string_desc_req_buf);
+	string_desc_req = (PUSB_DESCRIPTOR_REQUEST)string_desc_req_buf;
+	string_desc		= (PUSB_STRING_DESCRIPTOR)(string_desc_req + 1);
+
+	// Zero fill the entire request structure
+	memset(string_desc_req, 0, nbytes);
+
+	// Indicate the port from which the descriptor will be requested
+	string_desc_req->ConnectionIndex = connection_index;
+
+	// USBHUB uses URB_FUNCTION_GET_DESCRIPTOR_FROM_DEVICE to process this
+	// IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION request.
+	//
+	// USBD will automatically initialize these fields:
+	//     bmRequest = 0x80
+	//     bRequest  = 0x06
+	//
+	// We must inititialize these fields:
+	//     wValue    = Descriptor Type (high) and Descriptor Index (low byte)
+	//     wIndex    = Zero (or Language ID for String Descriptors)
+	//     wLength   = Length of descriptor buffer
+	string_desc_req->SetupPacket.wValue = (USB_STRING_DESCRIPTOR_TYPE << 8)
+		| descriptor_index;
+	string_desc_req->SetupPacket.wIndex = language_ID;
+	string_desc_req->SetupPacket.wLength = (USHORT)(nbytes - sizeof(USB_DESCRIPTOR_REQUEST));
+
+	// Now issue the get descriptor request.
+	success = DeviceIoControl(handle_hub_device,
+		IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION,
+		string_desc_req,
+		nbytes,
+		string_desc_req,
+		nbytes,
+		&nbytes_returned,
+		NULL);
+
+	// Do some sanity checks on the return from the get descriptor request.
+	if (!success) {
+		return NULL;
+	}
+	if (nbytes_returned < 2) {
+		return NULL;
+	}
+	if (string_desc->bDescriptorType != USB_STRING_DESCRIPTOR_TYPE) {
+		return NULL;
+	}
+	if (string_desc->bLength != nbytes_returned - sizeof(USB_DESCRIPTOR_REQUEST)) {
+		return NULL;
+	}
+	if (string_desc->bLength % 2 != 0) {
+		return NULL;
+	}
+
+	// Looks good, allocate some (zero filled) space for the string descriptor
+	// node and copy the string descriptor to it.
+	string_desc_node = (PSTRING_DESCRIPTOR_NODE)malloc(sizeof(STRING_DESCRIPTOR_NODE) + string_desc->bLength * sizeof(DWORD));
+	if (string_desc_node == NULL) {
+		return NULL;
+	}
+	string_desc_node->Next = NULL;
+	string_desc_node->DescriptorIndex = descriptor_index;
+	string_desc_node->LanguageID = language_ID;
+
+	memcpy(string_desc_node->StringDescriptor,
+		string_desc,
+		string_desc->bLength);
+
+	return string_desc_node;
+}
+
+// Based at https://github.com/microsoft/Windows-driver-samples/tree/main/usb/usbview
+HRESULT GetStringDescriptors(
+	_In_ HANDLE								handle_hub_device,
+	_In_ ULONG								connection_index,
+	_In_ UCHAR								descriptor_index,
+	_In_ ULONG								num_language_IDs,
+	_In_reads_(num_language_IDs) USHORT*	language_IDs,
+	_In_ PSTRING_DESCRIPTOR_NODE			string_desc_node_head,
+	std::wstring&							result
+)
+{
+	PSTRING_DESCRIPTOR_NODE tail = NULL;
+	PSTRING_DESCRIPTOR_NODE trailing = NULL;
+	ULONG					i = 0;
+
+	// Go to the end of the linked list, searching for the requested index to
+	// see if we've already retrieved it
+	for (tail = string_desc_node_head; tail != NULL; tail = tail->Next) {
+		if (tail->DescriptorIndex == descriptor_index) {
+			// copy string descriptor to result
+			for(int i = 0; i < tail->StringDescriptor->bLength / 2 - 1; i++) {
+				result += tail->StringDescriptor->bString[i];
+			}
+			return S_OK;
+		}
+		trailing = tail;
+	}
+	tail = trailing;
+
+	// Get the next String Descriptor. If this is NULL, then we're done (return)
+	// Otherwise, loop through all Language IDs
+	for (i = 0; (tail != NULL) && (i < num_language_IDs); i++) {
+		tail->Next = GetStringDescriptor(handle_hub_device,
+			connection_index,
+			descriptor_index,
+			language_IDs[i]);
+		tail = tail->Next;
+	}
+
+	if (tail == NULL) {
+		return E_FAIL;
+	} else {
+		// copy string descriptor to result
+		for (int i = 0; i < tail->StringDescriptor->bLength / 2 - 1; i++) {
+			result += tail->StringDescriptor->bString[i];
+		}
+		return S_OK;
+	}
+}
+
+bool get_handle_from_devinst(DEVINST devinst, HANDLE& handle)
+{
+	// create path consisting of device id and guid
+	wchar_t			device_id[MAX_PATH];
+	CM_Get_Device_ID(devinst, device_id, MAX_PATH, 0);
+
+	//convert device id string to device path - https://stackoverflow.com/a/32641140/981766
+	std::wstring	dev_id_wstr(device_id);
+	dev_id_wstr = std::regex_replace(dev_id_wstr, std::wregex(LR"(\\)"), L"#"); // '\' is special for regex
+	dev_id_wstr = std::regex_replace(dev_id_wstr, std::wregex(L"^"), LR"(\\?\)", std::regex_constants::format_first_only);
+	dev_id_wstr = std::regex_replace(dev_id_wstr, std::wregex(L"$"), L"#", std::regex_constants::format_first_only);
+
+	// guid
+	wchar_t			guid_wchar[64];//guid is 32 chars+4 hyphens+2 paranthesis+null => 64 should be more than enough
+	StringFromGUID2(GUID_DEVINTERFACE_USB_HUB, guid_wchar, 64);
+	dev_id_wstr.append(guid_wchar);
+
+	// get handle
+	std::wstring&	usb_hub_path = dev_id_wstr;
+	handle = CreateFileW(usb_hub_path.c_str(), GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+	if (handle == INVALID_HANDLE_VALUE) {
+		// Sometimes device is not GUID_DEVINTERFACE_USB_HUB, than we need to check parent recursively
+		DEVINST parent_devinst = 0;
+		if (CM_Get_Parent(&parent_devinst, devinst, 0) != CR_SUCCESS)
+			return false;
+		return get_handle_from_devinst(parent_devinst, handle);
+	}
+	return true;
+}
+
+// Read Configuration Descriptor - configuration string indexed by iConfiguration and decide if card reader
+bool is_card_reader(HDEVINFO h_dev_info, SP_DEVINFO_DATA& spdd)
+{
+	// First get port number of device.
+
+	DEVINST		parent_devinst = 0;
+	HANDLE		handle; // usb hub handle
+	DWORD		usb_port_number = 0;
+	DWORD		required_size = 0;
+	// First we need handle for GUID_DEVINTERFACE_USB_HUB device.
+	if (CM_Get_Parent(&parent_devinst, spdd.DevInst, 0) != CR_SUCCESS) {
+		BOOST_LOG_TRIVIAL(warning) << "is_card_reader failed: Couldn't get parent DEVINST.";
+		return false;
+	}
+	if(!get_handle_from_devinst(parent_devinst, handle) || handle == INVALID_HANDLE_VALUE) {
+		BOOST_LOG_TRIVIAL(warning) << "is_card_reader failed: Couldn't get HANDLE for parent DEVINST.";
+		return false;
+	}
+	// Get port number to which the usb device is attached on the hub.
+	if (SetupDiGetDeviceRegistryProperty(h_dev_info, &spdd, SPDRP_ADDRESS, nullptr, (PBYTE)&usb_port_number, sizeof(usb_port_number), &required_size) == 0) {
+		BOOST_LOG_TRIVIAL(warning) << "is_card_reader failed: Couldn't get port number.";
+		return false;
+	}
+
+	// Fill USB request packet to get iConfiguration value.
+
+	int								buffer_size = sizeof(USB_DESCRIPTOR_REQUEST) + sizeof(USB_CONFIGURATION_DESCRIPTOR);
+	BYTE*							buffer = new BYTE[buffer_size];
+	USB_DESCRIPTOR_REQUEST*			request_packet = (USB_DESCRIPTOR_REQUEST*)buffer;
+	USB_CONFIGURATION_DESCRIPTOR*	configuration_descriptor = (USB_CONFIGURATION_DESCRIPTOR*)((BYTE*)buffer + sizeof(USB_DESCRIPTOR_REQUEST));
+	DWORD							bytes_returned = 0;
+	// Fill information in packet.
+	request_packet->SetupPacket.bmRequest = 0x80;
+	request_packet->SetupPacket.bRequest = USB_REQUEST_GET_CONFIGURATION;
+	request_packet->ConnectionIndex = usb_port_number;
+	request_packet->SetupPacket.wValue = (USB_CONFIGURATION_DESCRIPTOR_TYPE << 8 | 0 /*Since only 1 device descriptor => index : 0*/);
+	request_packet->SetupPacket.wLength = sizeof(USB_CONFIGURATION_DESCRIPTOR);
+	// Issue ioctl.
+	if (DeviceIoControl(handle, IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION, buffer, buffer_size, buffer, buffer_size, &bytes_returned, nullptr) == 0) {
+		BOOST_LOG_TRIVIAL(warning) << "is_card_reader failed: Couldn't get Configuration Descriptor.";
+		return false;
+	}
+	// Nothing to read.
+	if (configuration_descriptor->iConfiguration == 0) {
+		BOOST_LOG_TRIVIAL(warning) << "is_card_reader failed: iConfiguration value is 0.";
+		return false;
+	}
+
+	// Get string descriptor and read string on address given by iConfiguration index .
+	// Based at https://github.com/microsoft/Windows-driver-samples/tree/main/usb/usbview
+
+	PSTRING_DESCRIPTOR_NODE		supported_languages_string = NULL;
+	ULONG						num_language_IDs = 0;
+	USHORT*						language_IDs = NULL;
+	std::wstring				configuration_string;
+	// Get languages.
+	supported_languages_string	= GetStringDescriptor(handle, usb_port_number, 0, 0);
+	if (supported_languages_string == NULL) {
+		BOOST_LOG_TRIVIAL(warning) << "is_card_reader failed: Couldn't get language string descriptor.";
+		return false;
+	}
+	num_language_IDs			= (supported_languages_string->StringDescriptor->bLength - 2) / 2;
+	language_IDs				= (USHORT*)&supported_languages_string->StringDescriptor->bString[0];
+	// Get configration string.
+	if (GetStringDescriptors(handle, usb_port_number, configuration_descriptor->iConfiguration, num_language_IDs, language_IDs, supported_languages_string, configuration_string) == E_FAIL) {
+		BOOST_LOG_TRIVIAL(warning) << "is_card_reader failed: Couldn't get configuration string descriptor.";
+		return false;
+	}
+
+	// Final compare.
+	BOOST_LOG_TRIVIAL(error) << "Ejecting information: Retrieved configuration string: " << configuration_string;
+	if (configuration_string.find(L"CARD READER") != std::wstring::npos) {
+		BOOST_LOG_TRIVIAL(info) << "Detected external reader.";
+		return true;
+	}
+	return false;
+}
+
 // returns the device instance handle of a storage volume or 0 on error
 // called from eject_inner, based on https://stackoverflow.com/a/58848961
 DEVINST get_dev_inst_by_device_number(long device_number, UINT drive_type, WCHAR* dos_device_name)
@@ -80,7 +349,7 @@ DEVINST get_dev_inst_by_device_number(long device_number, UINT drive_type, WCHAR
 	bool is_floppy = (wcsstr(dos_device_name, L"\\Floppy") != NULL); // TODO: could be tested better?
 	
 	if (drive_type != DRIVE_REMOVABLE || is_floppy) {
-		BOOST_LOG_TRIVIAL(debug) << "get_dev_inst_by_device_number failed: Drive is not removable.";
+		BOOST_LOG_TRIVIAL(warning) << "get_dev_inst_by_device_number failed: Drive is not removable.";
 		return 0;
 	}
 
@@ -89,7 +358,7 @@ DEVINST get_dev_inst_by_device_number(long device_number, UINT drive_type, WCHAR
 	HDEVINFO h_dev_info = SetupDiGetClassDevs(guid, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
 
 	if (h_dev_info == INVALID_HANDLE_VALUE) {
-		BOOST_LOG_TRIVIAL(debug) << "get_dev_inst_by_device_number failed: Invalid dev info handle.";
+		BOOST_LOG_TRIVIAL(warning) << "get_dev_inst_by_device_number failed: Invalid dev info handle.";
 		return 0;
 	}
 
@@ -135,13 +404,16 @@ DEVINST get_dev_inst_by_device_number(long device_number, UINT drive_type, WCHAR
 		if (device_number != (long)sdn.DeviceNumber) {
 			continue;
 		}
-		// this is the drive, return the device instance
+
+		// check if is sd card reader - if yes, indicate by returning invalid value.
+		bool reader = is_card_reader(h_dev_info, spdd);
+
 		SetupDiDestroyDeviceInfoList(h_dev_info);
-		return spdd.DevInst;
+		return !reader ? spdd.DevInst : 0;
 	}
 
 	SetupDiDestroyDeviceInfoList(h_dev_info);
-	BOOST_LOG_TRIVIAL(debug) << "get_dev_inst_by_device_number failed: Enmurating couldn't find the drive.";
+	BOOST_LOG_TRIVIAL(warning) << "get_dev_inst_by_device_number failed: Enmurating couldn't find the drive.";
 	return 0;
 }
 
@@ -194,9 +466,8 @@ int eject_inner(const std::string& path)
 
 	// get the device instance handle of the storage volume by means of a SetupDi enum and matching the device number
 	DEVINST dev_inst = get_dev_inst_by_device_number(device_number, drive_type, dos_device_name);
-
 	if (dev_inst == 0) {
-		BOOST_LOG_TRIVIAL(error) << GUI::format("Ejecting of %1% has failed: Invalid device instance handle.", path);
+		BOOST_LOG_TRIVIAL(error) << GUI::format("Ejecting of %1%: Invalid device instance handle. Going to try alternative ejecting method.", path);
 		return 1;
 	}
 
@@ -236,7 +507,7 @@ int eject_inner(const std::string& path)
 	if (res == CR_SUCCESS && veto_type == PNP_VetoTypeUnknown) {
 		return 0;
 	}
-	BOOST_LOG_TRIVIAL(warning) << GUI::format("Ejecting of %1% has failed: Request to eject device has failed. Another request will follow. Veto type: %2%", path, veto_type);
+	BOOST_LOG_TRIVIAL(error) << GUI::format("Ejecting of %1% has failed: Request to eject device has failed. Another request will follow. Veto type: %2%", path, veto_type);
 
 	// But on some PC, SD cards ejects only with its own dev_inst. 
 	res = CM_Request_Device_EjectW(dev_inst, &veto_type, veto_name, MAX_PATH, 0);
@@ -249,7 +520,128 @@ int eject_inner(const std::string& path)
 	return 1;
 }
 
+// this method should be called in worker thread. It does SLEEP.
+// Alternative ejecting to eject_inner method.
+// Success or Fail is passed directly to UI by events
+void eject_alt(std::string path, wxEvtHandler* callback_evt_handler, DriveData drive_data)
+{
+	// Transform path to correct form
+	std::wstring wpath = std::wstring();
+	wpath += boost::nowide::widen(path)[0]; // drive letter wide
+	wpath[0] &= ~0x20; // make sure drive letter is uppercase
+	std::wstring volume_access_path = L"\\\\.\\" + wpath + L":"; // for CreateFile
+
+	HANDLE handle = CreateFileW(volume_access_path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+	if (handle == INVALID_HANDLE_VALUE) {
+		BOOST_LOG_TRIVIAL(error) << "Alt ejecting " << volume_access_path << " failed (handle == INVALID_HANDLE_VALUE): " << GetLastError();
+		assert(callback_evt_handler);
+		if (callback_evt_handler)
+			wxPostEvent(callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair<DriveData, bool>(std::move(drive_data), false)));
+		return;
+	}
+	DWORD deviceControlRetVal(0);
+	//these 3 commands should eject device safely but they dont, the device does disappear from file explorer but the "device was safely remove" notification doesnt trigger.
+	//sd cards does  trigger WM_DEVICECHANGE messege, usb drives dont
+	BOOL e1;
+	for (int i = 0; i < 10; i++) {
+		e1 = DeviceIoControl(handle, FSCTL_LOCK_VOLUME, nullptr, 0, nullptr, 0, &deviceControlRetVal, nullptr);
+		if (e1)
+			break;
+		BOOST_LOG_TRIVIAL(warning) << "Alt Ejecting: FSCTL_LOCK_VOLUME failed. Try " << i << ". " << GetLastError();
+		Sleep(500);
+	}
+	if (e1 == 0) {
+		CloseHandle(handle);
+		BOOST_LOG_TRIVIAL(error) << "Alt Ejecting " << volume_access_path << " failed to Lock the device. Ejecting has failed. " << GetLastError();
+		assert(callback_evt_handler);
+		if (callback_evt_handler)
+			wxPostEvent(callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair<DriveData, bool>(std::move(drive_data), false)));
+		return;
+	}
+	BOOST_LOG_TRIVIAL(info) << "Alt Ejecting: FSCTL_LOCK_VOLUME success.";
+
+	BOOL e2 = DeviceIoControl(handle, FSCTL_DISMOUNT_VOLUME, nullptr, 0, nullptr, 0, &deviceControlRetVal, nullptr);
+	if (e2 == 0) {
+		CloseHandle(handle);
+		BOOST_LOG_TRIVIAL(error) << "Alt Ejecting " << volume_access_path << " failed to dismount the volume. Ejecting has failed. " << GetLastError();
+		assert(callback_evt_handler);
+		if (callback_evt_handler)
+			wxPostEvent(callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair<DriveData, bool>(std::move(drive_data), false)));
+		return;
+	}
+	BOOST_LOG_TRIVIAL(info) << "Alt Ejecting: FSCTL_DISMOUNT_VOLUME success.";
+
+	// some implemenatations also calls IOCTL_STORAGE_MEDIA_REMOVAL here with FALSE as third parameter, which should set PreventMediaRemoval
+	BOOL error = DeviceIoControl(handle, IOCTL_STORAGE_EJECT_MEDIA, nullptr, 0, nullptr, 0, &deviceControlRetVal, nullptr);
+	if (error == 0) {
+		CloseHandle(handle);
+		BOOST_LOG_TRIVIAL(error) << "Alt Ejecting " << volume_access_path << " failed (IOCTL_STORAGE_EJECT_MEDIA)" << deviceControlRetVal << " " << GetLastError();
+		assert(callback_evt_handler);
+		if (callback_evt_handler)
+			wxPostEvent(callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair<DriveData, bool>(std::move(drive_data), false)));
+
+		return;
+	}
+	CloseHandle(handle);
+
+	BOOST_LOG_TRIVIAL(info) << "Alt Ejecting finished";
+	assert(callback_evt_handler);
+	if (callback_evt_handler)
+		wxPostEvent(callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair< DriveData, bool >(std::move(drive_data), true)));
 }
+#endif // 0
+
+// C++ equivavalent of PowerShell script:
+// $driveEject = New - Object - comObject Shell.Application
+// $driveEject.Namespace(17).ParseName("E:").InvokeVerb("Eject")
+// from https://superuser.com/a/1750403
+bool eject_inner(const std::string& path)
+{
+	std::wstring wpath = boost::nowide::widen(path);
+	CoInitialize(nullptr);
+	CComPtr<IShellDispatch> pShellDisp;
+	HRESULT hr = pShellDisp.CoCreateInstance(CLSID_Shell, nullptr, CLSCTX_INPROC_SERVER);
+	if (!SUCCEEDED(hr)) {
+		BOOST_LOG_TRIVIAL(error) << GUI::format("Ejecting of %1% has failed: Attempt to get Shell pointer has failed.", path);
+		CoUninitialize();
+		return false;
+	}
+	CComPtr<Folder> pFolder;
+	VARIANT vtDrives;
+	VariantInit(&vtDrives);
+	vtDrives.vt = VT_I4;
+	vtDrives.lVal = ssfDRIVES;
+	hr = pShellDisp->NameSpace(vtDrives, &pFolder);
+	if (!SUCCEEDED(hr)) {
+		BOOST_LOG_TRIVIAL(error) << GUI::format("Ejecting of %1% has failed: Attempt to create Namespace has failed.", path);
+		CoUninitialize();
+		return false;
+	}
+	CComPtr<FolderItem> pItem;
+	hr = pFolder->ParseName(static_cast<BSTR>(const_cast<wchar_t*>(wpath.c_str())), &pItem);
+	if (!SUCCEEDED(hr)) {
+		BOOST_LOG_TRIVIAL(error) << GUI::format("Ejecting of %1% has failed: Attempt to Parse name has failed.", path);
+		CoUninitialize();
+		return false;
+	}
+	VARIANT vtEject;
+	VariantInit(&vtEject);
+	vtEject.vt = VT_BSTR;
+	vtEject.bstrVal = SysAllocString(L"Eject");
+	hr = pItem->InvokeVerb(vtEject);
+	if (!SUCCEEDED(hr)) {
+		BOOST_LOG_TRIVIAL(error) << GUI::format("Ejecting of %1% has failed: Attempt to Invoke Verb has failed.", path);
+		VariantClear(&vtEject);
+		CoUninitialize();
+		return false;
+	}
+	BOOST_LOG_TRIVIAL(debug) << "Ejecting via InvokeVerb has succeeded.";
+	VariantClear(&vtEject);
+	CoUninitialize();
+	return true;
+}
+
+} // namespace
 // Called from UI therefore it blocks the UI thread.
 // It also blocks updates at the worker thread.
 // Win32 implementation.
@@ -264,67 +656,27 @@ void RemovableDriveManager::eject_drive()
 	BOOST_LOG_TRIVIAL(info) << "Ejecting started"; 
 	std::scoped_lock<std::mutex> lock(m_drives_mutex);
 	auto it_drive_data = this->find_last_save_path_drive_data();
-#if 1
 	if (it_drive_data != m_current_drives.end()) {
-		if (!eject_inner(m_last_save_path)) {
+		if (eject_inner(m_last_save_path)) {
 		// success
-		assert(m_callback_evt_handler);
-		if (m_callback_evt_handler)
-			wxPostEvent(m_callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair< DriveData, bool >(std::move(*it_drive_data), true)));
+			BOOST_LOG_TRIVIAL(info) << "Ejecting has succeeded.";
+			assert(m_callback_evt_handler);
+			if (m_callback_evt_handler)
+				wxPostEvent(m_callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair< DriveData, bool >(std::move(*it_drive_data), true)));
 		} else {
 			// failed to eject
-			// this should not happen, throwing exception might be the way here
+			BOOST_LOG_TRIVIAL(error) << "Ejecting has failed.";
 			assert(m_callback_evt_handler);
 			if (m_callback_evt_handler)
 				wxPostEvent(m_callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair<DriveData, bool>(*it_drive_data, false)));
 		}
 	} else {
 		// drive not found in m_current_drives
+		BOOST_LOG_TRIVIAL(error) << "Ejecting has failed. Drive not found in m_current_drives.";
 		assert(m_callback_evt_handler);
 		if (m_callback_evt_handler)
 			wxPostEvent(m_callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair<DriveData, bool>({"",""}, false)));
 	}
-#endif
-#if 0
-	// Implementation used until 2.5.x version
-	// Some usb drives does not eject properly (still visible in file explorer). Some even does not write all content and eject.
-	if (it_drive_data != m_current_drives.end()) {
-		// get handle to device
-		std::string mpath = "\\\\.\\" + m_last_save_path;
-		mpath = mpath.substr(0, mpath.size() - 1);
-		HANDLE handle = CreateFileW(boost::nowide::widen(mpath).c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
-		if (handle == INVALID_HANDLE_VALUE) {
-			BOOST_LOG_TRIVIAL(error) << "Ejecting " << mpath << " failed (handle == INVALID_HANDLE_VALUE): " << GetLastError();
-			assert(m_callback_evt_handler);
-			if (m_callback_evt_handler)
-				wxPostEvent(m_callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair<DriveData, bool>(*it_drive_data, false)));
-			return;
-		}
-		DWORD deviceControlRetVal(0);
-		//these 3 commands should eject device safely but they dont, the device does disappear from file explorer but the "device was safely remove" notification doesnt trigger.
-		//sd cards does  trigger WM_DEVICECHANGE messege, usb drives dont
-		BOOL e1 = DeviceIoControl(handle, FSCTL_LOCK_VOLUME, nullptr, 0, nullptr, 0, &deviceControlRetVal, nullptr);
-		BOOST_LOG_TRIVIAL(error) << "FSCTL_LOCK_VOLUME " << e1 << " ; " << deviceControlRetVal << " ; " << GetLastError();
-		BOOL e2 = DeviceIoControl(handle, FSCTL_DISMOUNT_VOLUME, nullptr, 0, nullptr, 0, &deviceControlRetVal, nullptr);
-		BOOST_LOG_TRIVIAL(error) << "FSCTL_DISMOUNT_VOLUME " << e2 << " ; " << deviceControlRetVal << " ; " << GetLastError();
-		// some implemenatations also calls IOCTL_STORAGE_MEDIA_REMOVAL here with FALSE as third parameter, which should set PreventMediaRemoval 
-		BOOL error = DeviceIoControl(handle, IOCTL_STORAGE_EJECT_MEDIA, nullptr, 0, nullptr, 0, &deviceControlRetVal, nullptr);
-		if (error == 0) {
-			CloseHandle(handle);
-			BOOST_LOG_TRIVIAL(error) << "Ejecting " << mpath << " failed (IOCTL_STORAGE_EJECT_MEDIA)" << deviceControlRetVal << " " << GetLastError();
-			assert(m_callback_evt_handler);
-			if (m_callback_evt_handler) 
-				wxPostEvent(m_callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair<DriveData, bool>(*it_drive_data, false)));
-			return;
-		}
-		CloseHandle(handle);
-		BOOST_LOG_TRIVIAL(info) << "Ejecting finished";
-		assert(m_callback_evt_handler);
-		if (m_callback_evt_handler) 
-			wxPostEvent(m_callback_evt_handler, RemovableDriveEjectEvent(EVT_REMOVABLE_DRIVE_EJECTED, std::pair< DriveData, bool >(std::move(*it_drive_data), true)));
-		m_current_drives.erase(it_drive_data);
-	}
-#endif // 0
 }
 
 std::string RemovableDriveManager::get_removable_drive_path(const std::string &path)
@@ -743,4 +1095,11 @@ void RemovableDriveManager::eject_thread_finish()
 }
 #endif // __APPLE__
 
+std::vector<DriveData> RemovableDriveManager::get_drive_list()
+{
+	{
+		std::lock_guard<std::mutex> guard(m_drives_mutex);
+		return m_current_drives;
+	}
+}
 }} // namespace Slic3r::GUI

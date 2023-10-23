@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2022 Tomáš Mészáros @tamasmeszaros
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 # script for each OCCT toolkit
 
 # filling some variables by default values(src) or using custom(tools, samples)

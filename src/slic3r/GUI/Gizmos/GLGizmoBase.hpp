@@ -1,10 +1,13 @@
+///|/ Copyright (c) Prusa Research 2019 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_GLGizmoBase_hpp_
 #define slic3r_GLGizmoBase_hpp_
 
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Color.hpp"
 
-#include "slic3r/GUI/I18N.hpp"
 #include "slic3r/GUI/GLModel.hpp"
 #include "slic3r/GUI/MeshUtils.hpp"
 #include "slic3r/GUI/SceneRaycaster.hpp"
@@ -150,7 +153,7 @@ public:
     virtual bool wants_enter_leave_snapshots() const { return false; }
     virtual std::string get_gizmo_entering_text() const { assert(false); return ""; }
     virtual std::string get_gizmo_leaving_text() const { assert(false); return ""; }
-    virtual std::string get_action_snapshot_name() { return _u8L("Gizmo action"); }
+    virtual std::string get_action_snapshot_name() const;
     void set_common_data_pool(CommonGizmosDataPool* ptr) { m_c = ptr; }
 
     unsigned int get_sprite_id() const { return m_sprite_id; }
@@ -175,7 +178,7 @@ public:
     /// <summary>
     /// Is called when data (Selection) is changed
     /// </summary>
-    virtual void data_changed(){};
+    virtual void data_changed(bool is_serializing){};
 
     /// <summary>
     /// Implement when want to process mouse events in gizmo
@@ -235,9 +238,7 @@ protected:
     /// <returns>same as on_mouse</returns>
     bool use_grabbers(const wxMouseEvent &mouse_event);
 
-#if ENABLE_WORLD_COORDINATE
     void do_stop_dragging(bool perform_mouse_cleanup);
-#endif // ENABLE_WORLD_COORDINATE
 
 private:
     // Flag for dirty visible state of Gizmo

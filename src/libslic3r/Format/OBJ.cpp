@@ -1,3 +1,11 @@
+///|/ Copyright (c) Prusa Research 2017 - 2021 Enrico Turri @enricoturri1966, Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros
+///|/
+///|/ ported from lib/Slic3r/Format/OBJ.pm:
+///|/ Copyright (c) Prusa Research 2017 Vojtěch Bubník @bubnikv
+///|/ Copyright (c) Slic3r 2012 - 2014 Alessandro Ranellucci @alranel
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "../libslic3r.h"
 #include "../Model.hpp"
 #include "../TriangleMesh.hpp"

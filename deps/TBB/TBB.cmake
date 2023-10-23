@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2021 - 2022 Tomáš Mészáros @tamasmeszaros, Filip Sykala @Jony01
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 prusaslicer_add_cmake_project(
     TBB
     URL "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.5.0.zip"

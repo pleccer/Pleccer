@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2021 - 2022 Filip Sykala @Jony01, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_TextConfiguration_hpp_
 #define slic3r_TextConfiguration_hpp_
 
@@ -26,15 +30,6 @@ struct FontProp
     // When not set value is zero and is not stored
     std::optional<int> line_gap; // [in font point]
 
-    // Z depth of text 
-    float emboss; // [in mm]
-
-    // Flag that text should use surface cutted from object
-    // FontProp::distance should without value
-    // FontProp::emboss should be positive number
-    // Note: default value is false
-    bool use_surface;
-
     // positive value mean wider character shape
     // negative value mean tiner character shape
     // When not set value is zero and is not stored
@@ -45,33 +40,20 @@ struct FontProp
     // When not set value is zero and is not stored
     std::optional<float> skew; // [ration x:y]
 
-    // distance from surface point
-    // used for move over model surface
-    // When not set value is zero and is not stored
-    std::optional<float> distance; // [in mm]
-
-    // change up vector direction of font
-    // When not set value is zero and is not stored
-    std::optional<float> angle; // [in radians]
-
     // Parameter for True Type Font collections
     // Select index of font in collection
     std::optional<unsigned int> collection_number;
 
-    //enum class Align {
-    //    left,
-    //    right,
-    //    center,
-    //    top_left,
-    //    top_right,
-    //    top_center,
-    //    bottom_left,
-    //    bottom_right,
-    //    bottom_center
-    //};
-    //// change pivot of text
-    //// When not set, center is used and is not stored
-    //std::optional<Align> align;
+    // Distiguish projection per glyph
+    bool per_glyph;
+
+    // NOTE: way of serialize to 3mf force that zero must be default value
+    enum class HorizontalAlign { left = 0, center, right };
+    enum class VerticalAlign { top = 0, center, bottom };
+    using Align = std::pair<HorizontalAlign, VerticalAlign>;
+    // change pivot of text
+    // When not set, center is used and is not stored
+    Align align = Align(HorizontalAlign::center, VerticalAlign::center);
 
     //////
     // Duplicit data to wxFontDescriptor
@@ -94,53 +76,38 @@ struct FontProp
     /// </summary>
     /// <param name="line_height">Y size of text [in mm]</param>
     /// <param name="depth">Z size of text [in mm]</param>
-    FontProp(float line_height = 10.f, float depth = 2.f)
-        : emboss(depth), size_in_mm(line_height), use_surface(false)
+    FontProp(float line_height = 10.f) : size_in_mm(line_height), per_glyph(false)
     {}
 
     bool operator==(const FontProp& other) const {
         return 
             char_gap == other.char_gap && 
             line_gap == other.line_gap &&
-            use_surface == other.use_surface &&
-            is_approx(emboss, other.emboss) &&
+            per_glyph == other.per_glyph &&
+            align == other.align &&
             is_approx(size_in_mm, other.size_in_mm) && 
             is_approx(boldness, other.boldness) &&
-            is_approx(skew, other.skew) &&
-            is_approx(distance, other.distance) &&
-            is_approx(angle, other.angle);
+            is_approx(skew, other.skew);
     }
 
     // undo / redo stack recovery
     template<class Archive> void save(Archive &ar) const
     {
-        ar(emboss, use_surface, size_in_mm);
+        ar(size_in_mm, per_glyph, align.first, align.second);
         cereal::save(ar, char_gap);
         cereal::save(ar, line_gap);
         cereal::save(ar, boldness);
         cereal::save(ar, skew);
-        cereal::save(ar, distance);
-        cereal::save(ar, angle);
         cereal::save(ar, collection_number);
-        cereal::save(ar, family);
-        cereal::save(ar, face_name);
-        cereal::save(ar, style);
-        cereal::save(ar, weight);        
     }
     template<class Archive> void load(Archive &ar)
     {
-        ar(emboss, use_surface, size_in_mm);
+        ar(size_in_mm, per_glyph, align.first, align.second);
         cereal::load(ar, char_gap);
         cereal::load(ar, line_gap);
         cereal::load(ar, boldness);
         cereal::load(ar, skew);
-        cereal::load(ar, distance);
-        cereal::load(ar, angle);
         cereal::load(ar, collection_number);
-        cereal::load(ar, family);
-        cereal::load(ar, face_name);
-        cereal::load(ar, style);
-        cereal::load(ar, weight);
     }
 };
 
@@ -194,9 +161,7 @@ struct EmbossStyle
     }
 
     // undo / redo stack recovery
-    template<class Archive> void serialize(Archive &ar){
-        ar(name, path, type, prop);
-    }
+    template<class Archive> void serialize(Archive &ar){ ar(name, path, type, prop); }
 };
 
 // Emboss style name inside vector is unique
@@ -217,21 +182,8 @@ struct TextConfiguration
     // Embossed text value
     std::string text = "None";
 
-    // !!! Volume stored in .3mf has transformed vertices.
-    // (baked transformation into vertices position)
-    // Only place for fill this is when load from .3mf 
-    // This is correct volume transformation
-    std::optional<Transform3d> fix_3mf_tr;
-
     // undo / redo stack recovery
-    template<class Archive> void save(Archive &ar) const{
-        ar(text, style); 
-        cereal::save(ar, fix_3mf_tr);
-    }
-    template<class Archive> void load(Archive &ar){
-        ar(text, style); 
-        cereal::load(ar, fix_3mf_tr);
-    }
+    template<class Archive> void serialize(Archive &ar) { ar(style, text); }
 };    
 
 } // namespace Slic3r

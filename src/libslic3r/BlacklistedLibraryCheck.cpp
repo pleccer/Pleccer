@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2021 David Kocík @kocikdav, Vojtěch Bubník @bubnikv
+///|/ Copyright (c) 2021 Justin Schuh @jschuh
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "BlacklistedLibraryCheck.hpp"
 
 #include <cstdio>

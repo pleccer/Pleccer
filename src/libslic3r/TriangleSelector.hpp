@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2019 - 2021 Lukáš Hejl @hejllukas, Vojtěch Bubník @bubnikv, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef libslic3r_TriangleSelector_hpp_
 #define libslic3r_TriangleSelector_hpp_
 

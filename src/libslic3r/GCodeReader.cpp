@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2017 - 2023 Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "GCodeReader.hpp"
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -195,10 +199,11 @@ bool GCodeReader::parse_file(const std::string &file, callback_t callback)
     return this->parse_file_internal(file, callback, [](size_t){});
 }
 
-bool GCodeReader::parse_file(const std::string &file, callback_t callback, std::vector<size_t> &lines_ends)
+bool GCodeReader::parse_file(const std::string& file, callback_t callback, std::vector<std::vector<size_t>>& lines_ends)
 {
     lines_ends.clear();
-    return this->parse_file_internal(file, callback, [&lines_ends](size_t file_pos){ lines_ends.emplace_back(file_pos); });
+    lines_ends.push_back(std::vector<size_t>());
+    return this->parse_file_internal(file, callback, [&lines_ends](size_t file_pos) { lines_ends.front().emplace_back(file_pos); });
 }
 
 bool GCodeReader::parse_file_raw(const std::string &filename, raw_line_callback_t line_callback)
@@ -232,41 +237,56 @@ const char* GCodeReader::axis_pos(const char *raw_str, char axis)
 
 bool GCodeReader::GCodeLine::has(char axis) const
 {
-    const char *c = axis_pos(m_raw.c_str(), axis);
-    return c != nullptr;
+    return GCodeReader::axis_pos(this->raw().c_str(), axis);
+}
+
+std::string_view GCodeReader::GCodeLine::axis_pos(char axis) const
+{
+    const std::string &s = this->raw();
+    const char *c = GCodeReader::axis_pos(this->raw().c_str(), axis);
+    return c ? std::string_view{ c, s.size() - (c - s.data()) } : std::string_view();
+}
+
+bool GCodeReader::GCodeLine::has_value(std::string_view axis_pos, float &value)
+{
+    if (const char *c = axis_pos.data(); c) {
+        // Try to parse the numeric value.
+        double v = 0.;
+        const char *end = axis_pos.data() + axis_pos.size();
+        auto [pend, ec] = fast_float::from_chars(++ c, end, v);
+        if (pend != c && is_end_of_word(*pend)) {
+            // The axis value has been parsed correctly.
+            value = float(v);
+            return true;
+        }
+    }
+    return false;
 }
 
 bool GCodeReader::GCodeLine::has_value(char axis, float &value) const
 {
     assert(is_decimal_separator_point());
-    const char *c = axis_pos(m_raw.c_str(), axis);
-    if (c == nullptr)
-        return false;
-    // Try to parse the numeric value.
-    char   *pend = nullptr;
-    double  v = strtod(++ c, &pend);
-    if (pend != nullptr && is_end_of_word(*pend)) {
-        // The axis value has been parsed correctly.
-        value = float(v);
-        return true;
+    return this->has_value(this->axis_pos(axis), value);
+}
+
+bool GCodeReader::GCodeLine::has_value(std::string_view axis_pos, int &value)
+{
+    if (const char *c = axis_pos.data(); c) {
+        // Try to parse the numeric value.
+        char   *pend = nullptr;
+        long    v = strtol(++ c, &pend, 10);
+        if (pend != nullptr && is_end_of_word(*pend)) {
+            // The axis value has been parsed correctly.
+            value = int(v);
+            return true;
+        }
     }
     return false;
 }
 
 bool GCodeReader::GCodeLine::has_value(char axis, int &value) const
 {
-    const char *c = axis_pos(m_raw.c_str(), axis);
-    if (c == nullptr)
-        return false;
-    // Try to parse the numeric value.
-    char   *pend = nullptr;
-    long    v = strtol(++ c, &pend, 10);
-    if (pend != nullptr && is_end_of_word(*pend)) {
-        // The axis value has been parsed correctly.
-        value = int(v);
-        return true;
-    }
-    return false;
+    return this->has_value(this->axis_pos(axis), value);
 }
 
 void GCodeReader::GCodeLine::set(const GCodeReader &reader, const Axis axis, const float new_value, const int decimal_digits)

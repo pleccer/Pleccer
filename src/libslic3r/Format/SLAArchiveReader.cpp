@@ -1,50 +1,23 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Tomáš Mészáros @tamasmeszaros, Pavel Mikuš @Godrak, Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "SLAArchiveReader.hpp"
 #include "SL1.hpp"
 #include "SL1_SVG.hpp"
+#include "I18N.hpp"
 
 #include "libslic3r/SlicesToTriangleMesh.hpp"
 
 #include <boost/filesystem/path.hpp>
 #include <boost/algorithm/string.hpp>
 
-constexpr const char * L(const char * str) { return str; }
+#include "SLAArchiveFormatRegistry.hpp"
 
 #include <array>
 #include <map>
 
 namespace Slic3r {
-
-namespace {
-
-// Factory function that returns an implementation of SLAArchiveReader.
-using ArchiveFactory = std::function<
-    std::unique_ptr<SLAArchiveReader>(const std::string       &fname,
-                                      SLAImportQuality         quality,
-                                      const ProgrFn & progr)>;
-
-// Entry in the global registry of readable archive formats.
-struct ArchiveEntry {
-    const char *descr;
-    std::vector<const char *> extensions;
-    ArchiveFactory factoryfn;
-};
-
-// This is where the readable archive formats are registered.
-static const std::map<std::string, ArchiveEntry> REGISTERED_ARCHIVES {
-    {
-        "SL1",
-        { L("SL1 / SL1S archive files"), {"sl1", "sl1s", "zip"},
-         [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) { return std::make_unique<SL1Reader>(fname, quality, progr); } }
-    },
-    {
-        "SL2",
-        { L("SL2 archive files"), {"sl2", "sl1_svg"/*, "zip"*/}, // also a zip but unnecessary hassle to implement single extension for multiple archives
-         [] (const std::string &fname, SLAImportQuality quality, const ProgrFn &progr) { return std::make_unique<SL1_SVGReader>(fname, quality, progr); }}
-    },
-    // TODO: pwmx and future others.
-};
-
-} // namespace
 
 std::unique_ptr<SLAArchiveReader> SLAArchiveReader::create(
     const std::string       &fname,
@@ -64,11 +37,13 @@ std::unique_ptr<SLAArchiveReader> SLAArchiveReader::create(
 
     std::unique_ptr<SLAArchiveReader> ret;
 
-    auto arch_from = REGISTERED_ARCHIVES.begin();
-    auto arch_to   = REGISTERED_ARCHIVES.end();
+    auto registry = registered_sla_archives();
 
-    auto arch_it = REGISTERED_ARCHIVES.find(format_id);
-    if (arch_it != REGISTERED_ARCHIVES.end()) {
+    auto arch_from = registry.begin();
+    auto arch_to   = registry.end();
+
+    auto arch_it = registry.find(ArchiveEntry{format_id.c_str()});
+    if (arch_it != registry.end()) {
         arch_from = arch_it;
         arch_to   = arch_it;
     }
@@ -77,50 +52,21 @@ std::unique_ptr<SLAArchiveReader> SLAArchiveReader::create(
         if (ext.front() == '.')
             ext.erase(ext.begin());
 
-        auto extcmp = [&ext](const auto &e) { return e == ext; };
-
-        for (auto it = arch_from; it != arch_to; ++it) {
-            const auto &[format_id, entry] = *it;
-            if (std::any_of(entry.extensions.begin(), entry.extensions.end(), extcmp))
-                ret = entry.factoryfn(fname, quality, progr);
+        for (auto it = arch_from; !ret && it != arch_to; ++it) {
+            const auto &entry = *it;
+            if (entry.rdfactoryfn) {
+                auto extensions = get_extensions(entry);
+                for (const std::string& supportedext : extensions) {
+                    if (ext == supportedext) {
+                        ret = entry.rdfactoryfn(fname, quality, progr);
+                        break;
+                    }
+                }
+            }
         }
     }
 
     return ret;
-}
-
-const std::vector<const char *> &SLAArchiveReader::registered_archives()
-{
-    static std::vector<const char*> archnames;
-
-    if (archnames.empty()) {
-        archnames.reserve(REGISTERED_ARCHIVES.size());
-
-        for (auto &[name, _] : REGISTERED_ARCHIVES)
-            archnames.emplace_back(name.c_str());
-    }
-
-    return archnames;
-}
-
-std::vector<const char *> SLAArchiveReader::get_extensions(const char *archtype)
-{
-    auto it = REGISTERED_ARCHIVES.find(archtype);
-
-    if (it != REGISTERED_ARCHIVES.end())
-        return it->second.extensions;
-
-    return {};
-}
-
-const char *SLAArchiveReader::get_description(const char *archtype)
-{
-    auto it = REGISTERED_ARCHIVES.find(archtype);
-
-    if (it != REGISTERED_ARCHIVES.end())
-        return it->second.descr;
-
-    return nullptr;
 }
 
 struct SliceParams { double layerh = 0., initial_layerh = 0.; };

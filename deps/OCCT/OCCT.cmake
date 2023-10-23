@@ -1,3 +1,7 @@
+#/|/ Copyright (c) Prusa Research 2022 Tomáš Mészáros @tamasmeszaros
+#/|/
+#/|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+#/|/
 prusaslicer_add_cmake_project(OCCT
     #LMBBS: changed version to 7.6.2
     URL https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_6_2.zip

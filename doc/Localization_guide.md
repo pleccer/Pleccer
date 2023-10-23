@@ -36,7 +36,7 @@ Each string resource in PrusaSlicer available for translation needs to be explic
 ```C++
 auto msg = L("This message to be localized")
 ```
-To get translated text use one of needed macro/function (`_(s)` or `_CHB(s)` ).
+To get translated text use needed macro/function (`_(s)`).
 If you add new file resource, add it to the list of files containing macro `L()`
 
 ### Scenario 4. How do I use GNUgettext to localize my own application taking PrusaSlicer as an example

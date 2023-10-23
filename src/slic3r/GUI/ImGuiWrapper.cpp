@@ -1,3 +1,8 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, David Kocík @kocikdav, Vojtěch Bubník @bubnikv, Tomáš Mészáros @tamasmeszaros, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2019 Jason Tibbitts @jasontibbitts
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "ImGuiWrapper.hpp"
 
 #include <cstdio>
@@ -67,6 +72,7 @@ static const std::map<const wchar_t, std::string> font_icons = {
     {ImGui::InfoMarkerSmall       , "notification_info"             },
     {ImGui::PlugMarker            , "plug"                          },
     {ImGui::DowelMarker           , "dowel"                         },
+    {ImGui::SnapMarker            , "snap"                          },
 };
 
 static const std::map<const wchar_t, std::string> font_icons_large = {
@@ -104,6 +110,8 @@ static const std::map<const wchar_t, std::string> font_icons_large = {
     {ImGui::PauseHoverButton        , "notification_pause_hover"        },
     {ImGui::OpenButton              , "notification_open"               },
     {ImGui::OpenHoverButton         , "notification_open_hover"         },
+    {ImGui::SlaViewOriginal         , "sla_view_original"               },
+    {ImGui::SlaViewProcessed        , "sla_view_processed"              },
 };
 
 static const std::map<const wchar_t, std::string> font_icons_extra_large = {
@@ -175,7 +183,7 @@ void ImGuiWrapper::set_language(const std::string &language)
     m_font_cjk = false;
     if (lang == "cs" || lang == "pl" || lang == "hu") {
         ranges = ranges_latin2;
-    } else if (lang == "ru" || lang == "uk") {
+    } else if (lang == "ru" || lang == "uk" || lang == "be") {
         ranges = ImGui::GetIO().Fonts->GetGlyphRangesCyrillic(); // Default + about 400 Cyrillic characters
     } else if (lang == "tr") {
         ranges = ranges_turkish;
@@ -460,7 +468,7 @@ bool ImGuiWrapper::button(const wxString &label, const wxString& tooltip)
 
     if (!tooltip.IsEmpty() && ImGui::IsItemHovered()) {
         auto tooltip_utf8 = into_u8(tooltip);
-        ImGui::SetTooltip(tooltip_utf8.c_str());
+        ImGui::SetTooltip(tooltip_utf8.c_str(), nullptr);
     }
 
     return ret;
@@ -488,6 +496,18 @@ bool ImGuiWrapper::radio_button(const wxString &label, bool active)
 {
     auto label_utf8 = into_u8(label);
     return ImGui::RadioButton(label_utf8.c_str(), active);
+}
+
+void ImGuiWrapper::draw_icon(ImGuiWindow& window, const ImVec2& pos, float size, wchar_t icon_id)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    const ImTextureID tex_id = io.Fonts->TexID;
+    const float tex_w = static_cast<float>(io.Fonts->TexWidth);
+    const float tex_h = static_cast<float>(io.Fonts->TexHeight);
+    const ImFontAtlas::CustomRect* const rect = GetTextureCustomRect(icon_id);
+    const ImVec2 uv0 = { static_cast<float>(rect->X) / tex_w, static_cast<float>(rect->Y) / tex_h };
+    const ImVec2 uv1 = { static_cast<float>(rect->X + rect->Width) / tex_w, static_cast<float>(rect->Y + rect->Height) / tex_h };
+    window.DrawList->AddImage(tex_id, pos, { pos.x + size, pos.y + size }, uv0, uv1, ImGuiWrapper::to_ImU32({ 1.0f, 1.0f, 1.0f, 1.0f }));
 }
 
 bool ImGuiWrapper::draw_radio_button(const std::string& name, float size, bool active,
@@ -625,6 +645,8 @@ bool ImGuiWrapper::slider_float(const char* label, float* v, float v_min, float 
     m_last_slider_status.edited = ImGui::IsItemEdited();
     m_last_slider_status.clicked = ImGui::IsItemClicked();
     m_last_slider_status.deactivated_after_edit = ImGui::IsItemDeactivatedAfterEdit();
+    if (!m_last_slider_status.can_take_snapshot)
+        m_last_slider_status.can_take_snapshot = ImGui::IsItemClicked();
 
     if (!tooltip.empty() && ImGui::IsItemHovered())
         this->tooltip(into_u8(tooltip).c_str(), max_tooltip_width);
@@ -651,8 +673,9 @@ bool ImGuiWrapper::slider_float(const char* label, float* v, float v_min, float 
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, { 0.4f, 0.4f, 0.4f, 1.0f });
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, { 0.4f, 0.4f, 0.4f, 1.0f });
 
+        int frame_padding = style.ItemSpacing.y / 2; // keep same line height for input and slider
         const ImTextureID tex_id = io.Fonts->TexID;
-        if (image_button(tex_id, size, uv0, uv1, -1, ImVec4(0.0, 0.0, 0.0, 0.0), ImVec4(1.0, 1.0, 1.0, 1.0), ImGuiButtonFlags_PressedOnClick)) {
+        if (image_button(tex_id, size, uv0, uv1, frame_padding, ImVec4(0.0, 0.0, 0.0, 0.0), ImVec4(1.0, 1.0, 1.0, 1.0), ImGuiButtonFlags_PressedOnClick)) {
             if (!slider_editing)
                 ImGui::SetKeyboardFocusHere(-1);
             else
@@ -760,27 +783,34 @@ bool ImGuiWrapper::image_button(const wchar_t icon, const wxString& tooltip)
     return res;
 }
 
-bool ImGuiWrapper::combo(const wxString& label, const std::vector<std::string>& options, int& selection, ImGuiComboFlags flags)
+bool ImGuiWrapper::combo(const wxString& label, const std::vector<std::string>& options, int& selection, ImGuiComboFlags flags/* = 0*/, float label_width/* = 0.0f*/, float item_width/* = 0.0f*/)
+{
+    return combo(into_u8(label), options, selection, flags, label_width, item_width);
+}
+
+bool ImGuiWrapper::combo(const std::string& label, const std::vector<std::string>& options, int& selection, ImGuiComboFlags flags/* = 0*/, float label_width/* = 0.0f*/, float item_width/* = 0.0f*/)
 {
     // this is to force the label to the left of the widget:
-    if (!label.empty()) {
+    const bool hidden_label = boost::starts_with(label, "##");
+    if (!label.empty() && !hidden_label) {
         text(label);
-        ImGui::SameLine();
+        ImGui::SameLine(label_width);
     }
+    ImGui::PushItemWidth(item_width);
 
     int selection_out = selection;
     bool res = false;
 
     const char *selection_str = selection < int(options.size()) && selection >= 0 ? options[selection].c_str() : "";
-    if (ImGui::BeginCombo("", selection_str, flags)) {
+    if (ImGui::BeginCombo(hidden_label ? label.c_str() : ("##" + label).c_str(), selection_str, flags)) {
         for (int i = 0; i < (int)options.size(); i++) {
             if (ImGui::Selectable(options[i].c_str(), i == selection)) {
                 selection_out = i;
+                res = true;
             }
         }
 
         ImGui::EndCombo();
-        res = true;
     }
 
     selection = selection_out;
@@ -1082,7 +1112,7 @@ void ImGuiWrapper::search_list(const ImVec2& size_, bool (*items_getter)(int, co
         // The press on Esc key invokes editing of InputText (removes last changes)
         // So we should save previous value...
         std::string str = search_str;
-        ImGui::InputTextEx("", NULL, search_str, 40, search_size, ImGuiInputTextFlags_AutoSelectAll, NULL, NULL);
+        ImGui::InputTextEx("", NULL, search_str, 240, search_size, ImGuiInputTextFlags_AutoSelectAll, NULL, NULL);
         edited = ImGui::IsItemEdited();
         if (edited)
             hovered_id = 0;
@@ -1369,6 +1399,52 @@ bool ImGuiWrapper::slider_optional_int(const char         *label,
     } else return false;
 }
 
+std::optional<ImVec2> ImGuiWrapper::change_window_position(const char *window_name, bool try_to_fix) {
+    ImGuiWindow *window = ImGui::FindWindowByName(window_name);
+    // is window just created
+    if (window == NULL)
+        return {};
+
+    // position of window on screen
+    ImVec2 position = window->Pos;
+    ImVec2 size     = window->SizeFull;
+
+    // screen size
+    ImVec2 screen = ImGui::GetMainViewport()->Size;
+
+    std::optional<ImVec2> output_window_offset;
+    if (position.x < 0) {
+        if (position.y < 0)
+            // top left
+            output_window_offset = ImVec2(0, 0);
+        else
+            // only left
+            output_window_offset = ImVec2(0, position.y);
+    } else if (position.y < 0) {
+        // only top
+        output_window_offset = ImVec2(position.x, 0);
+    } else if (screen.x < (position.x + size.x)) {
+        if (screen.y < (position.y + size.y))
+            // right bottom
+            output_window_offset = ImVec2(screen.x - size.x, screen.y - size.y);
+        else
+            // only right
+            output_window_offset = ImVec2(screen.x - size.x, position.y);
+    } else if (screen.y < (position.y + size.y)) {
+        // only bottom
+        output_window_offset = ImVec2(position.x, screen.y - size.y);
+    }
+
+    if (!try_to_fix && output_window_offset.has_value())
+        output_window_offset = ImVec2(-1, -1); // Put on default position
+
+    return output_window_offset;
+}
+
+void ImGuiWrapper::left_inputs() {
+    ImGui::ClearActiveID();
+}
+
 std::string ImGuiWrapper::trunc(const std::string &text,
                                 float              width,
                                 const char *       tail)
@@ -1510,6 +1586,17 @@ void ImGuiWrapper::draw(
     }
 }
 
+void ImGuiWrapper::draw_cross_hair(const ImVec2 &position, float radius, ImU32 color, int num_segments, float thickness) {
+    auto draw_list = ImGui::GetOverlayDrawList();
+    draw_list->AddCircle(position, radius, color, num_segments, thickness);
+    auto dirs = {ImVec2{0, 1}, ImVec2{1, 0}, ImVec2{0, -1}, ImVec2{-1, 0}};
+    for (const ImVec2 &dir : dirs) {
+        ImVec2 start(position.x + dir.x * 0.5 * radius, position.y + dir.y * 0.5 * radius);
+        ImVec2 end(position.x + dir.x * 1.5 * radius, position.y + dir.y * 1.5 * radius);
+        draw_list->AddLine(start, end, color, thickness);
+    }
+}
+
 bool ImGuiWrapper::contain_all_glyphs(const ImFont      *font,
                                      const std::string &text)
 {
@@ -1605,6 +1692,8 @@ void ImGuiWrapper::init_font(bool compress)
     ImFontGlyphRangesBuilder builder;
 	builder.AddRanges(m_glyph_ranges);
 
+    builder.AddChar(ImWchar(0x2026)); // …
+
     if (m_font_cjk) {
         // This is a temporary fix of https://github.com/prusa3d/PrusaSlicer/issues/8171. The translation
         // contains characters not in the ImGui ranges for simplified Chinese. For now, just add them manually.
@@ -1663,52 +1752,36 @@ void ImGuiWrapper::init_font(bool compress)
     int width, height;
     io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);   // Load as RGBA 32-bits (75% of the memory is wasted, but default font is so small) because it is more likely to be compatible with user's existing shaders. If your ImTextureId represent a higher-level concept than just a GL texture id, consider calling GetTexDataAsAlpha8() instead to save on GPU memory.
 
-    // Fill rectangles from the SVG-icons
-    for (auto icon : font_icons) {
+    auto load_icon_from_svg = [this, &io, pixels, width, &rect_id](const std::pair<const wchar_t, std::string> icon, int icon_sz) {
         if (const ImFontAtlas::CustomRect* rect = io.Fonts->GetCustomRectByIndex(rect_id)) {
             assert(rect->Width == icon_sz);
             assert(rect->Height == icon_sz);
             std::vector<unsigned char> raw_data = load_svg(icon.second, icon_sz, icon_sz);
-            const ImU32* pIn = (ImU32*)raw_data.data();
-            for (int y = 0; y < icon_sz; y++) {
-                ImU32* pOut = (ImU32*)pixels + (rect->Y + y) * width + (rect->X);
-                for (int x = 0; x < icon_sz; x++)
-                    *pOut++ = *pIn++;
+            if (!raw_data.empty()) {
+                const ImU32* pIn = (ImU32*)raw_data.data();
+                for (int y = 0; y < icon_sz; y++) {
+                    ImU32* pOut = (ImU32*)pixels + (rect->Y + y) * width + (rect->X);
+                    for (int x = 0; x < icon_sz; x++)
+                        *pOut++ = *pIn++;
+                }
             }
         }
         rect_id++;
+    };
+
+    // Fill rectangles from the SVG-icons
+    for (auto icon : font_icons) {
+        load_icon_from_svg(icon, icon_sz);
     }
 
     icon_sz *= 2; // default size of large icon is 32 px
     for (auto icon : font_icons_large) {
-        if (const ImFontAtlas::CustomRect* rect = io.Fonts->GetCustomRectByIndex(rect_id)) {
-            assert(rect->Width == icon_sz);
-            assert(rect->Height == icon_sz);
-            std::vector<unsigned char> raw_data = load_svg(icon.second, icon_sz, icon_sz);
-            const ImU32* pIn = (ImU32*)raw_data.data();
-            for (int y = 0; y < icon_sz; y++) {
-                ImU32* pOut = (ImU32*)pixels + (rect->Y + y) * width + (rect->X);
-                for (int x = 0; x < icon_sz; x++)
-                    *pOut++ = *pIn++;
-            }
-        }
-        rect_id++;
+        load_icon_from_svg(icon, icon_sz);
     }
 
     icon_sz *= 2; // default size of extra large icon is 64 px
     for (auto icon : font_icons_extra_large) {
-        if (const ImFontAtlas::CustomRect* rect = io.Fonts->GetCustomRectByIndex(rect_id)) {
-            assert(rect->Width == icon_sz);
-            assert(rect->Height == icon_sz);
-            std::vector<unsigned char> raw_data = load_svg(icon.second, icon_sz, icon_sz);
-            const ImU32* pIn = (ImU32*)raw_data.data();
-            for (int y = 0; y < icon_sz; y++) {
-                ImU32* pOut = (ImU32*)pixels + (rect->Y + y) * width + (rect->X);
-                for (int x = 0; x < icon_sz; x++)
-                    *pOut++ = *pIn++;
-            }
-        }
-        rect_id++;
+        load_icon_from_svg(icon, icon_sz);
     }
 
     // Upload texture to graphics system
@@ -2056,7 +2129,11 @@ const char* ImGuiWrapper::clipboard_get(void* user_data)
     const char* res = "";
 
     if (wxTheClipboard->Open()) {
-        if (wxTheClipboard->IsSupported(wxDF_TEXT)) {
+        if (wxTheClipboard->IsSupported(wxDF_TEXT)
+#if wxUSE_UNICODE
+        || wxTheClipboard->IsSupported(wxDF_UNICODETEXT)
+#endif // wxUSE_UNICODE
+            ) {
             wxTextDataObject data;
             wxTheClipboard->GetData(data);
 

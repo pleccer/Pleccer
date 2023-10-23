@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include "RotoptimizeJob.hpp"
 
 #include "libslic3r/MTUtils.hpp"
@@ -122,6 +126,16 @@ void RotoptimizeJob::finalize(bool canceled, std::exception_ptr &eptr)
 
     if (!canceled)
         m_plater->update();
+}
+
+std::string RotoptimizeJob::get_method_name(size_t i)
+{
+    return into_u8(_(Methods[i].name));
+}
+
+std::string RotoptimizeJob::get_method_description(size_t i)
+{
+    return into_u8(_(Methods[i].descr));
 }
 
 }}

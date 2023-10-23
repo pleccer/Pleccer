@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2020 - 2023 Vojtěch Bubník @bubnikv, Pavel Mikuš @Godrak, Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena, Lukáš Hejl @hejllukas
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 // AABB tree built upon external data set, referencing the external data by integer indices.
 // The AABB tree balancing and traversal (ray casting, closest triangle of an indexed triangle mesh)
 // were adapted from libigl AABB.{cpp,hpp} Copyright (C) 2015 Alec Jacobson <alecjacobson@gmail.com>
@@ -13,6 +17,7 @@
 
 #include <Eigen/Geometry>
 
+#include "BoundingBox.hpp"
 #include "Utils.hpp" // for next_highest_power_of_2()
 
 // Definition of the ray intersection hit structure.
@@ -216,6 +221,23 @@ using Tree2f = Tree<2, float>;
 using Tree3f = Tree<3, float>;
 using Tree2d = Tree<2, double>;
 using Tree3d = Tree<3, double>;
+
+// Wrap a 2D Slic3r own BoundingBox to be passed to Tree::build() and similar
+// to build an AABBTree over coord_t 2D bounding boxes.
+class BoundingBoxWrapper {
+public:
+	using BoundingBox = Eigen::AlignedBox<coord_t, 2>;
+	BoundingBoxWrapper(const size_t idx, const Slic3r::BoundingBox &bbox) :
+        m_idx(idx),
+        // Inflate the bounding box a bit to account for numerical issues.
+        m_bbox(bbox.min - Point(SCALED_EPSILON, SCALED_EPSILON), bbox.max + Point(SCALED_EPSILON, SCALED_EPSILON)) {}
+    size_t             idx() const { return m_idx; }
+    const BoundingBox& bbox() const { return m_bbox; }
+    Point              centroid() const { return ((m_bbox.min().cast<int64_t>() + m_bbox.max().cast<int64_t>()) / 2).cast<int32_t>(); }
+private:
+    size_t             m_idx;
+    BoundingBox		   m_bbox;
+};
 
 namespace detail {
 	template<typename AVertexType, typename AIndexedFaceType, typename ATreeType, typename AVectorType>

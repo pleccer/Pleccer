@@ -1,3 +1,14 @@
+///|/ Copyright (c) Prusa Research 2017 - 2023 Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, Filip Sykala @Jony01, Vojtěch Bubník @bubnikv, David Kocík @kocikdav, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2017 Eyal Soha @eyal0
+///|/ Copyright (c) Slic3r 2015 Alessandro Ranellucci @alranel
+///|/
+///|/ ported from lib/Slic3r/GUI/3DScene.pm:
+///|/ Copyright (c) Prusa Research 2016 - 2019 Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka
+///|/ Copyright (c) Slic3r 2013 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2013 Guillaume Seguin @iXce
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_3DScene_hpp_
 #define slic3r_3DScene_hpp_
 
@@ -212,23 +223,15 @@ public:
 
     const Geometry::Transformation& get_instance_transformation() const { return m_instance_transformation; }
     void set_instance_transformation(const Geometry::Transformation& transformation) { m_instance_transformation = transformation; set_bounding_boxes_as_dirty(); }
-#if ENABLE_WORLD_COORDINATE
     void set_instance_transformation(const Transform3d& transform) { m_instance_transformation.set_matrix(transform); set_bounding_boxes_as_dirty(); }
 
     Vec3d get_instance_offset() const { return m_instance_transformation.get_offset(); }
-#else
-    const Vec3d& get_instance_offset() const { return m_instance_transformation.get_offset(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_instance_offset(Axis axis) const { return m_instance_transformation.get_offset(axis); }
 
     void set_instance_offset(const Vec3d& offset) { m_instance_transformation.set_offset(offset); set_bounding_boxes_as_dirty(); }
     void set_instance_offset(Axis axis, double offset) { m_instance_transformation.set_offset(axis, offset); set_bounding_boxes_as_dirty(); }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_instance_rotation() const { return m_instance_transformation.get_rotation(); }
-#else
-    const Vec3d& get_instance_rotation() const { return m_instance_transformation.get_rotation(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_instance_rotation(Axis axis) const { return m_instance_transformation.get_rotation(axis); }
 
     void set_instance_rotation(const Vec3d& rotation) { m_instance_transformation.set_rotation(rotation); set_bounding_boxes_as_dirty(); }
@@ -240,11 +243,7 @@ public:
     void set_instance_scaling_factor(const Vec3d& scaling_factor) { m_instance_transformation.set_scaling_factor(scaling_factor); set_bounding_boxes_as_dirty(); }
     void set_instance_scaling_factor(Axis axis, double scaling_factor) { m_instance_transformation.set_scaling_factor(axis, scaling_factor); set_bounding_boxes_as_dirty(); }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_instance_mirror() const { return m_instance_transformation.get_mirror(); }
-#else
-    const Vec3d& get_instance_mirror() const { return m_instance_transformation.get_mirror(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_instance_mirror(Axis axis) const { return m_instance_transformation.get_mirror(axis); }
 
     void set_instance_mirror(const Vec3d& mirror) { m_instance_transformation.set_mirror(mirror); set_bounding_boxes_as_dirty(); }
@@ -252,43 +251,27 @@ public:
 
     const Geometry::Transformation& get_volume_transformation() const { return m_volume_transformation; }
     void set_volume_transformation(const Geometry::Transformation& transformation) { m_volume_transformation = transformation; set_bounding_boxes_as_dirty(); }
-#if ENABLE_WORLD_COORDINATE
     void set_volume_transformation(const Transform3d& transform) { m_volume_transformation.set_matrix(transform); set_bounding_boxes_as_dirty(); }
 
     Vec3d get_volume_offset() const { return m_volume_transformation.get_offset(); }
-#else
-    const Vec3d& get_volume_offset() const { return m_volume_transformation.get_offset(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_volume_offset(Axis axis) const { return m_volume_transformation.get_offset(axis); }
 
     void set_volume_offset(const Vec3d& offset) { m_volume_transformation.set_offset(offset); set_bounding_boxes_as_dirty(); }
     void set_volume_offset(Axis axis, double offset) { m_volume_transformation.set_offset(axis, offset); set_bounding_boxes_as_dirty(); }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_volume_rotation() const { return m_volume_transformation.get_rotation(); }
-#else
-    const Vec3d& get_volume_rotation() const { return m_volume_transformation.get_rotation(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_volume_rotation(Axis axis) const { return m_volume_transformation.get_rotation(axis); }
 
     void set_volume_rotation(const Vec3d& rotation) { m_volume_transformation.set_rotation(rotation); set_bounding_boxes_as_dirty(); }
     void set_volume_rotation(Axis axis, double rotation) { m_volume_transformation.set_rotation(axis, rotation); set_bounding_boxes_as_dirty(); }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_volume_scaling_factor() const { return m_volume_transformation.get_scaling_factor(); }
-#else
-    const Vec3d& get_volume_scaling_factor() const { return m_volume_transformation.get_scaling_factor(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_volume_scaling_factor(Axis axis) const { return m_volume_transformation.get_scaling_factor(axis); }
 
     void set_volume_scaling_factor(const Vec3d& scaling_factor) { m_volume_transformation.set_scaling_factor(scaling_factor); set_bounding_boxes_as_dirty(); }
     void set_volume_scaling_factor(Axis axis, double scaling_factor) { m_volume_transformation.set_scaling_factor(axis, scaling_factor); set_bounding_boxes_as_dirty(); }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_volume_mirror() const { return m_volume_transformation.get_mirror(); }
-#else
-    const Vec3d& get_volume_mirror() const { return m_volume_transformation.get_mirror(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_volume_mirror(Axis axis) const { return m_volume_transformation.get_mirror(axis); }
 
     void set_volume_mirror(const Vec3d& mirror) { m_volume_transformation.set_mirror(mirror); set_bounding_boxes_as_dirty(); }
@@ -424,11 +407,21 @@ public:
 
 #if ENABLE_OPENGL_ES
     int load_wipe_tower_preview(
-        float pos_x, float pos_y, float width, float depth, float height, float rotation_angle, bool size_unknown, float brim_width, TriangleMesh* out_mesh = nullptr);
+        float pos_x, float pos_y, float width, float depth, const std::vector<std::pair<float, float>>& z_and_depth_pairs, float height, float cone_angle, float rotation_angle, bool size_unknown, float brim_width, TriangleMesh* out_mesh = nullptr);
 #else
     int load_wipe_tower_preview(
-        float pos_x, float pos_y, float width, float depth, float height, float rotation_angle, bool size_unknown, float brim_width);
+        float pos_x, float pos_y, float width, float depth, const std::vector<std::pair<float, float>>& z_and_depth_pairs, float height, float cone_angle, float rotation_angle, bool size_unknown, float brim_width);
 #endif // ENABLE_OPENGL_ES
+
+    // Load SLA auxiliary GLVolumes (for support trees or pad).
+    void load_object_auxiliary(
+        const SLAPrintObject* print_object,
+        int                             obj_idx,
+        // pairs of <instance_idx, print_instance_idx>
+        const std::vector<std::pair<size_t, size_t>>& instances,
+        SLAPrintObjectStep              milestone,
+        // Timestamp of the last change of the milestone
+        size_t                          timestamp);
 
     GLVolume* new_toolpath_volume(const ColorRGBA& rgba);
     GLVolume* new_nontoolpath_volume(const ColorRGBA& rgba);
@@ -468,9 +461,6 @@ public:
     void set_show_sinking_contours(bool show) { m_show_sinking_contours = show; }
     void set_show_non_manifold_edges(bool show) { m_show_non_manifold_edges = show; }
 
-    // returns true if all the volumes are completely contained in the print volume
-    // returns the containment state in the given out_state, if non-null
-    bool check_outside_state(const Slic3r::BuildVolume& build_volume, ModelInstanceEPrintVolumeState* out_state) const;
     void reset_outside_state();
 
     void update_colors_by_extruder(const DynamicPrintConfig* config);

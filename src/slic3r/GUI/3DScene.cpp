@@ -1,3 +1,14 @@
+///|/ Copyright (c) Prusa Research 2016 - 2023 Lukáš Matěna @lukasmatena, Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, Vojtěch Bubník @bubnikv, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, David Kocík @kocikdav, Vojtěch Král @vojtechkral
+///|/ Copyright (c) 2017 Eyal Soha @eyal0
+///|/ Copyright (c) Slic3r 2015 Alessandro Ranellucci @alranel
+///|/
+///|/ ported from lib/Slic3r/GUI/3DScene.pm:
+///|/ Copyright (c) Prusa Research 2016 - 2019 Vojtěch Bubník @bubnikv, Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka
+///|/ Copyright (c) Slic3r 2013 - 2016 Alessandro Ranellucci @alranel
+///|/ Copyright (c) 2013 Guillaume Seguin @iXce
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #include <GL/glew.h>
 
 #include "3DScene.hpp"
@@ -240,7 +251,7 @@ GLVolume::GLVolume(float r, float g, float b, float a)
 
 void GLVolume::set_render_color(bool force_transparent)
 {
-    bool outside = is_outside || is_below_printbed();
+    bool outside = is_outside || (!is_modifier && is_below_printbed());
 
     if (force_native_color || force_neutral_color) {
         if (outside && shader_outside_printer_detection_enabled)
@@ -480,18 +491,19 @@ int GLVolumeCollection::load_object_volume(
 
 #if ENABLE_OPENGL_ES
 int GLVolumeCollection::load_wipe_tower_preview(
-    float pos_x, float pos_y, float width, float depth, float height,
+    float pos_x, float pos_y, float width, float depth, const std::vector<std::pair<float, float>>& z_and_depth_pairs, float height, float cone_angle,
     float rotation_angle, bool size_unknown, float brim_width, TriangleMesh* out_mesh)
 #else
 int GLVolumeCollection::load_wipe_tower_preview(
-    float pos_x, float pos_y, float width, float depth, float height,
+    float pos_x, float pos_y, float width, float depth, const std::vector<std::pair<float, float>>& z_and_depth_pairs, float height, float cone_angle,
     float rotation_angle, bool size_unknown, float brim_width)
 #endif // ENABLE_OPENGL_ES
 {
-    if (depth < 0.01f)
-        return int(this->volumes.size() - 1);
     if (height == 0.0f)
         height = 0.1f;
+
+    static const float brim_height = 0.2f;
+//    const float scaled_brim_height = brim_height / height;
 
     TriangleMesh mesh;
     ColorRGBA color = ColorRGBA::DARK_YELLOW();
@@ -506,110 +518,21 @@ int GLVolumeCollection::load_wipe_tower_preview(
         depth = std::max(depth, 10.f);
         float min_width = 30.f;
 
-        const float scaled_brim_height = 0.2f / height;
-
         // We'll now create the box with jagged edge. y-coordinates of the pre-generated model
         // are shifted so that the front edge has y=0 and centerline of the back edge has y=depth:
-        // We split the box in three main pieces,
-        // the two laterals are identical and the central is the one containing the jagged geometry
-
-        // lateral parts generator
-        auto generate_lateral = [&](float min_x, float max_x) {
-            const std::vector<Vec3f> vertices = {
-                { min_x, -(depth + brim_width), 0.0f },
-                { max_x, -(depth + brim_width), 0.0f },
-                { min_x, -(depth + brim_width), scaled_brim_height },
-                { max_x, -(depth + brim_width), scaled_brim_height },
-                { min_x, -depth, scaled_brim_height },
-                { max_x, -depth, scaled_brim_height },
-                { min_x, -depth, 1.0f },
-                { max_x, -depth, 1.0f },
-                { min_x, 0.0f, 1.0f },
-                { max_x, 0.0f, 1.0f },
-                { min_x, 0.0f, scaled_brim_height },
-                { max_x, 0.0f, scaled_brim_height },
-                { min_x, brim_width, scaled_brim_height },
-                { max_x, brim_width, scaled_brim_height },
-                { min_x, brim_width, 0.0f },
-                { max_x, brim_width, 0.0f }
-            };
-            const std::vector<Vec3i> triangles = {
-                { 0, 1, 3 }, { 0, 3, 2 }, { 2, 3, 5 }, { 2, 5, 4 }, { 4, 5, 7 }, { 4, 7, 6 }, { 6, 7, 9 }, { 6, 9, 8 },
-                { 8, 9, 11 }, { 8, 11, 10 }, { 10, 11, 13 }, { 10, 13, 12 }, { 12, 13, 15 }, { 12, 15, 14 }, { 14, 15, 1 }, { 14, 1, 0 }
-            };
-
-            indexed_triangle_set its;
-            its.vertices.reserve(vertices.size());
-            for (const Vec3f& v : vertices) {
-                its.vertices.emplace_back(v.x(), v.y() + depth, v.z());
-            }
-            its.indices.reserve(triangles.size());
-            for (const Vec3i& t : triangles) {
-                its.indices.emplace_back(t);
-            }
-            return its;
-        };
-
-        // central parts generator
-        auto generate_central = [&]() {
-            const std::vector<Vec3f> vertices = {
-                { 38.453f, -(depth + brim_width), 0.0f },
-                { 61.547f, -(depth + brim_width), 0.0f },
-                { 38.453f, -(depth + brim_width), scaled_brim_height },
-                { 61.547f, -(depth + brim_width), scaled_brim_height },
-                { 38.453f, -depth, scaled_brim_height },
-                { 61.547f, -depth, scaled_brim_height },
-                { 38.453f, -depth, 1.0f },
-                { 61.547f, -depth, 1.0f },
-                { 38.453f, 0.0f, 1.0f },
-                { 38.453f + 0.57735f * brim_width, brim_width, 1.0f },
-                { 44.2265f, 10.0f, 1.0f },
-                { 50.0f - 0.57735f * brim_width, brim_width, 1.0f },
-                { 50.0f, 0.0f, 1.0f },
-                { 55.7735f, -10.0f, 1.0f },
-                { 61.547f, 0.0f, 1.0f },
-                { 38.453f, 0.0f, scaled_brim_height },
-                { 38.453f, brim_width, scaled_brim_height },
-                { 38.453f + 0.57735f * brim_width, brim_width, scaled_brim_height },
-                { 50.0f - 0.57735f * brim_width, brim_width, scaled_brim_height },
-                { 50.0f, 0.0f, scaled_brim_height },
-                { 55.7735f, -10.0f, scaled_brim_height },
-                { 61.547f, 0.0f, scaled_brim_height },
-                { 61.547f, brim_width, scaled_brim_height },
-                { 38.453f, brim_width, 0.0f },
-                { 38.453f + 0.57735f * brim_width, brim_width, 0.0f },
-                { 44.2265f, 10.0f, 0.0f },
-                { 50.0f - 0.57735f * brim_width, brim_width, 0.0f },
-                { 61.547f, brim_width, 0.0f }
-            };
-
-            const std::vector<Vec3i> triangles = {
-                { 0, 1, 3 }, { 0, 3, 2 }, { 2, 3, 5 }, { 2, 5, 4 }, { 4, 5, 7 }, { 4, 7, 6 }, { 7, 14, 13 }, { 7, 13, 6 },
-                { 6, 13, 12 }, { 6, 12, 8 }, { 8, 12, 11 }, { 8, 11, 9 }, { 9, 11, 10 }, { 18, 19, 22 }, { 22, 19, 21 }, { 19, 20, 21 },
-                { 15, 17, 16 }, { 17, 15, 8 }, { 17, 8, 9 }, { 21, 13, 14 }, { 21, 20, 13 }, { 20, 19, 12 }, { 20, 12, 13 }, { 19, 18, 11 },
-                { 19, 11, 12 }, { 27, 26, 18 }, { 27, 18, 22 }, { 26, 25, 18 }, { 18, 25, 11 }, { 11, 25, 10 }, { 25, 24, 17 }, { 25, 17, 9 },
-                { 25, 9, 10 }, { 24, 23, 16 }, { 24, 16, 17 }, { 1, 26, 27 }, { 1, 23, 26 }, { 1, 0, 23 }, { 0, 23, 24 }, { 24, 25, 26 }
-            };
-
-            indexed_triangle_set its;
-            its.vertices.reserve(vertices.size());
-            for (const Vec3f& v : vertices) {
-                its.vertices.emplace_back(v.x(), v.y() + depth, v.z());
-            }
-            its.indices.reserve(triangles.size());
-            for (const Vec3i& t : triangles) {
-                its.indices.emplace_back(t);
-            }
-            return its;
-        };
-
-        TriangleMesh tooth_mesh;
-        indexed_triangle_set data = generate_lateral(0.0f, 38.453f);
-        tooth_mesh.merge(TriangleMesh(std::move(data)));
-        data = generate_central();
-        tooth_mesh.merge(TriangleMesh(std::move(data)));
-        data = generate_lateral(61.547f, 100.0f);
-        tooth_mesh.merge(TriangleMesh(std::move(data)));
+        float out_points_idx[][3] = { { 0, -depth, 0 }, { 0, 0, 0 }, { 38.453f, 0, 0 }, { 61.547f, 0, 0 }, { 100.0f, 0, 0 }, { 100.0f, -depth, 0 }, { 55.7735f, -10.0f, 0 }, { 44.2265f, 10.0f, 0 },
+            { 38.453f, 0, 1 }, { 0, 0, 1 }, { 0, -depth, 1 }, { 100.0f, -depth, 1 }, { 100.0f, 0, 1 }, { 61.547f, 0, 1 }, { 55.7735f, -10.0f, 1 }, { 44.2265f, 10.0f, 1 } };
+        static constexpr const int out_facets_idx[][3] = {
+            { 0, 1, 2 }, { 3, 4, 5 }, { 6, 5, 0 }, { 3, 5, 6 }, { 6, 2, 7 }, { 6, 0, 2 }, { 8, 9, 10 }, { 11, 12, 13 }, { 10, 11, 14 }, { 14, 11, 13 }, { 15, 8, 14 },
+            { 8, 10, 14 }, { 3, 12, 4 }, { 3, 13, 12 }, { 6, 13, 3 }, { 6, 14, 13 }, { 7, 14, 6 }, { 7, 15, 14 }, { 2, 15, 7 }, { 2, 8, 15 }, { 1, 8, 2 }, { 1, 9, 8 },
+            { 0, 9, 1 }, { 0, 10, 9 }, { 5, 10, 0 }, { 5, 11, 10 }, { 4, 11, 5 }, { 4, 12, 11 } };
+        indexed_triangle_set its;
+        for (int i = 0; i < 16; ++i)
+            its.vertices.emplace_back(out_points_idx[i][0] / (100.f / min_width), out_points_idx[i][1] + depth, out_points_idx[i][2]);
+        its.indices.reserve(28);
+        for (const int* face : out_facets_idx)
+            its.indices.emplace_back(face);
+        TriangleMesh tooth_mesh(std::move(its));
 
         // We have the mesh ready. It has one tooth and width of min_width. We will now
         // append several of these together until we are close to the required width
@@ -617,86 +540,38 @@ int GLVolumeCollection::load_wipe_tower_preview(
         size_t n = std::max(1, int(width / min_width)); // How many shall be merged?
         for (size_t i = 0; i < n; ++i) {
             mesh.merge(tooth_mesh);
-            tooth_mesh.translate(100.0f, 0.0f, 0.0f);
+            tooth_mesh.translate(min_width, 0.f, 0.f);
         }
 
-        // Now we add the caps along the X axis
-        const float scaled_brim_width_x = brim_width * n * width / min_width;
-        auto generate_negx_cap = [&]() {
-            const std::vector<Vec3f> vertices = {
-                { -scaled_brim_width_x, -(depth + brim_width), 0.0f },
-                { 0.0f, -(depth + brim_width), 0.0f },
-                { -scaled_brim_width_x, -(depth + brim_width), scaled_brim_height },
-                { 0.0f, -(depth + brim_width), scaled_brim_height },
-                { 0.0f, -depth, scaled_brim_height },
-                { 0.0f, -depth, 1.0f },
-                { 0.0f, 0.0f, 1.0f },
-                { 0.0f, 0.0f, scaled_brim_height },
-                { 0.0f, brim_width, scaled_brim_height },
-                { -scaled_brim_width_x, brim_width, scaled_brim_height },
-                { 0.0f, brim_width, 0.0f },
-                { -scaled_brim_width_x, brim_width, 0.0f }
-            };
-
-            const std::vector<Vec3i> triangles = {
-                { 0, 1, 3 }, { 0, 3, 2 }, { 2, 3, 4 }, { 2, 4, 9 }, { 9, 4, 7 }, { 9, 7, 8 }, { 9, 8, 10 }, { 9, 10, 11 },
-                { 11, 10, 1 }, { 11, 1, 0 }, { 11, 0, 2 }, { 11, 2, 9 }, { 7, 4, 5 }, { 7, 5, 6 }
-            };
-
-            indexed_triangle_set its;
-            its.vertices.reserve(vertices.size());
-            for (const Vec3f& v : vertices) {
-                its.vertices.emplace_back(v.x(), v.y() + depth, v.z());
-            }
-            its.indices.reserve(triangles.size());
-            for (const Vec3i& t : triangles) {
-                its.indices.emplace_back(t);
-            }
-            return its;
-        };
-
-        auto generate_posx_cap = [&]() {
-            const float posx_cap_x = n * 100.0f;
-            const std::vector<Vec3f> vertices = {
-                { posx_cap_x, -(depth + brim_width), 0.0f },
-                { posx_cap_x + scaled_brim_width_x, -(depth + brim_width), 0.0f },
-                { posx_cap_x, -(depth + brim_width), scaled_brim_height },
-                { posx_cap_x + scaled_brim_width_x, -(depth + brim_width), scaled_brim_height },
-                { posx_cap_x, -depth, scaled_brim_height },
-                { posx_cap_x, -depth, 1.0f },
-                { posx_cap_x, 0.0f, 1.0f },
-                { posx_cap_x, 0.0f, scaled_brim_height },
-                { posx_cap_x, brim_width, scaled_brim_height },
-                { posx_cap_x + scaled_brim_width_x, brim_width, scaled_brim_height },
-                { posx_cap_x, brim_width, 0.0f },
-                { posx_cap_x + scaled_brim_width_x, brim_width, 0.0f }
-            };
-
-            const std::vector<Vec3i> triangles = {
-                { 0, 1, 3 }, { 0, 3, 2 }, { 2, 3, 4 }, { 4, 3, 9 }, { 4, 9, 7 }, { 7, 9, 8 }, { 8, 9, 11 }, { 8, 11, 10 },
-                { 10, 11, 1 }, { 10, 1, 0 }, { 1, 11, 9 }, { 1, 9, 3 }, { 4, 7, 6 }, { 4, 6, 5 }
-            };
-
-            indexed_triangle_set its;
-            its.vertices.reserve(vertices.size());
-            for (const Vec3f& v : vertices) {
-                its.vertices.emplace_back(v.x(), v.y() + depth, v.z());
-            }
-            its.indices.reserve(triangles.size());
-            for (const Vec3i& t : triangles) {
-                its.indices.emplace_back(t);
-            }
-            return its;
-        };
-
-        data = generate_negx_cap();
-        mesh.merge(TriangleMesh(std::move(data)));
-        data = generate_posx_cap();
-        mesh.merge(TriangleMesh(std::move(data)));
-        mesh.scale(Vec3f(width / (n * 100.0f), 1.0f, height)); // Scaling to proper width
+        mesh.scale(Vec3f(width / (n * min_width), 1.f, height)); // Scaling to proper width
     }
-    else
-        mesh = make_cube(width, depth, height);
+    else {
+        for (size_t i=1; i<z_and_depth_pairs.size(); ++i) {
+            TriangleMesh m = make_cube(width, z_and_depth_pairs[i-1].second, z_and_depth_pairs[i].first-z_and_depth_pairs[i-1].first);
+            m.translate(0.f, -z_and_depth_pairs[i-1].second/2.f + z_and_depth_pairs[0].second/2.f, z_and_depth_pairs[i-1].first);
+            mesh.merge(m);
+        }
+    }
+
+    // We'll make another mesh to show the brim (fixed layer height):
+    TriangleMesh brim_mesh = make_cube(width + 2.f * brim_width, depth + 2.f * brim_width, 0.2f);
+    brim_mesh.translate(-brim_width, -brim_width, 0.f);
+    mesh.merge(brim_mesh);
+
+    // Now the stabilization cone and its base.
+    const auto [R, scale_x] = WipeTower::get_wipe_tower_cone_base(width, height, depth, cone_angle);
+    if (R > 0.) {
+        TriangleMesh cone_mesh(its_make_cone(R, height));
+        cone_mesh.scale(Vec3f(1.f/scale_x, 1.f, 1.f));
+
+        TriangleMesh disk_mesh(its_make_cylinder(R, brim_height));
+        disk_mesh.scale(Vec3f(1. / scale_x, 1., 1.)); // Now it matches the base, which may be elliptic.
+        disk_mesh.scale(Vec3f(1.f + scale_x*brim_width/R, 1.f + brim_width/R, 1.f)); // Scale so the brim is not deformed.
+        cone_mesh.merge(disk_mesh);
+        cone_mesh.translate(width / 2., depth / 2., 0.);
+        mesh.merge(cone_mesh);
+    }
+
 
     volumes.emplace_back(new GLVolume(color));
     GLVolume& v = *volumes.back();
@@ -716,6 +591,89 @@ int GLVolumeCollection::load_wipe_tower_preview(
     v.is_wipe_tower = true;
     v.shader_outside_printer_detection_enabled = !size_unknown;
     return int(volumes.size() - 1);
+}
+
+// Load SLA auxiliary GLVolumes (for support trees or pad).
+// This function produces volumes for multiple instances in a single shot,
+// as some object specific mesh conversions may be expensive.
+void GLVolumeCollection::load_object_auxiliary(
+    const SLAPrintObject*           print_object,
+    int                             obj_idx,
+    // pairs of <instance_idx, print_instance_idx>
+    const std::vector<std::pair<size_t, size_t>>& instances,
+    SLAPrintObjectStep              milestone,
+    // Timestamp of the last change of the milestone
+    size_t                          timestamp)
+{
+    if (print_object->get_mesh_to_print() == nullptr)
+        return;
+    const Transform3d mesh_trafo_inv = print_object->trafo().inverse();
+
+    auto add_volume = [this, timestamp](int obj_idx, int inst_idx, const ModelInstance& model_instance, SLAPrintObjectStep step,
+        const TriangleMesh& mesh, const ColorRGBA& color, std::optional<const TriangleMesh> convex_hull = std::nullopt) {
+        if (mesh.empty())
+            return;
+
+        GLVolume& v = *this->volumes.emplace_back(new GLVolume(color));
+#if ENABLE_SMOOTH_NORMALS
+        v.model.init_from(mesh, true);
+#else
+        v.model.init_from(mesh);
+        v.model.set_color(color);
+        v.mesh_raycaster = std::make_unique<GUI::MeshRaycaster>(std::make_shared<const TriangleMesh>(mesh));
+#endif // ENABLE_SMOOTH_NORMALS
+        v.composite_id = GLVolume::CompositeID(obj_idx, -int(step), inst_idx);
+        v.geometry_id = std::pair<size_t, size_t>(timestamp, model_instance.id().id);
+        if (convex_hull.has_value())
+            v.set_convex_hull(*convex_hull);
+        v.is_modifier = false;
+        v.shader_outside_printer_detection_enabled = (step == slaposSupportTree || step == slaposDrillHoles);
+        v.set_instance_transformation(model_instance.get_transformation());
+    };
+
+    if (milestone == SLAPrintObjectStep::slaposDrillHoles) {
+        if (print_object->get_parts_to_slice().size() > 1) {
+            // Get the mesh.
+            TriangleMesh backend_mesh;
+            std::shared_ptr<const indexed_triangle_set> preview_mesh_ptr = print_object->get_mesh_to_print();
+            if (preview_mesh_ptr != nullptr)
+                backend_mesh = TriangleMesh(*preview_mesh_ptr);
+            if (!backend_mesh.empty()) {
+                backend_mesh.transform(mesh_trafo_inv);
+                TriangleMesh convex_hull = backend_mesh.convex_hull_3d();
+                for (const std::pair<size_t, size_t>& instance_idx : instances) {
+                    const ModelInstance& model_instance = *print_object->model_object()->instances[instance_idx.first];
+                    add_volume(obj_idx, (int)instance_idx.first, model_instance, slaposDrillHoles, backend_mesh, GLVolume::MODEL_COLOR[0], convex_hull);
+                }
+            }
+        }
+    }
+
+    // Get the support mesh.
+    if (milestone == SLAPrintObjectStep::slaposSupportTree) {
+        TriangleMesh supports_mesh = print_object->support_mesh();
+        if (!supports_mesh.empty()) {
+            supports_mesh.transform(mesh_trafo_inv);
+            TriangleMesh convex_hull = supports_mesh.convex_hull_3d();
+            for (const std::pair<size_t, size_t>& instance_idx : instances) {
+                const ModelInstance& model_instance = *print_object->model_object()->instances[instance_idx.first];
+                add_volume(obj_idx, (int)instance_idx.first, model_instance, slaposSupportTree, supports_mesh, GLVolume::SLA_SUPPORT_COLOR, convex_hull);
+            }
+        }
+    }
+
+    // Get the pad mesh.
+    if (milestone == SLAPrintObjectStep::slaposPad) {
+        TriangleMesh pad_mesh = print_object->pad_mesh();
+        if (!pad_mesh.empty()) {
+            pad_mesh.transform(mesh_trafo_inv);
+            TriangleMesh convex_hull = pad_mesh.convex_hull_3d();
+            for (const std::pair<size_t, size_t>& instance_idx : instances) {
+                const ModelInstance& model_instance = *print_object->model_object()->instances[instance_idx.first];
+                add_volume(obj_idx, (int)instance_idx.first, model_instance, slaposPad, pad_mesh, GLVolume::SLA_PAD_COLOR, convex_hull);
+            }
+        }
+    }
 }
 
 GLVolume* GLVolumeCollection::new_toolpath_volume(const ColorRGBA& rgba)
@@ -891,64 +849,6 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
     }
 }
 
-bool GLVolumeCollection::check_outside_state(const BuildVolume &build_volume, ModelInstanceEPrintVolumeState *out_state) const
-{
-    const Model&        model              = GUI::wxGetApp().plater()->model();
-    auto                volume_below       = [](GLVolume& volume) -> bool
-        { return volume.object_idx() != -1 && volume.volume_idx() != -1 && volume.is_below_printbed(); };
-    // Volume is partially below the print bed, thus a pre-calculated convex hull cannot be used.
-    auto                volume_sinking     = [](GLVolume& volume) -> bool
-        { return volume.object_idx() != -1 && volume.volume_idx() != -1 && volume.is_sinking(); };
-    // Cached bounding box of a volume above the print bed.
-    auto                volume_bbox        = [volume_sinking](GLVolume& volume) -> BoundingBoxf3 
-        { return volume_sinking(volume) ? volume.transformed_non_sinking_bounding_box() : volume.transformed_convex_hull_bounding_box(); };
-    // Cached 3D convex hull of a volume above the print bed.
-    auto                volume_convex_mesh = [volume_sinking, &model](GLVolume& volume) -> const TriangleMesh&
-        { return volume_sinking(volume) ? model.objects[volume.object_idx()]->volumes[volume.volume_idx()]->mesh() : *volume.convex_hull(); };
-
-    ModelInstanceEPrintVolumeState overall_state = ModelInstancePVS_Inside;
-    bool contained_min_one = false;
-
-    for (GLVolume* volume : this->volumes)
-        if (! volume->is_modifier && (volume->shader_outside_printer_detection_enabled || (! volume->is_wipe_tower && volume->composite_id.volume_id >= 0))) {
-            BuildVolume::ObjectState state;
-            if (volume_below(*volume))
-                state = BuildVolume::ObjectState::Below;
-            else {
-                switch (build_volume.type()) {
-                case BuildVolume::Type::Rectangle:
-                //FIXME this test does not evaluate collision of a build volume bounding box with non-convex objects.
-                    state = build_volume.volume_state_bbox(volume_bbox(*volume));
-                    break;
-                case BuildVolume::Type::Circle:
-                case BuildVolume::Type::Convex:
-                //FIXME doing test on convex hull until we learn to do test on non-convex polygons efficiently.
-                case BuildVolume::Type::Custom:
-                    state = build_volume.object_state(volume_convex_mesh(*volume).its, volume->world_matrix().cast<float>(), volume_sinking(*volume));
-                    break;
-                default:
-                    // Ignore, don't produce any collision.
-                    state = BuildVolume::ObjectState::Inside;
-                    break;
-                }
-                assert(state != BuildVolume::ObjectState::Below);
-            }
-            volume->is_outside = state != BuildVolume::ObjectState::Inside;
-            if (volume->printable) {
-                if (overall_state == ModelInstancePVS_Inside && volume->is_outside)
-                    overall_state = ModelInstancePVS_Fully_Outside;
-                if (overall_state == ModelInstancePVS_Fully_Outside && volume->is_outside && state == BuildVolume::ObjectState::Colliding)
-                    overall_state = ModelInstancePVS_Partly_Outside;
-                contained_min_one |= !volume->is_outside;
-            }
-        }
-
-    if (out_state != nullptr)
-        *out_state = overall_state;
-
-    return contained_min_one;
-}
-
 void GLVolumeCollection::reset_outside_state()
 {
     for (GLVolume* volume : this->volumes) {
@@ -998,7 +898,7 @@ void GLVolumeCollection::update_colors_by_extruder(const DynamicPrintConfig* con
     }
 
     for (GLVolume* volume : volumes) {
-        if (volume == nullptr || volume->is_modifier || volume->is_wipe_tower || volume->volume_idx() < 0)
+        if (volume == nullptr || volume->is_modifier || volume->is_wipe_tower || volume->is_sla_pad() || volume->is_sla_support())
             continue;
 
         int extruder_id = volume->extruder_id - 1;
@@ -1553,8 +1453,8 @@ void _3DScene::extrusionentity_to_verts(const ExtrusionPath& extrusion_path, flo
     polyline.remove_duplicate_points();
     polyline.translate(copy);
     const Lines               lines = polyline.lines();
-    std::vector<double> widths(lines.size(), extrusion_path.width);
-    std::vector<double> heights(lines.size(), extrusion_path.height);
+    std::vector<double> widths(lines.size(), extrusion_path.width());
+    std::vector<double> heights(lines.size(), extrusion_path.height());
     thick_lines_to_verts(lines, widths, heights, false, print_z, geometry);
 }
 
@@ -1570,8 +1470,8 @@ void _3DScene::extrusionentity_to_verts(const ExtrusionLoop& extrusion_loop, flo
         polyline.translate(copy);
         const Lines lines_this = polyline.lines();
         append(lines, lines_this);
-        widths.insert(widths.end(), lines_this.size(), extrusion_path.width);
-        heights.insert(heights.end(), lines_this.size(), extrusion_path.height);
+        widths.insert(widths.end(), lines_this.size(), extrusion_path.width());
+        heights.insert(heights.end(), lines_this.size(), extrusion_path.height());
     }
     thick_lines_to_verts(lines, widths, heights, true, print_z, geometry);
 }
@@ -1588,8 +1488,8 @@ void _3DScene::extrusionentity_to_verts(const ExtrusionMultiPath& extrusion_mult
         polyline.translate(copy);
         const Lines lines_this = polyline.lines();
         append(lines, lines_this);
-        widths.insert(widths.end(), lines_this.size(), extrusion_path.width);
-        heights.insert(heights.end(), lines_this.size(), extrusion_path.height);
+        widths.insert(widths.end(), lines_this.size(), extrusion_path.width());
+        heights.insert(heights.end(), lines_this.size(), extrusion_path.height());
     }
     thick_lines_to_verts(lines, widths, heights, false, print_z, geometry);
 }

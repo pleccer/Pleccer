@@ -1,3 +1,7 @@
+///|/ Copyright (c) Prusa Research 2018 - 2023 Oleksandra Iushchenko @YuSanka, Enrico Turri @enricoturri1966, Filip Sykala @Jony01, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, Lukáš Hejl @hejllukas, David Kocík @kocikdav, Vojtěch Král @vojtechkral
+///|/
+///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+///|/
 #ifndef slic3r_ImGuiWrapper_hpp_
 #define slic3r_ImGuiWrapper_hpp_
 
@@ -49,6 +53,11 @@ public:
         bool edited  { false };
         bool clicked { false };
         bool deactivated_after_edit { false };
+        // flag to indicate possibility to take snapshot from the slider value
+        // It's used from Gizmos to take snapshots just from the very beginning of the editing
+        bool can_take_snapshot { false };
+        // When Undo/Redo snapshot is taken, then call this function
+        void invalidate_snapshot() { can_take_snapshot = false; }
     };
 
     ImGuiWrapper();
@@ -80,6 +89,7 @@ public:
     ImVec2 get_item_spacing() const;
     float  get_slider_float_height() const;
     const LastSliderStatus& get_last_slider_status() const { return m_last_slider_status; }
+    LastSliderStatus& get_last_slider_status() { return m_last_slider_status; }
 
     void set_next_window_pos(float x, float y, int flag, float pivot_x = 0.0f, float pivot_y = 0.0f);
     void set_next_window_bg_alpha(float alpha);
@@ -92,9 +102,10 @@ public:
     void end();
 
     bool button(const wxString &label, const wxString& tooltip = {});
-	bool button(const wxString& label, float width, float height);
+    bool button(const wxString& label, float width, float height);
     bool button(const wxString& label, const ImVec2 &size, bool enable); // default size = ImVec2(0.f, 0.f)
     bool radio_button(const wxString &label, bool active);
+    void draw_icon(ImGuiWindow& window, const ImVec2& pos, float size, wchar_t icon_id);
     bool draw_radio_button(const std::string& name, float size, bool active, std::function<void(ImGuiWindow& window, const ImVec2& pos, float size)> draw_callback);
     bool checkbox(const wxString &label, bool &value);
     static void text(const char *label);
@@ -119,7 +130,8 @@ public:
     bool image_button(const wchar_t icon, const wxString& tooltip = L"");
 
     // Use selection = -1 to not mark any option as selected
-    bool combo(const wxString& label, const std::vector<std::string>& options, int& selection, ImGuiComboFlags flags = 0);
+    bool combo(const std::string& label, const std::vector<std::string>& options, int& selection, ImGuiComboFlags flags = 0, float label_width = 0.0f, float item_width = 0.0f);
+    bool combo(const wxString& label, const std::vector<std::string>& options, int& selection, ImGuiComboFlags flags = 0, float label_width = 0.0f, float item_width = 0.0f);
     bool undo_redo_list(const ImVec2& size, const bool is_undo, bool (*items_getter)(const bool, int, const char**), int& hovered, int& selected, int& mouse_wheel);
     void search_list(const ImVec2& size, bool (*items_getter)(int, const char** label, const char** tooltip), char* search_str,
                      Search::OptionViewParameters& view_params, int& selected, bool& edited, int& mouse_wheel, bool is_localized);
@@ -145,6 +157,21 @@ public:
     bool slider_optional_float(const char* label, std::optional<float> &v, float v_min, float v_max, const char* format = "%.3f", float power = 1.0f, bool clamp = true, const wxString& tooltip = {}, bool show_edit_btn = true, float def_val = .0f);
     // Extended function ImGuiWrapper::slider_float to work with std::optional<int>, when value == def_val than optional release its value
     bool slider_optional_int(const char* label, std::optional<int> &v, int v_min, int v_max, const char* format = "%.3f", float power = 1.0f, bool clamp = true, const wxString& tooltip = {}, bool show_edit_btn = true, int def_val = 0);
+
+    /// <summary>
+    /// Change position of imgui window
+    /// </summary>
+    /// <param name="window_name">ImGui identifier of window</param>
+    /// <param name="output_window_offset">[output] optional </param>
+    /// <param name="try_to_fix">When True Only move to be full visible otherwise reset position</param>
+    /// <returns>New offset of window for function ImGui::SetNextWindowPos</returns>
+    static std::optional<ImVec2> change_window_position(const char *window_name, bool try_to_fix);
+
+    /// <summary>
+    /// Use ImGui internals to unactivate (lose focus) in input.
+    /// When input is activ it can't change value by application.
+    /// </summary>
+    static void left_inputs();
 
     /// <summary>
     /// Truncate text by ImGui draw function to specific width
@@ -192,6 +219,20 @@ public:
                      ImDrawList *   draw_list = ImGui::GetOverlayDrawList(),
                      ImU32 color     = ImGui::GetColorU32(COL_ORANGE_LIGHT),
                      float thickness = 3.f);
+
+    /// <summary>
+    /// Draw symbol of cross hair
+    /// </summary>
+    /// <param name="position">Center of cross hair</param>
+    /// <param name="radius">Circle radius</param>
+    /// <param name="color">Color of symbol</param>
+    /// <param name="num_segments">Precission of circle</param>
+    /// <param name="thickness">Thickness of Line in symbol</param>
+    static void draw_cross_hair(const ImVec2 &position,
+                                float         radius       = 16.f,
+                                ImU32         color        = ImGui::GetColorU32(ImVec4(1.f, 1.f, 1.f, .75f)),
+                                int           num_segments = 0,
+                                float         thickness    = 4.f);
 
     /// <summary>
     /// Check that font ranges contain all chars in string
